@@ -2,7 +2,7 @@ import {
   constants,
   createPublicKey,
   verify as verifySignature,
-  type JsonWebKey,
+  type JsonWebKeyInput,
   type KeyObject,
 } from 'node:crypto';
 
@@ -27,8 +27,14 @@ type SupportedAlgorithm =
 
 interface CachedJwks {
   readonly expiresAt: number;
-  readonly keys: readonly JsonWebKey[];
+  readonly keys: readonly JwksSigningKey[];
 }
+
+type JwksSigningKey = JsonWebKeyInput['key'] & {
+  readonly kid: string;
+  readonly alg?: string;
+  readonly use?: string;
+};
 
 export interface JwksJwtVerifierOptions {
   readonly jwksUrl: string;
@@ -93,7 +99,7 @@ export class JwksJwtVerifier implements JwtCryptographicVerifier {
     await this.#keys(false);
   }
 
-  async #keys(force: boolean): Promise<readonly JsonWebKey[]> {
+  async #keys(force: boolean): Promise<readonly JwksSigningKey[]> {
     if (!force && this.#cache !== undefined && this.#cache.expiresAt > this.#now()) {
       return this.#cache.keys;
     }
@@ -157,7 +163,7 @@ function parseHeader(encoded: string): JwtHeader {
   return { alg: value['alg'] as SupportedAlgorithm, kid: value['kid'] };
 }
 
-function selectKey(keys: readonly JsonWebKey[], header: JwtHeader): JsonWebKey | undefined {
+function selectKey(keys: readonly JwksSigningKey[], header: JwtHeader): JwksSigningKey | undefined {
   const matches = keys.filter(
     (key) => key.kid === header.kid && (key.alg === undefined || key.alg === header.alg) && (key.use === undefined || key.use === 'sig'),
   );
@@ -236,7 +242,7 @@ function parseJsonObject(raw: string, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function isUsableJwk(value: unknown): value is JsonWebKey {
+function isUsableJwk(value: unknown): value is JwksSigningKey {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const key = value as Record<string, unknown>;
   return typeof key['kty'] === 'string' && typeof key['kid'] === 'string' && key['kid'].length <= 256;

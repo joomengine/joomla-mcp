@@ -1,0 +1,53 @@
+{
+  "defaultSite": "production",
+  "approval": {
+    "secretEnv": "JOOMLA_MCP_APPROVAL_SECRET",
+    "ttlMs": 300000,
+    "requestTtlMs": 300000,
+    "allowIndefinite": false
+  },
+  "http": {
+    "listenHost": "127.0.0.1",
+    "port": 3000,
+    "mcpPath": "/mcp",
+    "healthPath": "/healthz",
+    "readinessPath": "/readyz",
+    "shutdownGraceMs": 30000,
+    "allowedHosts": ["mcp.example.test"],
+    "allowedOrigins": ["https://chat.example.test"],
+    "requireOrigin": false,
+    "issuer": "https://identity.example.test/",
+    "audience": "https://mcp.example.test",
+    "requiredScopes": ["joomla:mcp"],
+    "jwksUrl": "https://identity.example.test/.well-known/jwks.json",
+    "resourceMetadataUrl": "https://mcp.example.test/.well-known/oauth-protected-resource"
+  },
+  "sites": {
+    "production": {
+      "toolsets": ["discovery", "content.read", "content.write", "structure.read", "extensions.read", "configuration.read", "maintenance.read"],
+      "api": {
+        "baseUrl": "https://joomla.example.test",
+        "tokenEnv": "JOOMLA_PRODUCTION_TOKEN",
+        "timeoutMs": 30000,
+        "maxResponseBytes": 5242880,
+        "maxPageSize": 100
+      }
+    },
+    "localDevelopment": {
+      "toolsets": ["discovery", "content.read", "cli.discovery"],
+      "api": {
+        "baseUrl": "https://joomla.local.test",
+        "tokenEnv": "JOOMLA_LOCAL_TOKEN",
+        "timeoutMs": 30000,
+        "maxResponseBytes": 5242880,
+        "maxPageSize": 100
+      },
+      "cli": {
+        "root": "/srv/joomla",
+        "phpBinary": "/usr/bin/php8.3",
+        "timeoutMs": 120000,
+        "maxOutputBytes": 2097152
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "defaultSite": "company",
+  "sites": {
+    "company": {
+      "toolsets": [
+        "discovery",
+        "content.read",
+        "structure.read",
+        "media.read",
+        "users.read",
+        "extensions.read",
+        "configuration.read",
+        "maintenance.read"
+      ],
+      "api": {
+        "baseUrl": "https://www.example.com",
+        "tokenEnv": "JOOMLA_COMPANY_TOKEN",
+        "timeoutMs": 30000,
+        "maxResponseBytes": 5242880,
+        "maxPageSize": 100
+      }
+    }
+  }
+}

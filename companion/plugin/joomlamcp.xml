@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="console" method="upgrade">
+	<name>PLG_CONSOLE_JOOMLAMCP</name>
+	<version>0.5.0</version>
+	<creationDate>2026-07</creationDate>
+	<author>VDM - Vast Development Method</author>
+	<authorEmail>support@vdm.io</authorEmail>
+	<copyright>Copyright (C) 2026 Vast Development Method.</copyright>
+	<license>GNU General Public License version 2 or later</license>
+	<description>PLG_CONSOLE_JOOMLAMCP_XML_DESCRIPTION</description>
+	<namespace path="src">VDM\Plugin\Console\JoomlaMcp</namespace>
+	<scriptfile>script.php</scriptfile>
+	<files>
+		<folder plugin="joomlamcp">services</folder>
+		<folder>src</folder>
+	</files>
+	<languages>
+		<language tag="en-GB">language/en-GB/plg_console_joomlamcp.ini</language>
+		<language tag="en-GB">language/en-GB/plg_console_joomlamcp.sys.ini</language>
+	</languages>
+	<config>
+		<fields name="params">
+			<fieldset name="basic">
+				<field
+					name="actor_user_id"
+					type="user"
+					label="PLG_CONSOLE_JOOMLAMCP_FIELD_ACTOR_USER_ID_LABEL"
+					description="PLG_CONSOLE_JOOMLAMCP_FIELD_ACTOR_USER_ID_DESC"
+					default="0"
+					filter="integer"
+				/>
+			</fieldset>
+		</fields>
+	</config>
+</extension>

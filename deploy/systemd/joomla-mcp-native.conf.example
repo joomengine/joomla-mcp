@@ -1,0 +1,9 @@
+# Install as /etc/systemd/system/joomla-mcp.service.d/native.conf only when a
+# configured site uses the local Joomla companion. Replace these paths with the
+# exact cache, log, and temporary paths for every configured Joomla root.
+[Service]
+ReadWritePaths=-/var/www/joomla/administrator/cache
+ReadWritePaths=-/var/www/joomla/administrator/logs
+ReadWritePaths=-/var/www/joomla/cache
+ReadWritePaths=-/var/www/joomla/logs
+ReadWritePaths=-/var/www/joomla/tmp

@@ -1,0 +1,57 @@
+{
+  "name": "@joomengine/joomla-mcp",
+  "version": "0.5.0",
+  "private": true,
+  "description": "JoomEngine MCP for Joomla: a self-hosted Model Context Protocol server for Joomla 6.x.",
+  "homepage": "https://github.com/joomengine/joomla-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/joomengine/joomla-mcp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joomengine/joomla-mcp.git"
+  },
+  "files": [
+    "dist",
+    "config/sites.example.json",
+    "config/sites.single-site-readonly.example.json",
+    "docs",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md"
+  ],
+  "type": "module",
+  "bin": {
+    "joomla-mcp": "dist/bin/joomla-mcp.js",
+    "joomla-mcp-http": "dist/bin/joomla-mcp-http.js"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/bin/joomla-mcp.ts",
+    "dev:http": "tsx src/bin/joomla-mcp-http.ts",
+    "start": "node dist/bin/joomla-mcp.js",
+    "start:http": "node dist/bin/joomla-mcp-http.js",
+    "test": "vitest run",
+    "test:contract": "vitest run tests/contracts",
+    "test:fixture:joomengine": "./scripts/fixtures/run-joomengine.sh",
+    "test:security": "vitest run tests/*security*.test.ts tests/confirmation-service.test.ts tests/permission-grant-service.test.ts",
+    "docs:actions": "node --import tsx scripts/generate-api-action-reference.mts",
+    "docs:actions:check": "node --import tsx scripts/generate-api-action-reference.mts --check",
+    "validate": "npm run check && npm test && npm run docs:actions:check && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.8"
+  },
+  "license": "GPL-2.0-or-later"
+}

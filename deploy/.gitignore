@@ -1,0 +1,5 @@
+/.release.env
+/.release.env.previous
+/.rollout.lock/
+/secrets.env
+/sites.json

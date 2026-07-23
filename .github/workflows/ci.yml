@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run validate
+      - name: Validate deployment and rollback artifacts
+        run: ./tests/deploy/static-deployment.test.sh
+      - run: npm audit --omit=dev --audit-level=high
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+
+  php-companion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip
+          coverage: none
+      - name: PHP syntax
+        run: find companion/plugin companion/tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - run: php companion/tests/run.php
+      - run: php companion/build.php
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pkg_joomlamcp
+          path: companion/dist/pkg_joomlamcp-*.zip
+          if-no-files-found: error
+
+  joomla-61-fixture:
+    needs: php-companion
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v8
+        with:
+          name: pkg_joomlamcp
+          path: companion/dist
+      - name: Install and exercise the companion in disposable Joomla 6.1
+        env:
+          JOOMLA_FIXTURE_ARTIFACT_DIR: ${{ runner.temp }}/joomengine-fixture
+          JOOMLA_FIXTURE_DATABASE_IMAGE: mariadb:11.4@sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7
+          JOOMLA_FIXTURE_IMAGE: octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372
+        run: ./scripts/fixtures/run-joomengine.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: joomengine-fixture-evidence
+          path: ${{ runner.temp }}/joomengine-fixture
+          if-no-files-found: warn
+          retention-days: 14
+
+  api-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Joomla 6.1 contract
+        run: npm run test:contract
+        env:
+          JOOMLA_CONTRACT_BASE_URL: ${{ secrets.JOOMLA_61_CONTRACT_BASE_URL }}
+          JOOMLA_CONTRACT_TOKEN: ${{ secrets.JOOMLA_61_CONTRACT_TOKEN }}
+      - name: Joomla 6.2 contract
+        run: npm run test:contract
+        env:
+          JOOMLA_CONTRACT_BASE_URL: ${{ secrets.JOOMLA_62_CONTRACT_BASE_URL }}
+          JOOMLA_CONTRACT_TOKEN: ${{ secrets.JOOMLA_62_CONTRACT_TOKEN }}
+      - name: Joomla 7 canary
+        continue-on-error: true
+        run: npm run test:contract
+        env:
+          JOOMLA_CONTRACT_BASE_URL: ${{ secrets.JOOMLA_70_CONTRACT_BASE_URL }}
+          JOOMLA_CONTRACT_TOKEN: ${{ secrets.JOOMLA_70_CONTRACT_TOKEN }}

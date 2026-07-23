@@ -1,0 +1,9 @@
+/config/sites.json
+/companion/dist/
+/coverage/
+/dist/
+/node_modules/
+/.fixture-artifacts/
+/.env
+/.idea/
+/.vscode/

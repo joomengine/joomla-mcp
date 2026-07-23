@@ -1,0 +1,65 @@
+services:
+  mariadb:
+    image: "${JOOMLA_FIXTURE_DATABASE_IMAGE:-mariadb:11.4@sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7}"
+    environment:
+      MARIADB_DATABASE: "${JOOMLA_FIXTURE_DATABASE_NAME:?Set JOOMLA_FIXTURE_DATABASE_NAME}"
+      MARIADB_PASSWORD: "${JOOMLA_FIXTURE_DATABASE_PASSWORD:?Set JOOMLA_FIXTURE_DATABASE_PASSWORD}"
+      MARIADB_ROOT_PASSWORD: "${JOOMLA_FIXTURE_DATABASE_ROOT_PASSWORD:?Set JOOMLA_FIXTURE_DATABASE_ROOT_PASSWORD}"
+      MARIADB_USER: "${JOOMLA_FIXTURE_DATABASE_USER:?Set JOOMLA_FIXTURE_DATABASE_USER}"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 20s
+    networks:
+      - fixture
+    volumes:
+      - mariadb-data:/var/lib/mysql
+
+  joomla:
+    image: "${JOOMLA_FIXTURE_IMAGE:-octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372}"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      JOOMLA_ADMIN_EMAIL: fixture@example.invalid
+      JOOMLA_ADMIN_PASSWORD: "${JOOMLA_FIXTURE_ADMIN_PASSWORD:?Set JOOMLA_FIXTURE_ADMIN_PASSWORD}"
+      JOOMLA_ADMIN_USER: Joomla MCP Fixture
+      JOOMLA_ADMIN_USERNAME: mcpfixture
+      JOOMLA_CLI_COMMANDS: "joomla:mcp:describe --format=json --no-interaction --no-ansi;joomla:mcp:self-test --format=json --no-interaction --no-ansi;joomla:mcp:cli-inventory --format=json --no-interaction --no-ansi"
+      JOOMLA_DB_HOST: mariadb:3306
+      JOOMLA_DB_NAME: "${JOOMLA_FIXTURE_DATABASE_NAME:?Set JOOMLA_FIXTURE_DATABASE_NAME}"
+      JOOMLA_DB_PASSWORD: "${JOOMLA_FIXTURE_DATABASE_PASSWORD:?Set JOOMLA_FIXTURE_DATABASE_PASSWORD}"
+      JOOMLA_DB_USER: "${JOOMLA_FIXTURE_DATABASE_USER:?Set JOOMLA_FIXTURE_DATABASE_USER}"
+      JOOMLA_EXTENSIONS_PATHS: /fixtures/pkg_joomlamcp.zip
+      JOOMLA_SITE_NAME: JoomEngine MCP for Joomla Integration Fixture
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test -s /var/www/html/configuration.php &&
+          test ! -d /var/www/html/installation &&
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1/ >/dev/null
+      interval: 5s
+      timeout: 8s
+      retries: 60
+      start_period: 30s
+    init: true
+    networks:
+      - fixture
+    restart: "no"
+    volumes:
+      - type: bind
+        source: "${JOOMLA_FIXTURE_COMPANION_ZIP:?Set JOOMLA_FIXTURE_COMPANION_ZIP}"
+        target: /fixtures/pkg_joomlamcp.zip
+        read_only: true
+      - joomla-data:/var/www/html
+
+networks:
+  fixture:
+    internal: true
+
+volumes:
+  joomla-data:
+  mariadb-data:

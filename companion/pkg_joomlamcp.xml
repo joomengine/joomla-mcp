@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="package" method="upgrade">
+	<name>JoomEngine MCP for Joomla Companion Package</name>
+	<packagename>joomlamcp</packagename>
+	<version>0.5.0</version>
+	<creationDate>2026-07</creationDate>
+	<author>VDM - Vast Development Method</author>
+	<authorEmail>support@vdm.io</authorEmail>
+	<copyright>Copyright (C) 2026 Vast Development Method.</copyright>
+	<license>GNU General Public License version 2 or later</license>
+	<description>Installable Joomla 6.1+ native companion for JoomEngine MCP for Joomla.</description>
+	<blockChildUninstall>true</blockChildUninstall>
+	<files>
+		<file type="plugin" id="joomlamcp" group="console">plg_console_joomlamcp.zip</file>
+	</files>
+</extension>

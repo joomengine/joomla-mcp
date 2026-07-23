@@ -1,0 +1,62 @@
+name: joomla-mcp
+
+services:
+  joomla-mcp:
+    image: ${JOOMLA_MCP_IMAGE:?Set JOOMLA_MCP_IMAGE to an immutable image digest}
+    pull_policy: always
+    init: true
+    user: "10001:10001"
+    restart: unless-stopped
+    stop_grace_period: 35s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: ${JOOMLA_MCP_PIDS_LIMIT:-128}
+    cpus: ${JOOMLA_MCP_CPUS:-1.0}
+    mem_limit: ${JOOMLA_MCP_MEMORY_LIMIT:-512m}
+    mem_reservation: ${JOOMLA_MCP_MEMORY_RESERVATION:-128m}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    env_file:
+      - ./secrets.env
+    volumes:
+      - type: bind
+        source: ./sites.json
+        target: /run/joomla-mcp/sites.json
+        read_only: true
+      - type: volume
+        source: permission-grants
+        target: /var/lib/joomla-mcp
+    environment:
+      NODE_ENV: production
+      JOOMLA_MCP_CONFIG: /run/joomla-mcp/sites.json
+      JOOMLA_MCP_HEALTH_ADDRESS: 127.0.0.1
+      JOOMLA_MCP_HEALTH_HOST: ${JOOMLA_MCP_HEALTH_HOST:-127.0.0.1:3000}
+      JOOMLA_MCP_HEALTH_ORIGIN: ${JOOMLA_MCP_HEALTH_ORIGIN:-}
+      JOOMLA_MCP_HEALTH_PATH: ${JOOMLA_MCP_HEALTH_PATH:-/healthz}
+      JOOMLA_MCP_HEALTH_PORT: ${JOOMLA_MCP_CONTAINER_PORT:-3000}
+      JOOMLA_MCP_HEALTH_TIMEOUT_MS: ${JOOMLA_MCP_HEALTH_TIMEOUT_MS:-3000}
+    healthcheck:
+      test: ["CMD", "node", "/app/scripts/deploy/healthcheck.mjs"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    ports:
+      - "${JOOMLA_MCP_BIND_ADDRESS:-127.0.0.1}:${JOOMLA_MCP_BIND_PORT:-3000}:${JOOMLA_MCP_CONTAINER_PORT:-3000}"
+    logging:
+      driver: json-file
+      options:
+        max-size: ${JOOMLA_MCP_LOG_MAX_SIZE:-10m}
+        max-file: "${JOOMLA_MCP_LOG_MAX_FILES:-5}"
+    networks:
+      - edge
+
+networks:
+  edge:
+    driver: bridge
+
+volumes:
+  permission-grants:

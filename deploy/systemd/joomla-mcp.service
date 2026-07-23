@@ -1,0 +1,67 @@
+[Unit]
+Description=JoomEngine MCP for Joomla server
+Documentation=https://github.com/joomengine/joomla-mcp
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=joomla-mcp
+Group=joomla-mcp
+WorkingDirectory=/opt/joomla-mcp/current
+UMask=0077
+StateDirectory=joomla-mcp
+StateDirectoryMode=0700
+Environment=NODE_ENV=production
+Environment=JOOMLA_MCP_CONFIG=/etc/joomla-mcp/sites.json
+Environment=JOOMLA_MCP_HEALTH_ADDRESS=127.0.0.1
+Environment=JOOMLA_MCP_HEALTH_HOST=127.0.0.1:3000
+Environment=JOOMLA_MCP_HEALTH_PATH=/readyz
+Environment=JOOMLA_MCP_HEALTH_PORT=3000
+Environment=JOOMLA_MCP_HEALTH_TIMEOUT_MS=3000
+Environment=JOOMLA_MCP_STARTUP_TIMEOUT_MS=30000
+EnvironmentFile=-/etc/joomla-mcp/runtime.env
+EnvironmentFile=/etc/joomla-mcp/secrets.env
+ExecCondition=/usr/bin/test -r /etc/joomla-mcp/sites.json
+ExecStart=/usr/bin/node /opt/joomla-mcp/current/dist/bin/joomla-mcp-http.js
+ExecStartPost=/usr/bin/node /opt/joomla-mcp/current/scripts/deploy/wait-healthy.mjs
+Restart=on-failure
+RestartSec=5
+RestartSteps=5
+RestartMaxDelaySec=30
+TimeoutStartSec=45
+TimeoutStopSec=35
+KillSignal=SIGTERM
+KillMode=mixed
+FinalKillSignal=SIGKILL
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=joomla-mcp
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=~@mount @obsolete @privileged @raw-io @reboot @swap
+
+[Install]
+WantedBy=multi-user.target

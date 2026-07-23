@@ -1,0 +1,63 @@
+{
+  "defaultSite": "production",
+  "approval": {
+    "secretEnv": "JOOMLA_MCP_APPROVAL_SECRET",
+    "ttlMs": 300000,
+    "requestTtlMs": 300000,
+    "grantStorePath": "/var/lib/joomla-mcp/permission-grants.json",
+    "allowIndefinite": false
+  },
+  "http": {
+    "listenHost": "0.0.0.0",
+    "port": 3000,
+    "mcpPath": "/mcp",
+    "healthPath": "/healthz",
+    "readinessPath": "/readyz",
+    "shutdownGraceMs": 30000,
+    "allowedHosts": ["mcp.example.test", "127.0.0.1:3000"],
+    "allowedOrigins": ["https://client.example.test"],
+    "requireOrigin": false,
+    "issuer": "https://identity.example.test/",
+    "audience": "https://mcp.example.test",
+    "requiredScopes": ["joomla:mcp"],
+    "jwksUrl": "https://identity.example.test/.well-known/jwks.json",
+    "resourceMetadataUrl": "https://mcp.example.test/.well-known/oauth-protected-resource",
+    "enableJsonResponse": false,
+    "limits": {
+      "maxBodyBytes": 1048576,
+      "maxSessions": 1000,
+      "sessionIdleTtlMs": 900000,
+      "sessionMaxLifetimeMs": 28800000,
+      "bodyTimeoutMs": 15000,
+      "maxConcurrentRequests": 100,
+      "maxConcurrentRequestsPerPrincipal": 8,
+      "requestsPerMinutePerPrincipal": 120,
+      "burstPerPrincipal": 20,
+      "maxTrackedPrincipals": 10000
+    }
+  },
+  "sites": {
+    "production": {
+      "toolsets": [
+        "discovery",
+        "content.read",
+        "content.write",
+        "structure.read",
+        "structure.write",
+        "media.read",
+        "media.write",
+        "users.read",
+        "extensions.read",
+        "configuration.read",
+        "maintenance.read"
+      ],
+      "api": {
+        "baseUrl": "https://joomla.example.test",
+        "tokenEnv": "JOOMLA_PRODUCTION_TOKEN",
+        "timeoutMs": 30000,
+        "maxResponseBytes": 5242880,
+        "maxPageSize": 100
+      }
+    }
+  }
+}

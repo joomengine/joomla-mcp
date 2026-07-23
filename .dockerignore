@@ -1,0 +1,15 @@
+.git
+.github
+.agents
+.codex
+companion
+config/sites.json
+coverage
+deploy
+dist
+docs
+node_modules
+tests
+*.env
+*.local
+*.log

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <extension type="plugin" group="console" method="upgrade">
 	<name>PLG_CONSOLE_JOOMLAMCP</name>
-	<version>0.5.0</version>
+	<version>0.6.0</version>
 	<creationDate>2026-07</creationDate>
 	<author>VDM - Vast Development Method</author>
 	<authorEmail>support@vdm.io</authorEmail>

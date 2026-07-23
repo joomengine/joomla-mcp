@@ -3,8 +3,8 @@
 import { resolve } from 'node:path';
 
 import { loadConfiguration } from '../config/load.js';
-import { createRemoteHttpServer, type HttpAuditEvent } from '../http/index.js';
-import { createRuntime, createServer } from '../mcp/create-server.js';
+import type { HttpAuditEvent } from '../http/index.js';
+import { createJoomlaMcp } from '../library.js';
 import { JwksJwtVerifier } from '../security/jwks-jwt-verifier.js';
 
 async function main(): Promise<void> {
@@ -17,9 +17,8 @@ async function main(): Promise<void> {
   }
 
   const verifier = new JwksJwtVerifier({ jwksUrl: http.jwksUrl });
-  const runtime = createRuntime(configuration);
-  const controller = createRemoteHttpServer({
-    createMcpServer: () => createServer(configuration, runtime),
+  const application = createJoomlaMcp({ configuration });
+  const controller = application.createHttpServer({
     jwtVerifier: verifier,
     authorization: {
       issuer: http.issuer,

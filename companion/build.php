@@ -5,7 +5,7 @@ declare(strict_types=1);
 $root = __DIR__;
 $pluginRoot = $root . '/plugin';
 $dist = $root . '/dist';
-$version = '0.5.0';
+$version = '0.6.0';
 $projectLicense = dirname($root) . '/LICENSE';
 
 if (!class_exists(ZipArchive::class)) {

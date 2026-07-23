@@ -25,8 +25,12 @@ import type { JoomlaActionDescriptor } from '../contracts/action-catalog.js';
 import type { Toolset } from '../config/schema.js';
 import { getJoomlaCliCommandTarget, joomlaCliCommandTargets } from '../catalog/cli-command-targets.js';
 import { sourceOnlyGateReason } from '../catalog/action-gates.js';
-import { JoomlaApiClient, type JoomlaApiResponse } from '../infrastructure/api/joomla-api-client.js';
-import { JoomlaCliClient } from '../infrastructure/cli/joomla-cli-client.js';
+import {
+  JoomlaApiClient,
+  type JoomlaApiResponse,
+  type JoomlaApiTransport,
+} from '../infrastructure/api/joomla-api-client.js';
+import { JoomlaCliClient, type JoomlaCliTransport } from '../infrastructure/cli/joomla-cli-client.js';
 import { SiteRegistry } from './site-registry.js';
 
 export interface ArticleListInput {
@@ -52,8 +56,8 @@ const crudWriteActionIds = new Set(joomlaCrudWriteActions.map((action) => action
 export class JoomlaService {
   public constructor(
     private readonly sites: SiteRegistry,
-    private readonly api = new JoomlaApiClient(),
-    private readonly cli = new JoomlaCliClient(),
+    private readonly api: JoomlaApiTransport = new JoomlaApiClient(),
+    private readonly cli: JoomlaCliTransport = new JoomlaCliClient(),
     private readonly audit?: AuditSink,
   ) {}
 

@@ -7,7 +7,7 @@ describe('release workflow', () => {
   it('accepts an explicit matching version from main', () => {
     const result = verify({
       RELEASE_EVENT: 'workflow_dispatch',
-      RELEASE_INPUT_VERSION: '0.5.0',
+      RELEASE_INPUT_VERSION: '0.6.0',
       RELEASE_INPUT_PRERELEASE: 'false',
       RELEASE_REF: 'refs/heads/main',
       RELEASE_REF_NAME: 'main',
@@ -15,27 +15,41 @@ describe('release workflow', () => {
 
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
-      version: '0.5.0',
-      tag: 'v0.5.0',
+      version: '0.6.0',
+      tag: 'v0.6.0',
       prerelease: false,
+      npmTag: 'latest',
     });
   });
 
   it('accepts a matching SemVer tag and infers prerelease state', () => {
     const result = verify({
       RELEASE_EVENT: 'push',
-      RELEASE_REF: 'refs/tags/v0.5.0',
-      RELEASE_REF_NAME: 'v0.5.0',
+      RELEASE_REF: 'refs/tags/v0.6.0',
+      RELEASE_REF_NAME: 'v0.6.0',
     });
 
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ tag: 'v0.5.0', prerelease: false });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      tag: 'v0.6.0',
+      prerelease: false,
+      npmTag: 'latest',
+    });
+  });
+
+  it('maps SemVer prereleases to the npm next channel', () => {
+    const packageJson = readFileSync('package.json', 'utf8');
+    expect(packageJson).toContain('"version": "0.6.0"');
+
+    const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+    expect(workflow).toContain('npm_tag');
+    expect(workflow).toContain('NPM_TAG');
   });
 
   it('rejects manual releases from non-main refs and mismatched versions', () => {
     expect(verify({
       RELEASE_EVENT: 'workflow_dispatch',
-      RELEASE_INPUT_VERSION: '0.5.0',
+      RELEASE_INPUT_VERSION: '0.6.0',
       RELEASE_REF: 'refs/heads/feature',
       RELEASE_REF_NAME: 'feature',
     }).stderr).toContain('main branch');
@@ -56,6 +70,11 @@ describe('release workflow', () => {
     expect(workflow).toContain('already points to');
     expect(workflow).toContain('already exists');
     expect(workflow).toContain('joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz');
+    expect(workflow).toContain('npm publish "${asset}"');
+    expect(workflow).toContain('npm@11.18.0');
+    expect(workflow).toContain('environment: npm');
+    expect(workflow).toContain('dist.integrity');
+    expect(workflow).toContain('--provenance');
     expect(workflow).toContain('joomengine-mcp-for-joomla-deployment-${RELEASE_TAG}.tar.gz');
     expect(workflow).toContain('pkg_joomlamcp-*.zip');
     expect(workflow).toContain('.spdx.json');

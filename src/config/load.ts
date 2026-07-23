@@ -5,7 +5,32 @@ import { basename, dirname, resolve } from 'node:path';
 
 import { RawConfigurationSchema, type Configuration, type SiteConfig } from './schema.js';
 
-export async function loadConfiguration(file: string): Promise<Configuration> {
+export type ConfigurationSecretPurpose = 'approval-secret' | 'api-token' | 'api-update-token';
+
+export interface ConfigurationSecretRequest {
+  readonly name: string;
+  readonly purpose: ConfigurationSecretPurpose;
+  readonly site?: string;
+}
+
+export type ConfigurationSecretResolver = (
+  request: ConfigurationSecretRequest,
+) => string | undefined | Promise<string | undefined>;
+
+export interface ResolveConfigurationOptions {
+  /**
+   * Resolve secret references without placing secret values in configuration
+   * documents. Defaults to the current process environment.
+   */
+  readonly resolveSecret?: ConfigurationSecretResolver;
+  /** Human-readable source used in validation errors. */
+  readonly source?: string;
+}
+
+export async function loadConfiguration(
+  file: string,
+  options: Omit<ResolveConfigurationOptions, 'source'> = {},
+): Promise<Configuration> {
   const absoluteFile = resolve(file);
   let raw: unknown;
 
@@ -15,20 +40,34 @@ export async function loadConfiguration(file: string): Promise<Configuration> {
     throw new Error(`Unable to read configuration ${absoluteFile}: ${errorMessage(error)}`);
   }
 
+  return resolveConfiguration(raw, { ...options, source: absoluteFile });
+}
+
+export async function resolveConfiguration(
+  raw: unknown,
+  options: ResolveConfigurationOptions = {},
+): Promise<Configuration> {
+  const source = options.source ?? 'programmatic configuration';
   const parsed = RawConfigurationSchema.safeParse(raw);
 
   if (!parsed.success) {
-    throw new Error(`Invalid configuration ${absoluteFile}: ${parsed.error.message}`);
+    throw new Error(`Invalid configuration ${source}: ${parsed.error.message}`);
   }
 
   const sites = new Map<string, SiteConfig>();
+  const resolveSecret = options.resolveSecret ?? environmentSecretResolver;
 
   const approvalSecret =
-    parsed.data.approval === undefined ? undefined : process.env[parsed.data.approval.secretEnv];
+    parsed.data.approval === undefined
+      ? undefined
+      : await resolveSecret({
+          name: parsed.data.approval.secretEnv,
+          purpose: 'approval-secret',
+        });
 
   if (parsed.data.approval !== undefined && (approvalSecret === undefined || approvalSecret.length < 32)) {
     throw new Error(
-      `Environment variable ${parsed.data.approval.secretEnv} must contain at least 32 characters for write approvals.`,
+      `Secret ${parsed.data.approval.secretEnv} must contain at least 32 characters for write approvals.`,
     );
   }
 
@@ -37,16 +76,28 @@ export async function loadConfiguration(file: string): Promise<Configuration> {
     : await validateGrantStorePath(parsed.data.approval.grantStorePath);
 
   for (const [id, source] of Object.entries(parsed.data.sites)) {
-    const token = source.api === undefined ? undefined : process.env[source.api.tokenEnv];
+    const token = source.api === undefined
+      ? undefined
+      : await resolveSecret({
+          name: source.api.tokenEnv,
+          purpose: 'api-token',
+          site: id,
+        });
     const updateToken =
-      source.api?.updateTokenEnv === undefined ? undefined : process.env[source.api.updateTokenEnv];
+      source.api?.updateTokenEnv === undefined
+        ? undefined
+        : await resolveSecret({
+            name: source.api.updateTokenEnv,
+            purpose: 'api-update-token',
+            site: id,
+          });
 
     if (source.api !== undefined && (token === undefined || token === '')) {
-      throw new Error(`Environment variable ${source.api.tokenEnv} for site ${id} is not set.`);
+      throw new Error(`Secret ${source.api.tokenEnv} for site ${id} is not set.`);
     }
 
     if (source.api?.updateTokenEnv !== undefined && (updateToken === undefined || updateToken === '')) {
-      throw new Error(`Environment variable ${source.api.updateTokenEnv} for site ${id} is not set.`);
+      throw new Error(`Secret ${source.api.updateTokenEnv} for site ${id} is not set.`);
     }
 
     const cli =
@@ -89,6 +140,10 @@ export async function loadConfiguration(file: string): Promise<Configuration> {
         }),
     ...(parsed.data.http === undefined ? {} : { http: parsed.data.http }),
   };
+}
+
+function environmentSecretResolver(request: ConfigurationSecretRequest): string | undefined {
+  return process.env[request.name];
 }
 
 async function validateGrantStorePath(path: string): Promise<string> {

@@ -18,7 +18,19 @@ export interface CompanionEnvelope extends CliEnvelope {
   readonly data: unknown;
 }
 
-export class JoomlaCliClient {
+export interface JoomlaCliTransport {
+  list(config: CliConfig): Promise<CliEnvelope>;
+  help(config: CliConfig, command: string): Promise<CliEnvelope>;
+  describe(config: CliConfig): Promise<CompanionEnvelope>;
+  inventory(config: CliConfig): Promise<CompanionEnvelope>;
+  dispatch(
+    config: CliConfig,
+    action: string,
+    input: Readonly<Record<string, unknown>>,
+  ): Promise<CompanionEnvelope>;
+}
+
+export class JoomlaCliClient implements JoomlaCliTransport {
   public list(config: CliConfig): Promise<CliEnvelope> {
     return this.execute(config, ['list', '--no-interaction', '--no-ansi']);
   }

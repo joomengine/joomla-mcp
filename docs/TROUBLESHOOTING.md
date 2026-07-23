@@ -17,7 +17,7 @@ Inspect `compose-ps.txt`, `compose.log`, `describe.json`, `self-test.json`,
 
 A companion installation can succeed while its command remains unavailable if
 an older package installed the console plugin disabled. Install or upgrade to
-0.5.0, then verify `joomla:mcp:describe` as `www-data`. Do not reuse a failed
+0.6.0, then verify `joomla:mcp:describe` as `www-data`. Do not reuse a failed
 JoomEngine volume: its extension and configured CLI phases are first-install
 only.
 

@@ -1,6 +1,7 @@
 # JoomEngine MCP for Joomla
 
-A self-hosted Model Context Protocol (MCP) server for administering Joomla 6.x through bounded, auditable semantic actions.
+An embeddable library and self-hosted Model Context Protocol (MCP) server for
+administering Joomla 6.x through bounded, auditable semantic actions.
 
 The server has two Joomla integration paths:
 
@@ -27,6 +28,7 @@ TypeScript is a Tier 1 MCP SDK while PHP is Tier 3. For convenience, TypeScript 
 - Read-only discovery, safe configuration filtering, and immutable multi-site aliases.
 - Guarded writes using explicit principal-bound operator grants (`once`, `30-minutes`, or `indefinite`), preview, signed one-time plans, idempotency, locks, audit events, and verification where supported.
 - MCP over stdio or authenticated Streamable HTTP.
+- Versioned ESM package with typed root and subpath exports for host applications.
 - OCI image, Docker Compose, and systemd deployment foundations.
 
 The generated [API action reference](docs/API_ACTIONS.md) lists every route, semantic ID, accepted field set, transport, risk, and source-only gate. The release truth table is in [docs/COVERAGE.md](docs/COVERAGE.md). An implemented action is not described as production-verified until it has passed the corresponding live Joomla matrix.
@@ -38,6 +40,38 @@ The generated [API action reference](docs/API_ACTIONS.md) lists every route, sem
 - PHP 8.3 or newer on a host using the companion.
 - HTTPS and a dedicated least-privilege Joomla API user for remote API access.
 - An OAuth/OIDC authorization server with a HTTPS JWKS endpoint for remote MCP access.
+
+## Use as a library dependency
+
+Install the public, versioned package:
+
+```bash
+npm install @joomengine/joomla-mcp@^0.6.0
+```
+
+Create a transport-neutral application without starting a process or binding a
+port:
+
+```js
+import {
+  createJoomlaMcp,
+  loadConfiguration,
+} from '@joomengine/joomla-mcp';
+
+const configuration = await loadConfiguration('/etc/joomla-mcp/sites.json');
+const application = createJoomlaMcp({ configuration });
+const mcpServer = application.createServer();
+```
+
+The package retains the complete catalogue, reads, guarded writes,
+administration actions, grant workflow, Joomla API and companion transports,
+stdio and authenticated HTTP support. Host applications may inject secret
+resolution, audit, API, and CLI adapters while the action and security
+boundaries remain controlled by this package.
+
+See [library integration](docs/LIBRARY.md) for every public entry point,
+configuration and secret-manager integration, stdio/HTTP lifecycle, adapter
+contracts, isolation rules, executable examples, and compatibility policy.
 
 ## Install and validate
 
@@ -165,6 +199,8 @@ Do not enable destructive or privileged toolsets until their live and recovery g
 ## Documentation
 
 - [Architecture and native-first rules](docs/ARCHITECTURE.md)
+- [Library and host-application integration](docs/LIBRARY.md)
+- [Versioning and coordinated package releases](docs/RELEASING.md)
 - [Single-company, single-site deployment](docs/SINGLE_SITE.md)
 - [ChatGPT, Codex, Claude, Gemini, and Grok connections](docs/CLIENTS.md)
 - [Generated Joomla API action reference](docs/API_ACTIONS.md)

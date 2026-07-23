@@ -12,8 +12,16 @@ import {
   type CompanionActionDescriptor,
 } from '../catalog/companion-actions.js';
 import type { Configuration } from '../config/schema.js';
-import { JoomlaApiClient, type JoomlaApiResponse } from '../infrastructure/api/joomla-api-client.js';
-import { JoomlaCliClient, type CompanionEnvelope } from '../infrastructure/cli/joomla-cli-client.js';
+import {
+  JoomlaApiClient,
+  type JoomlaApiResponse,
+  type JoomlaApiTransport,
+} from '../infrastructure/api/joomla-api-client.js';
+import {
+  JoomlaCliClient,
+  type CompanionEnvelope,
+  type JoomlaCliTransport,
+} from '../infrastructure/cli/joomla-cli-client.js';
 import {
   ConfirmationService,
   SiteWriteLock,
@@ -118,9 +126,9 @@ export class JoomlaWriteService {
   public constructor(
     configuration: Configuration,
     private readonly sites: SiteRegistry,
-    private readonly api = new JoomlaApiClient(),
+    private readonly api: JoomlaApiTransport = new JoomlaApiClient(),
     private readonly audit?: AuditSink,
-    private readonly cli = new JoomlaCliClient(),
+    private readonly cli: JoomlaCliTransport = new JoomlaCliClient(),
   ) {
     if (configuration.approval !== undefined) {
       this.confirmation = new ConfirmationService(configuration.approval.secret, configuration.approval.ttlMs);

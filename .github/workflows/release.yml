@@ -29,6 +29,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      npm_tag: ${{ steps.version.outputs.npm_tag }}
       already_released: ${{ steps.existing.outputs.already_released }}
     steps:
       - uses: actions/checkout@v7
@@ -98,8 +99,8 @@ jobs:
             README.md LICENSE SECURITY.md Dockerfile \
             config/sites.example.json config/sites.single-site-readonly.example.json \
             deploy scripts/deploy \
-            docs/CLIENTS.md docs/DEPLOYMENT.md docs/OPERATIONS.md docs/SINGLE_SITE.md \
-            docs/TROUBLESHOOTING.md
+            docs/CLIENTS.md docs/DEPLOYMENT.md docs/LIBRARY.md docs/OPERATIONS.md \
+            docs/RELEASING.md docs/SINGLE_SITE.md docs/TROUBLESHOOTING.md
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: release-assets/*
@@ -108,6 +109,53 @@ jobs:
           name: server-${{ needs.prepare.outputs.tag }}
           path: release-assets/*
           if-no-files-found: error
+
+  registry:
+    needs: [prepare, server]
+    if: needs.prepare.outputs.already_released != 'true'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.17.1'
+          registry-url: https://registry.npmjs.org
+      - name: Install trusted-publishing-compatible npm
+        run: npm install --global npm@11.18.0
+      - uses: actions/download-artifact@v8
+        with:
+          name: server-${{ needs.prepare.outputs.tag }}
+          path: release-assets
+      - name: Publish the exact tested npm package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TAG: ${{ needs.prepare.outputs.npm_tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          asset="release-assets/joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz"
+          test -f "${asset}"
+          local_integrity="sha512-$(openssl dgst -sha512 -binary "${asset}" | base64 -w0)"
+          registry_integrity="$(
+            npm view "@joomengine/joomla-mcp@${RELEASE_VERSION}" dist.integrity \
+              --registry=https://registry.npmjs.org 2>/dev/null || true
+          )"
+          if [[ -n "${registry_integrity}" ]]; then
+            if [[ "${registry_integrity}" != "${local_integrity}" ]]; then
+              echo "npm already contains @joomengine/joomla-mcp@${RELEASE_VERSION} with different integrity." >&2
+              exit 1
+            fi
+            echo "@joomengine/joomla-mcp@${RELEASE_VERSION} is already published with matching integrity."
+            exit 0
+          fi
+          npm publish "${asset}" \
+            --access public \
+            --tag "${NPM_TAG}" \
+            --provenance \
+            --registry=https://registry.npmjs.org
 
   image:
     needs: prepare
@@ -193,7 +241,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [prepare, server, image, sbom, companion]
+    needs: [prepare, server, registry, image, sbom, companion]
     if: needs.prepare.outputs.already_released != 'true'
     runs-on: ubuntu-latest
     permissions:

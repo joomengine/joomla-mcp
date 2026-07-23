@@ -5,12 +5,12 @@ import { resolve } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { loadConfiguration } from '../config/load.js';
-import { createServer } from '../mcp/create-server.js';
+import { createJoomlaMcp } from '../library.js';
 
 async function main(): Promise<void> {
   const configFile = resolve(process.env['JOOMLA_MCP_CONFIG'] ?? 'config/sites.json');
   const configuration = await loadConfiguration(configFile);
-  const server = createServer(configuration);
+  const server = createJoomlaMcp({ configuration }).createServer();
   const transport = new StdioServerTransport();
 
   await server.connect(transport);

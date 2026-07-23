@@ -172,7 +172,7 @@ test('description is sorted, versioned, and includes effective access', static f
     $registry = new ActionRegistry([$echoAction, new SystemInfoAction()]);
     $description = jsonObject((new DescriptionService($registry, $allow))->toJson());
     expect($description['protocol'] === 'joomla-mcp/1', 'Description protocol is missing.');
-    expect($description['companion']['version'] === '0.5.0', 'Description companion version is stale.');
+    expect($description['companion']['version'] === '0.6.0', 'Description companion version is stale.');
     expect($description['actions'][0]['name'] === 'system.info', 'Actions are not sorted.');
     expect(isset($description['actions'][0]['effective']['allowed']), 'Effective access is missing.');
 });
@@ -844,10 +844,10 @@ test('manifests declare an installable package and Joomla console plugin', stati
     $build = file_get_contents($root . '/build.php');
     expect(is_string($package) && str_contains($package, 'type="package"'), 'Package manifest is invalid.');
     expect(is_string($plugin) && str_contains($plugin, 'type="plugin" group="console"'), 'Plugin manifest is invalid.');
-    expect(str_contains((string) $package, '<version>0.5.0</version>'), 'Package manifest version is stale.');
+    expect(str_contains((string) $package, '<version>0.6.0</version>'), 'Package manifest version is stale.');
     expect(substr_count((string) $build, "'LICENSE.txt'") >= 2, 'Companion build does not package the project license.');
-    expect(str_contains((string) $plugin, '<version>0.5.0</version>'), 'Plugin manifest version is stale.');
-    expect(str_contains((string) $build, "\$version = '0.5.0';"), 'Package build filename version is stale.');
+    expect(str_contains((string) $plugin, '<version>0.6.0</version>'), 'Plugin manifest version is stale.');
+    expect(str_contains((string) $build, "\$version = '0.6.0';"), 'Package build filename version is stale.');
     expect(str_contains((string) $plugin, 'VDM\\Plugin\\Console\\JoomlaMcp'), 'Plugin namespace is missing.');
     expect(str_contains((string) $plugin, '<scriptfile>script.php</scriptfile>'), 'Plugin installer script is not declared.');
     $installer = file_get_contents($root . '/plugin/script.php');

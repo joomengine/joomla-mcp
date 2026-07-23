@@ -33,7 +33,7 @@ from the TypeScript edge before execution. High-risk actions return pre/post
 state, verification, and recovery metadata wherever Joomla exposes a reliable
 read-back.
 
-The production operations available in companion 0.5.0 are:
+The production operations available in companion 0.6.0 are:
 
 | Action | Native Joomla 6.1+ capability |
 |---|---|
@@ -67,7 +67,7 @@ php companion/build.php
 The package ZIP is written to `companion/dist/`. See
 [`docs/PHP_COMPANION.md`](../docs/PHP_COMPANION.md) for installation and protocol examples.
 
-Install or upgrade the generated `pkg_joomlamcp-0.5.0.zip` with Joomla's native
+Install or upgrade the generated `pkg_joomlamcp-0.6.0.zip` with Joomla's native
 Extensions installer. First installation enables the console plugin through
 Joomla's native extension lifecycle; upgrades preserve its current enabled
 state. Then confirm that the dedicated MCP actor still has only

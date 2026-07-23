@@ -191,7 +191,7 @@ php companion/tests/run.php
 php companion/build.php
 cd /srv/www/joomla
 php cli/joomla.php extension:install \
-  --path=/opt/joomla-mcp/companion/dist/pkg_joomlamcp-0.5.0.zip
+  --path=/opt/joomla-mcp/companion/dist/pkg_joomlamcp-0.6.0.zip
 php cli/joomla.php joomla:mcp:self-test --format=json --no-interaction --no-ansi
 ```
 

@@ -24,31 +24,56 @@ if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A
 }
 
 const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version;
-const manifestVersions = [
+const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+const synchronizedVersions = [
+  packageVersion,
+  lock.version,
+  lock.packages?.['']?.version,
+  sourceVersion('src/version.ts', /JOOMLA_MCP_VERSION = '([^']+)'/),
+  sourceVersion('CHANGELOG.md', /## \[([^\]]+)\]/),
   manifestVersion('companion/pkg_joomlamcp.xml'),
   manifestVersion('companion/plugin/joomlamcp.xml'),
+  sourceVersion('companion/build.php', /\$version = '([^']+)'/),
+  sourceVersion(
+    'companion/plugin/src/Protocol/DescriptionService.php',
+    /'version' => '([^']+)'/,
+  ),
 ];
 
-if (packageVersion !== version || manifestVersions.some((candidate) => candidate !== version)) {
+if (synchronizedVersions.some((candidate) => candidate !== version)) {
   throw new Error(
-    `Release version ${version} must match package.json and both Joomla companion manifests `
-    + `(found ${[packageVersion, ...manifestVersions].join(', ')}).`,
+    `Release version ${version} must match every package and companion version `
+    + `(found ${synchronizedVersions.join(', ')}).`,
   );
 }
 
 const tag = `v${version}`;
-const prerelease = event === 'workflow_dispatch' ? inputPrerelease : version.includes('-');
+const prerelease = version.includes('-');
+if (event === 'workflow_dispatch' && inputPrerelease !== prerelease) {
+  throw new Error(
+    `The prerelease input must be ${String(prerelease)} for SemVer version ${version}.`,
+  );
+}
+const npmTag = prerelease ? 'next' : 'latest';
 const output = process.env['GITHUB_OUTPUT'];
 
 if (output !== undefined && output !== '') {
-  appendFileSync(output, `version=${version}\ntag=${tag}\nprerelease=${String(prerelease)}\n`, 'utf8');
+  appendFileSync(
+    output,
+    `version=${version}\ntag=${tag}\nprerelease=${String(prerelease)}\nnpm_tag=${npmTag}\n`,
+    'utf8',
+  );
 }
 
-process.stdout.write(`${JSON.stringify({ version, tag, prerelease })}\n`);
+process.stdout.write(`${JSON.stringify({ version, tag, prerelease, npmTag })}\n`);
 
 function manifestVersion(path) {
-  const match = readFileSync(path, 'utf8').match(/<version>([^<]+)<\/version>/);
-  if (match === null) {
+  return sourceVersion(path, /<version>([^<]+)<\/version>/);
+}
+
+function sourceVersion(path, pattern) {
+  const match = readFileSync(path, 'utf8').match(pattern);
+  if (match?.[1] === undefined) {
     throw new Error(`Unable to read a version from ${path}.`);
   }
   return match[1];

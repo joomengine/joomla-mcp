@@ -1,8 +1,7 @@
 {
   "name": "@joomengine/joomla-mcp",
-  "version": "0.5.0",
-  "private": true,
-  "description": "JoomEngine MCP for Joomla: a self-hosted Model Context Protocol server for Joomla 6.x.",
+  "version": "0.6.0",
+  "description": "Embeddable and self-hosted Model Context Protocol server for administering Joomla 6.x.",
   "homepage": "https://github.com/joomengine/joomla-mcp#readme",
   "bugs": {
     "url": "https://github.com/joomengine/joomla-mcp/issues"
@@ -11,22 +10,71 @@
     "type": "git",
     "url": "git+https://github.com/joomengine/joomla-mcp.git"
   },
+  "keywords": [
+    "joomla",
+    "mcp",
+    "model-context-protocol",
+    "automation",
+    "cms"
+  ],
   "files": [
     "dist",
     "config/sites.example.json",
     "config/sites.single-site-readonly.example.json",
     "docs",
+    "examples/embedded-host",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
     "SECURITY.md"
   ],
   "type": "module",
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./adapters": {
+      "types": "./dist/infrastructure/index.d.ts",
+      "import": "./dist/infrastructure/index.js",
+      "default": "./dist/infrastructure/index.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog/index.d.ts",
+      "import": "./dist/catalog/index.js",
+      "default": "./dist/catalog/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "import": "./dist/config/index.js",
+      "default": "./dist/config/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js",
+      "default": "./dist/http/index.js"
+    },
+    "./security": {
+      "types": "./dist/security/index.d.ts",
+      "import": "./dist/security/index.js",
+      "default": "./dist/security/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "joomla-mcp": "dist/bin/joomla-mcp.js",
     "joomla-mcp-http": "dist/bin/joomla-mcp-http.js"
   },
+  "sideEffects": false,
   "engines": {
     "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -38,17 +86,21 @@
     "test": "vitest run",
     "test:contract": "vitest run tests/contracts",
     "test:fixture:joomengine": "./scripts/fixtures/run-joomengine.sh",
+    "test:package": "node scripts/release/test-package-consumer.mjs",
     "test:security": "vitest run tests/*security*.test.ts tests/confirmation-service.test.ts tests/permission-grant-service.test.ts",
     "docs:actions": "node --import tsx scripts/generate-api-action-reference.mts",
     "docs:actions:check": "node --import tsx scripts/generate-api-action-reference.mts --check",
-    "validate": "npm run check && npm test && npm run docs:actions:check && npm run build"
+    "package:check": "node scripts/release/verify-package.mjs",
+    "prepack": "npm run build",
+    "version:sync": "node scripts/release/sync-version.mjs",
+    "validate": "npm run check && npm test && npm run docs:actions:check && npm run build && npm run package:check && npm run test:package"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
+    "@types/node": "^26.1.1",
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
     "tsx": "^4.20.0",
     "typescript": "^7.0.2",
     "vitest": "^4.0.8"

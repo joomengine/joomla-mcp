@@ -1,4 +1,5 @@
 import type { ApiConfig } from '../../config/schema.js';
+import { JOOMLA_MCP_VERSION } from '../../version.js';
 
 export interface JoomlaApiResponse {
   readonly status: number;
@@ -18,7 +19,16 @@ export interface JoomlaApiRequest {
   readonly authentication?: 'joomla-api-token' | 'joomla-update-token';
 }
 
-export class JoomlaApiClient {
+export interface JoomlaApiTransport {
+  get(
+    config: ApiConfig,
+    path: string,
+    query?: Readonly<Record<string, string | number | boolean | readonly (string | number | boolean)[]>>,
+  ): Promise<JoomlaApiResponse>;
+  request(config: ApiConfig, request: JoomlaApiRequest): Promise<JoomlaApiResponse>;
+}
+
+export class JoomlaApiClient implements JoomlaApiTransport {
   public async get(
     config: ApiConfig,
     path: string,
@@ -37,7 +47,7 @@ export class JoomlaApiClient {
 
     const headers: Record<string, string> = {
       Accept: 'application/vnd.api+json',
-      'User-Agent': 'JoomEngine-MCP-for-Joomla/0.4',
+      'User-Agent': `JoomEngine-MCP-for-Joomla/${JOOMLA_MCP_VERSION}`,
     };
 
     if (request.authentication === 'joomla-update-token') {

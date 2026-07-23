@@ -100,7 +100,7 @@ On each fixture:
 
 1. Build or download the companion ZIP whose digest is under test.
 2. Install it through Joomla's native extension installer.
-3. Verify **Console - JoomEngine MCP for Joomla Companion** is enabled. Version 0.5.0 and
+3. Verify **Console - JoomEngine MCP for Joomla Companion** is enabled. Version 0.6.0 and
    later enable it on first installation while preserving state on upgrades.
 4. Select a dedicated **MCP actor user** with only the permissions for the
    current test group. An unset actor is a required denial case.

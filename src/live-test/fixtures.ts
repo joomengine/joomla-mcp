@@ -87,7 +87,9 @@ fixture('languages.content', [], (_context, value) => ({
   lang_code: value.languageCode,
   title: value.short,
   title_native: value.short,
-  sef: value.languageCode.slice(0, 2).toLowerCase(),
+  // Prefix the full generated language code so neither live record can collide
+  // with Joomla's installed language SEF values (for example, en-GB uses en).
+  sef: `x${value.languageCode.replace('-', '').toLowerCase()}`,
   image: '',
   description: value.description,
   metadesc: '',
@@ -169,7 +171,7 @@ fixture('modules.site', [], (_context, value) => ({
   access: 1,
   language: '*',
   assigned: [0],
-  params: { prepare_content: 0 },
+  params: { prepare_content: 0, layout: '_:default' },
 }));
 fixture('modules.administrator', [], (_context, value) => ({
   title: value.title,
@@ -181,7 +183,7 @@ fixture('modules.administrator', [], (_context, value) => ({
   access: 1,
   language: '*',
   assigned: [0],
-  params: { prepare_content: 0 },
+  params: { prepare_content: 0, layout: '_:default' },
 }));
 fixture('users.users', [], (_context, value) => ({
   name: value.title,
@@ -382,6 +384,9 @@ function defaultUpdate(
   if (baseId === 'banners.banners' || baseId === 'banners.clients' ||
       baseId === 'contacts.contacts' || baseId === 'newsfeeds.feeds') {
     return { name: value.title };
+  }
+  if (baseId === 'modules.site' || baseId === 'modules.administrator') {
+    return { title: value.title, params: { prepare_content: 0, layout: '_:default' } };
   }
   if (baseId === 'users.users') return { name: value.title };
   if (baseId === 'messages.messages') return { subject: value.title };

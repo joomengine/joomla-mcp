@@ -47,6 +47,20 @@ interface LaneState {
   readonly created: LiveRetainedRecord[];
 }
 
+const fixtureMediaPath = 'local-images:/joomla-mcp-live-prerequisite.png';
+const fixturePrivacyEmail = 'fixture@example.invalid';
+const fixturePrivacyConsentSubject = 'Joomla MCP live prerequisite consent';
+const fixtureAdministratorOverride = Object.freeze({
+  language: 'en-GB',
+  constant: 'JOOMLA_MCP_LIVE_PREREQUISITE_ADMINISTRATOR',
+  value: 'Joomla MCP live prerequisite administrator',
+});
+const fixtureSiteOverride = Object.freeze({
+  language: 'en-GB',
+  constant: 'JOOMLA_MCP_LIVE_PREREQUISITE_SITE',
+  value: 'Joomla MCP live prerequisite site',
+});
+
 interface AttemptOutcome {
   readonly response?: unknown;
   readonly expected?: unknown;
@@ -260,7 +274,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         if (options.profile === 'read') {
           await runReadProfile(session, joomlaPath, siteId, site, selected, state, recordAttempt);
         } else {
-          await runCrudProfile(session, joomlaPath, siteId, selected, state, recordAttempt, options);
+          await runCrudProfile(session, joomlaPath, siteId, site, selected, state, recordAttempt, options);
           if (options.profile === 'full') {
             await runSpecialProfile(session, joomlaPath, siteId, site, selected, state, recordAttempt, options);
           }
@@ -350,7 +364,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
 
   const completedAtMs = Date.now();
   const counts = statusCounts(attempts);
-  const exitCode = counts.FAIL + counts.CLEANUP_FAILED > 0 ? 1 : 0;
+  const exitCode = liveTestExitCode(options, counts);
   const summary: LiveTestSummary = Object.freeze({
     schema: 'joomengine.joomla-mcp.live-test/v1',
     runId,
@@ -435,6 +449,24 @@ async function grantPermissions(
   });
 }
 
+export function liveTestExitCode(
+  options: Pick<LiveTestOptions, 'profile' | 'disposable' | 'families'>,
+  counts: Readonly<Record<LiveTestStatus, number>>,
+): number {
+  const requiresCompletePrerequisites =
+    options.profile === 'full' &&
+    options.disposable &&
+    options.families.length === 0;
+  return (
+    counts.FAIL +
+    counts.CLEANUP_FAILED +
+    (requiresCompletePrerequisites ? counts.BLOCKED_BY_PREREQUISITE : 0) >
+    0
+  )
+    ? 1
+    : 0;
+}
+
 type AttemptRecorder = (
   session: LiveMcpSession,
   joomlaPath: LiveJoomlaPath,
@@ -480,6 +512,7 @@ async function runReadProfile(
     const request = { site, action: scenario.id, input, transport: path };
     const outcome = await record(session, path, scenario, 'read', request, async () => {
       const response = await callRead(session, site, scenario.id, input, path);
+      validateReadResult(scenario.id, input, response);
       state.reads.set(scenario.id, response);
       rememberReference(scenario.id, response, state);
       return { response };
@@ -492,6 +525,7 @@ async function runCrudProfile(
   session: LiveMcpSession,
   path: LiveJoomlaPath,
   site: string,
+  siteConfiguration: SiteConfig,
   selected: readonly LiveScenario[],
   state: LaneState,
   record: AttemptRecorder,
@@ -589,17 +623,7 @@ async function runCrudProfile(
           if (entity === undefined) {
             throw new Error(`Create action ${createScenario.id} returned no positive resource identifier.`);
           }
-          if (purpose === 'showcase') {
-            state.records.set(baseId, entity);
-          } else {
-            state.records.set(`${baseId}#deletion`, entity);
-          }
-          state.created.push({
-            lane: state.lane,
-            family: baseId,
-            id: entity.id,
-            label: `${entity.label}${purpose === 'deletion' ? ' [deletion candidate]' : ''}`,
-          });
+          rememberCrudCreate(baseId, purpose, entity, state);
           return {
             response,
             expected: { created: true, purpose },
@@ -613,6 +637,44 @@ async function runCrudProfile(
                 }),
           };
         });
+        if (
+          outcome?.status === 'KNOWN_UPSTREAM_LIMITATION' &&
+          path === 'api' &&
+          (baseId === 'modules.site' || baseId === 'modules.administrator')
+        ) {
+          await record(
+            session,
+            'cli',
+            createScenario,
+            `create-${purpose}-api-prerequisite`,
+            input,
+            async () => {
+              if (siteConfiguration.cli === undefined) {
+                throw new Error(
+                  `${createScenario.id} requires the companion CLI to provision an API-readable fixture after the reviewed Joomla API create defect.`,
+                );
+              }
+              const submitted = asRecord(input['data']);
+              const response = await callWrite(session, site, createScenario.id, input, 'cli');
+              const entity = entityFromMutation(response, submitted);
+              if (entity === undefined) {
+                throw new Error(
+                  `Companion prerequisite creation for ${createScenario.id} returned no positive resource identifier.`,
+                );
+              }
+              rememberCrudCreate(baseId, purpose, entity, state);
+              return {
+                response,
+                expected: {
+                  created: true,
+                  purpose,
+                  prerequisiteFor: `${createScenario.id} API get/update/delete`,
+                },
+                actual: { id: entity.id },
+              };
+            },
+          );
+        }
         if (outcome === undefined && purpose === 'showcase') break;
       }
     }
@@ -837,6 +899,25 @@ function createFixtureData(
   return trash === undefined ? data : Object.freeze({ ...data, ...trash });
 }
 
+function rememberCrudCreate(
+  baseId: string,
+  purpose: 'showcase' | 'deletion',
+  entity: LiveFixtureRecord,
+  state: LaneState,
+): void {
+  if (purpose === 'showcase') {
+    state.records.set(baseId, entity);
+  } else {
+    state.records.set(`${baseId}#deletion`, entity);
+  }
+  state.created.push({
+    lane: state.lane,
+    family: baseId,
+    id: entity.id,
+    label: `${entity.label}${purpose === 'deletion' ? ' [deletion candidate]' : ''}`,
+  });
+}
+
 function deleteSemantics(baseId: string): 'resource-model-defined' | 'permanent' {
   return joomlaCrudBases.find((base) => base.id === baseId)?.deleteSemantics ?? 'resource-model-defined';
 }
@@ -909,21 +990,10 @@ async function runSpecialProfile(
     );
     if (input === undefined) continue;
     await record(session, path, scenario, 'read', input, async () => {
-      try {
-        const response = await callRead(session, siteId, scenario.id, input, path);
-        state.reads.set(scenario.id, response);
-        return { response };
-      } catch (error) {
-        if (scenario.id === 'privacy.requests.export' && isJoomlaHttpError(error, 404)) {
-          return {
-            status: 'EXPECTED_DENIAL',
-            response: errorResult(error),
-            expected: 'Joomla denies export until the privacy request has been confirmed and processed.',
-            reason: 'The selected privacy request is pending, so Joomla correctly returned HTTP 404 instead of exporting data.',
-          };
-        }
-        throw error;
-      }
+      const response = await callRead(session, siteId, scenario.id, input, path);
+      validateReadResult(scenario.id, input, response);
+      state.reads.set(scenario.id, response);
+      return { response };
     });
   }
 
@@ -1339,24 +1409,125 @@ function readInput(actionId: string, state: LaneState): Readonly<Record<string, 
         : { adapter: String(id) };
     }
     if (actionId === 'media.files.get') {
-      const mediaPath = findDeepValue(state.reads.get('media.files.list'), 'path');
-      return typeof mediaPath === 'string'
-        ? { path: mediaPath }
-        : new BlockedError('media.files.list returned no readable media path.', ['media.files.list']);
+      return { path: fixtureMediaPath };
     }
     if (actionId === 'plugins.plugins.get') {
       return idFromRead(state, 'plugins.plugins.list');
     }
-    if (actionId === 'privacy.requests.get') return idFromRead(state, 'privacy.requests.list');
-    if (actionId === 'privacy.consents.get') return idFromRead(state, 'privacy.consents.list');
+    if (actionId === 'privacy.requests.get') {
+      return idFromMatchingRead(state, 'privacy.requests.list', 'email', fixturePrivacyEmail);
+    }
+    if (actionId === 'privacy.consents.get') {
+      return idFromMatchingRead(
+        state,
+        'privacy.consents.list',
+        'subject',
+        fixturePrivacyConsentSubject,
+      );
+    }
     if (actionId.startsWith('languages.overrides.')) {
-      return new BlockedError('No deterministic pre-existing language override is assumed.', [`${actionId.replace('.get', '.list')}`]);
+      const fixture = actionId.startsWith('languages.overrides.site.')
+        ? fixtureSiteOverride
+        : fixtureAdministratorOverride;
+      return { language: fixture.language, constant: fixture.constant };
     }
     return new BlockedError(`${actionId} requires an existing catalogue record.`, [`${baseId}.list`]);
+  }
+  if (actionId === 'privacy.requests.export') {
+    return idFromMatchingRead(
+      state,
+      'privacy.requests.list',
+      'email',
+      fixturePrivacyEmail,
+    );
   }
   if (actionId.endsWith('.export')) return idFromRead(state, actionId.replace('.export', '.list'));
   if (actionId === 'joomla-update.healthcheck' || actionId === 'joomla-update.status') return {};
   return {};
+}
+
+function validateReadResult(
+  actionId: string,
+  input: Readonly<Record<string, unknown>>,
+  response: unknown,
+): void {
+  if (actionId === 'media.files.get') {
+    const expectedPath = String(input['path'] ?? '');
+    const actualPath = findDeepValue(response, 'path');
+    if (
+      typeof actualPath !== 'string' ||
+      normalizeCreatedMediaPath(actualPath) !== normalizeCreatedMediaPath(expectedPath)
+    ) {
+      throw new Error(`media.files.get did not return prerequisite media path ${expectedPath}.`);
+    }
+  }
+
+  if (actionId === 'privacy.requests.get' || actionId === 'privacy.consents.get') {
+    const entity = firstEntity(response);
+    assertEntityId(entity, Number(input['id']), actionId);
+    const attribute = actionId === 'privacy.requests.get' ? 'email' : 'subject';
+    const expected = actionId === 'privacy.requests.get'
+      ? fixturePrivacyEmail
+      : fixturePrivacyConsentSubject;
+    if (!looselyEqual(entity?.attributes[attribute], expected)) {
+      throw new Error(`${actionId} did not return the deterministic fixture ${attribute}.`);
+    }
+  }
+
+  if (
+    actionId === 'languages.overrides.site.get' ||
+    actionId === 'languages.overrides.administrator.get'
+  ) {
+    const fixture = actionId === 'languages.overrides.site.get'
+      ? fixtureSiteOverride
+      : fixtureAdministratorOverride;
+    assertLanguageOverride(response, fixture.constant, fixture.value, actionId);
+  }
+
+  if (actionId === 'joomla-update.healthcheck') {
+    const version = findDeepValue(response, 'cms_version');
+    if (typeof version !== 'string' || version.length === 0) {
+      throw new Error('Joomla Update healthcheck did not return cms_version.');
+    }
+  }
+
+  if (actionId === 'joomla-update.status') {
+    const availableUpdate = findDeepValue(response, 'availableUpdate');
+    if (typeof availableUpdate !== 'string' || availableUpdate.length === 0) {
+      throw new Error('Joomla Update status did not return a concrete availableUpdate.');
+    }
+  }
+}
+
+function requiredJoomlaUpdateVersion(state: LaneState): string {
+  const version = findDeepValue(state.reads.get('joomla-update.status'), 'availableUpdate');
+  if (typeof version !== 'string' || version.length === 0) {
+    throw new Error('Joomla Update prepare requires the version returned by joomla-update.status.');
+  }
+  return version;
+}
+
+function requiredCurrentJoomlaVersion(state: LaneState): string {
+  const healthcheckVersion = findDeepValue(
+    state.reads.get('joomla-update.healthcheck'),
+    'cms_version',
+  );
+  if (typeof healthcheckVersion === 'string' && healthcheckVersion.length > 0) {
+    return healthcheckVersion;
+  }
+  const systemVersion = findDeepValue(state.reads.get('system.info'), 'joomlaVersion');
+  if (typeof systemVersion === 'string' && systemVersion.length > 0) return systemVersion;
+  throw new Error(
+    'Joomla Update actions require the current Joomla version returned by healthcheck or system.info.',
+  );
+}
+
+function requiredJoomlaUpdateFile(state: LaneState): string {
+  const filename = state.reads.get('live.joomla-update.filename');
+  if (typeof filename !== 'string' || filename.length === 0) {
+    throw new Error('Joomla Update finalize requires the filename returned by joomla-update.prepare.');
+  }
+  return filename;
 }
 
 function specialWriteInput(
@@ -1448,13 +1619,23 @@ function specialWriteInput(
   }
   if (actionId === 'languages.overrides.refresh') return {};
   if (actionId === 'joomla-update.prepare') {
-    return { data: { targetVersion: JOOMLA_MCP_VERSION } };
+    return { data: { targetVersion: requiredJoomlaUpdateVersion(state) } };
   }
   if (actionId === 'joomla-update.finalize') {
-    return { data: { fromVersion: JOOMLA_MCP_VERSION, updateFileName: 'joomla-mcp-live.zip' } };
+    return {
+      data: {
+        fromVersion: requiredCurrentJoomlaVersion(state),
+        updateFileName: requiredJoomlaUpdateFile(state),
+      },
+    };
   }
   if (actionId.startsWith('joomla-update.notification.')) {
-    return { data: { fromVersion: JOOMLA_MCP_VERSION, toVersion: JOOMLA_MCP_VERSION } };
+    return {
+      data: {
+        fromVersion: requiredCurrentJoomlaVersion(state),
+        toVersion: requiredJoomlaUpdateVersion(state),
+      },
+    };
   }
   if (actionId === 'cache.clean') return { groups: ['_system'] };
   if (['cache.expired.purge', 'extensions.discovered.refresh', 'extensions.updates.refresh', 'sessions.metadata.gc'].includes(actionId)) return {};
@@ -1562,6 +1743,12 @@ function rememberSpecialWrite(
     );
   }
   if (actionId === 'privacy.requests.create') state.reads.set('privacy.requests.create', response);
+  if (actionId === 'joomla-update.prepare') {
+    const filename = findDeepValue(response, 'filename');
+    if (typeof filename === 'string' && filename.length > 0) {
+      state.reads.set('live.joomla-update.filename', filename);
+    }
+  }
   if (actionId === 'privacy.requests.create') {
     const entity = firstEntity(response);
     if (entity !== undefined) {
@@ -1625,6 +1812,29 @@ async function executeSpecialWrite(
   }
 
   const applied = await callWrite(session, site, scenario.id, input, path);
+
+  if (scenario.id === 'joomla-update.prepare') {
+    const filename = findDeepValue(applied, 'filename');
+    const filesize = Number(findDeepValue(applied, 'filesize'));
+    if (typeof filename !== 'string' || filename.length === 0 || !Number.isFinite(filesize) || filesize < 1) {
+      throw new Error('Joomla Update prepare did not return a non-empty filename and positive file size.');
+    }
+    return applied;
+  }
+
+  if (
+    scenario.id === 'joomla-update.finalize' ||
+    scenario.id === 'joomla-update.notification.failed' ||
+    scenario.id === 'joomla-update.notification.success'
+  ) {
+    const success = findDeepValue(applied, 'success');
+    if (success !== true && success !== 1 && success !== '1') {
+      throw new Error(
+        `${scenario.id} returned success=${String(success)}: ${JSON.stringify(findDeepValue(applied, 'errors') ?? [])}`,
+      );
+    }
+    return applied;
+  }
 
   if (scenario.id === 'configuration.application.update') {
     const verification = await callRead(session, site, 'configuration.application.get', {}, path);
@@ -1793,6 +2003,22 @@ function idFromRead(state: LaneState, readAction: string): Readonly<Record<strin
   const entity = firstEntity(state.reads.get(readAction));
   return entity === undefined
     ? new BlockedError(`${readAction} did not return a usable item.`, [readAction])
+    : { id: numericId(entity.id) };
+}
+
+function idFromMatchingRead(
+  state: LaneState,
+  readAction: string,
+  attribute: string,
+  expected: string,
+): Readonly<Record<string, unknown>> | BlockedError {
+  const entity = collectEntities(state.reads.get(readAction)).find((candidate) =>
+    looselyEqual(candidate.attributes[attribute], expected));
+  return entity === undefined
+    ? new BlockedError(
+        `${readAction} did not return the fixture record with ${attribute}=${expected}.`,
+        [readAction],
+      )
     : { id: numericId(entity.id) };
 }
 
@@ -2170,6 +2396,9 @@ export function specialWritePriority(actionId: string): number {
   if (actionId === 'media.files.delete') return 30;
   if (actionId === 'scheduler.tasks.state.set') return 10;
   if (actionId === 'scheduler.tasks.run') return 20;
+  if (actionId === 'joomla-update.prepare') return 10;
+  if (actionId.startsWith('joomla-update.notification.')) return 20;
+  if (actionId === 'joomla-update.finalize') return 30;
   if (actionId.endsWith('.create')) return 10;
   if (actionId.endsWith('.update')) return 20;
   if (actionId.endsWith('.delete')) return 30;

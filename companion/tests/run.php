@@ -264,10 +264,11 @@ test('native operations expose semantic methods and no generic command runner', 
     ], 'Native operations gained a generic command or an unreviewed capability.');
 });
 
-test('native command output is discarded without an unbounded memory buffer', static function (): void {
+test('native command diagnostics are bounded before errors are returned', static function (): void {
     $source = file_get_contents(dirname(__DIR__) . '/plugin/src/Joomla/JoomlaNativeOperations.php');
     expect(is_string($source), 'Could not read JoomlaNativeOperations source.');
-    expect(str_contains($source, 'new NullOutput()'), 'Native commands do not use NullOutput.');
+    expect(str_contains($source, "php://temp/maxmemory:4096"), 'Native command diagnostics do not use a bounded temporary stream.');
+    expect(str_contains($source, 'stream_get_contents($stream, 2_048)'), 'Native command diagnostics are not read with a fixed bound.');
     expect(str_contains($source, '$command->execute('), 'Native commands do not use Joomla Framework Console execute().');
     expect(!str_contains($source, '$command->run('), 'Native commands call a non-existent run() method.');
     expect(!str_contains($source, 'BufferedOutput'), 'Native commands retain unbounded human output.');

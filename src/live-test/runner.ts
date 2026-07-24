@@ -18,6 +18,10 @@ import {
   writeLiveTestReports,
 } from './reporting.js';
 import {
+  knownUpstreamLimitation,
+  verifiedPartialMutationLimitation,
+} from './known-limitations.js';
+import {
   createHttpLiveSession,
   createStdioLiveSession,
   LiveMcpToolError,
@@ -27,6 +31,7 @@ import type {
   LiveMcpSession,
   LiveRetainedRecord,
   LiveScenario,
+  LiveKnownUpstreamLimitation,
   LiveTestAttempt,
   LiveTestOptions,
   LiveTestStatus,
@@ -45,8 +50,12 @@ interface AttemptOutcome {
   readonly response?: unknown;
   readonly expected?: unknown;
   readonly actual?: unknown;
-  readonly status?: Extract<LiveTestStatus, 'PASS' | 'EXPECTED_DENIAL'>;
+  readonly status?: Extract<
+    LiveTestStatus,
+    'PASS' | 'EXPECTED_DENIAL' | 'KNOWN_UPSTREAM_LIMITATION'
+  >;
   readonly reason?: string;
+  readonly knownLimitation?: LiveKnownUpstreamLimitation;
 }
 
 class BlockedError extends Error {
@@ -140,6 +149,12 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         ...(outcome.expected === undefined ? {} : { expected: outcome.expected }),
         ...(outcome.actual === undefined ? {} : { actual: outcome.actual }),
         ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
+        ...(outcome.knownLimitation === undefined
+          ? {}
+          : {
+              failureCode: outcome.knownLimitation.code,
+              knownLimitation: outcome.knownLimitation,
+            }),
         reproduction: reproduction(scenario, session.kind, joomlaPath),
         ...(scenario.source === undefined ? {} : { source: scenario.source }),
         ...(cleanup ? { cleanup: true } : {}),
@@ -148,11 +163,22 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
       return outcome;
     } catch (error) {
       const blocked = error instanceof BlockedError;
-      const status: LiveTestStatus = blocked
-        ? 'BLOCKED_BY_PREREQUISITE'
-        : cleanup
-          ? 'CLEANUP_FAILED'
-          : 'FAIL';
+      const knownLimitation = blocked
+        ? undefined
+        : knownUpstreamLimitation({
+            options,
+            joomlaPath,
+            scenarioId: scenario.id,
+            phase,
+            error: errorMessage(error),
+          });
+      const status: LiveTestStatus = knownLimitation !== undefined
+        ? 'KNOWN_UPSTREAM_LIMITATION'
+        : blocked
+          ? 'BLOCKED_BY_PREREQUISITE'
+          : cleanup
+            ? 'CLEANUP_FAILED'
+            : 'FAIL';
       const rootCauseId = blocked
         ? error.rootCauseId ??
           error.dependencyIds.map((dependency) => latestAttemptByScenario.get(dependency)).find((value) => value !== undefined)
@@ -174,17 +200,31 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         request,
         actual: errorResult(error),
         reason: errorMessage(error),
-        failureCode: blocked ? 'prerequisite_unavailable' : classifyError(error),
+        failureCode: knownLimitation?.code ??
+          (blocked ? 'prerequisite_unavailable' : classifyError(error)),
         ...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
         ...(blocked && error.dependencyIds.length > 0 ? { dependencyIds: error.dependencyIds } : {}),
         ...(rootCauseId === undefined ? {} : { rootCauseId }),
+        ...(knownLimitation === undefined ? {} : { knownLimitation }),
         reproduction: reproduction(scenario, session.kind, joomlaPath),
         ...(scenario.source === undefined ? {} : { source: scenario.source }),
         ...(cleanup ? { cleanup: true } : {}),
       }));
       latestAttemptByScenario.set(scenario.id, id);
-      if (options.failFast && status !== 'BLOCKED_BY_PREREQUISITE') throw error;
-      return undefined;
+      if (
+        options.failFast &&
+        status !== 'BLOCKED_BY_PREREQUISITE' &&
+        status !== 'KNOWN_UPSTREAM_LIMITATION'
+      ) {
+        throw error;
+      }
+      return knownLimitation === undefined
+        ? undefined
+        : {
+            status: 'KNOWN_UPSTREAM_LIMITATION',
+            reason: knownLimitation.explanation,
+            knownLimitation,
+          };
     }
   };
 
@@ -226,7 +266,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         }
 
         if (options.cleanup || (options.retainDemo && state.lane !== retentionLane)) {
-          await cleanupRecords(session, joomlaPath, siteId, state, recordAttempt);
+          await cleanupRecords(session, joomlaPath, siteId, state, recordAttempt, options);
           retained.push(...state.created);
         } else {
           retained.push(...state.created);
@@ -511,8 +551,40 @@ async function runCrudProfile(
           continue;
         }
         const outcome = await record(session, path, createScenario, `create-${purpose}`, input, async () => {
-          const response = await callWrite(session, site, createScenario.id, input, path);
-          const entity = entityFromMutation(response, asRecord(input['data']));
+          const submitted = asRecord(input['data']);
+          let response: unknown;
+          let knownLimitation: LiveKnownUpstreamLimitation | undefined;
+          try {
+            response = await callWrite(session, site, createScenario.id, input, path);
+          } catch (error) {
+            knownLimitation = verifiedPartialMutationLimitation({
+              options,
+              joomlaPath: path,
+              scenarioId: createScenario.id,
+              phase: `create-${purpose}`,
+              error: errorMessage(error),
+            });
+            if (knownLimitation === undefined || createScenario.id !== 'messages.messages.create') {
+              throw error;
+            }
+            const verification = await callRead(
+              session,
+              site,
+              'messages.messages.list',
+              { offset: 0, limit: 100 },
+              path,
+            );
+            const subject = submitted['subject'];
+            const recovered = collectEntities(verification).find((entity) =>
+              looselyEqual(entity.attributes['subject'], subject));
+            if (recovered === undefined) throw error;
+            response = {
+              upstreamError: errorResult(error),
+              verification,
+              result: recovered,
+            };
+          }
+          const entity = entityFromMutation(response, submitted);
           if (entity === undefined) {
             throw new Error(`Create action ${createScenario.id} returned no positive resource identifier.`);
           }
@@ -527,7 +599,18 @@ async function runCrudProfile(
             id: entity.id,
             label: `${entity.label}${purpose === 'deletion' ? ' [deletion candidate]' : ''}`,
           });
-          return { response, expected: { created: true, purpose }, actual: { id: entity.id } };
+          return {
+            response,
+            expected: { created: true, purpose },
+            actual: { id: entity.id },
+            ...(knownLimitation === undefined
+              ? {}
+              : {
+                  status: 'KNOWN_UPSTREAM_LIMITATION' as const,
+                  reason: knownLimitation.explanation,
+                  knownLimitation,
+                }),
+          };
         });
         if (outcome === undefined && purpose === 'showcase') break;
       }
@@ -588,8 +671,38 @@ async function runCrudProfile(
       );
       if (input === undefined) continue;
       const outcome = await record(session, path, updateScenario, 'update-showcase', input, async () => {
-        const response = await callWrite(session, site, updateScenario.id, input, path);
-        return { response, expected: changes };
+        try {
+          const response = await callWrite(session, site, updateScenario.id, input, path);
+          return { response, expected: changes };
+        } catch (error) {
+          const knownLimitation = verifiedPartialMutationLimitation({
+            options,
+            joomlaPath: path,
+            scenarioId: updateScenario.id,
+            phase: 'update-showcase',
+            error: errorMessage(error),
+          });
+          if (knownLimitation === undefined || updateScenario.id !== 'languages.content.update') {
+            throw error;
+          }
+          if (getScenario === undefined || !getScenario.joomlaPaths.includes(path)) throw error;
+          const verification = await callRead(
+            session,
+            site,
+            getScenario.id,
+            { id: numericId(showcase.id) },
+            path,
+          );
+          assertChangedFields(verification, changes, baseId);
+          return {
+            status: 'KNOWN_UPSTREAM_LIMITATION' as const,
+            response: { upstreamError: errorResult(error), verification },
+            expected: changes,
+            actual: firstEntity(verification)?.attributes,
+            reason: knownLimitation.explanation,
+            knownLimitation,
+          };
+        }
       });
       if (outcome !== undefined && getScenario !== undefined && getScenario.joomlaPaths.includes(path)) {
         const readInputValue = await prepareScenarioInput(
@@ -606,12 +719,7 @@ async function runCrudProfile(
             const response = await callRead(session, site, getScenario.id, readInputValue, path);
             const entity = firstEntity(response);
             assertEntityId(entity, showcase.id, getScenario.id);
-            const attributes = entity?.attributes ?? {};
-            const matched = Object.entries(changes).filter(([key]) => key !== 'password' && key !== 'password2')
-              .every(([key, value]) => looselyEqual(attributes[key], value));
-            if (!matched) {
-              throw new Error(`Updated ${baseId} did not return the expected changed fields.`);
-            }
+            const attributes = assertChangedFields(response, changes, baseId);
             state.records.set(baseId, entity!);
             return { response, expected: changes, actual: attributes };
           });
@@ -678,6 +786,25 @@ function trashData(
   attributes: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> | undefined {
   if (baseId === 'contacts.contacts') return Object.freeze({ published: -2 });
+  if (baseId === 'menus.site-items' || baseId === 'menus.administrator-items') {
+    return Object.freeze({
+      ...selectAttributes(attributes, [
+        'menutype', 'title', 'alias', 'note', 'link', 'type', 'parent_id',
+        'browserNav', 'access', 'img', 'template_style_id', 'params', 'home',
+        'language', 'ordering',
+      ]),
+      published: -2,
+    });
+  }
+  if (baseId === 'languages.content') {
+    return Object.freeze({
+      ...selectAttributes(attributes, [
+        'lang_code', 'title', 'title_native', 'sef', 'image', 'description',
+        'metadesc', 'sitename', 'access', 'ordering',
+      ]),
+      published: -2,
+    });
+  }
   if (Object.hasOwn(attributes, 'published')) return Object.freeze({ published: -2 });
   if (Object.hasOwn(attributes, 'state')) return Object.freeze({ state: -2 });
   return undefined;
@@ -784,7 +911,6 @@ async function runSpecialProfile(
         state,
         options.seed,
       );
-      rememberSpecialWrite(scenario.id, input, response, state);
       if (
         scenario.id === 'languages.overrides.site.create' ||
         scenario.id === 'languages.overrides.administrator.create'
@@ -796,15 +922,17 @@ async function runSpecialProfile(
           String(data['override'] ?? ''),
           scenario.id,
         );
+        rememberSpecialWrite(scenario.id, input, response, state);
         return {
           response,
           expected: { id: data['key'], value: data['override'] },
           actual: firstEntity(response),
         };
       }
+      rememberSpecialWrite(scenario.id, input, response, state);
       return { response };
     });
-    if (outcome !== undefined) {
+    if (outcome !== undefined && outcome.status !== 'KNOWN_UPSTREAM_LIMITATION') {
       await runSpecialReadBack(
         session,
         path,
@@ -898,6 +1026,7 @@ async function cleanupRecords(
   site: string,
   state: LaneState,
   record: AttemptRecorder,
+  options: LiveTestOptions,
 ): Promise<void> {
   for (const baseId of [...crudFixtureOrder].reverse()) {
     const entity = state.records.get(baseId);
@@ -911,10 +1040,44 @@ async function cleanupRecords(
       const updateScenario = liveScenarioCatalog().find((candidate) => candidate.id === `${baseId}.update`);
       if (updateScenario !== undefined && updateScenario.joomlaPaths.includes(path)) {
         const trashInput = { id: numericId(entity.id), data: trash };
-        const trashed = await record(session, path, updateScenario, 'cleanup-trash-showcase', trashInput, async () => ({
-          response: await callWrite(session, site, updateScenario.id, trashInput, path),
-          expected: trash,
-        }), true);
+        const trashed = await record(session, path, updateScenario, 'cleanup-trash-showcase', trashInput, async () => {
+          try {
+            return {
+              response: await callWrite(session, site, updateScenario.id, trashInput, path),
+              expected: trash,
+            };
+          } catch (error) {
+            const knownLimitation = verifiedPartialMutationLimitation({
+              options,
+              joomlaPath: path,
+              scenarioId: updateScenario.id,
+              phase: 'cleanup-trash-showcase',
+              error: errorMessage(error),
+            });
+            if (knownLimitation === undefined || updateScenario.id !== 'languages.content.update') {
+              throw error;
+            }
+            const getScenario = liveScenarioCatalog().find((candidate) =>
+              candidate.id === `${baseId}.get`);
+            if (getScenario === undefined || !getScenario.joomlaPaths.includes(path)) throw error;
+            const verification = await callRead(
+              session,
+              site,
+              getScenario.id,
+              { id: numericId(entity.id) },
+              path,
+            );
+            assertChangedFields(verification, trash, baseId);
+            return {
+              status: 'KNOWN_UPSTREAM_LIMITATION' as const,
+              response: { upstreamError: errorResult(error), verification },
+              expected: trash,
+              actual: firstEntity(verification)?.attributes,
+              reason: knownLimitation.explanation,
+              knownLimitation,
+            };
+          }
+        }, true);
         if (trashed === undefined) continue;
       }
     }
@@ -1243,7 +1406,9 @@ function rememberSpecialWrite(
   if (actionId === 'media.files.create') {
     const data = asRecord(input['data']);
     const responsePath = findDeepValue(response, 'path');
-    const mediaPath = typeof responsePath === 'string' ? responsePath : data['path'];
+    const mediaPath = typeof responsePath === 'string'
+      ? normalizeCreatedMediaPath(responsePath)
+      : data['path'];
     if (typeof mediaPath === 'string') {
       state.reads.set('live.media.path', mediaPath);
       state.created.push({
@@ -1635,6 +1800,36 @@ function assertLanguageOverride(
       `${action} did not return language override ${expectedConstant} with the submitted value.`,
     );
   }
+}
+
+function assertChangedFields(
+  response: unknown,
+  changes: Readonly<Record<string, unknown>>,
+  baseId: string,
+): Readonly<Record<string, unknown>> {
+  const attributes = firstEntity(response)?.attributes ?? {};
+  const matched = Object.entries(changes)
+    .filter(([key]) => key !== 'password' && key !== 'password2')
+    .every(([key, value]) => looselyEqual(attributes[key], value));
+  if (!matched) {
+    throw new Error(`Updated ${baseId} did not return the expected changed fields.`);
+  }
+  return attributes;
+}
+
+function selectAttributes(
+  attributes: Readonly<Record<string, unknown>>,
+  fields: readonly string[],
+): Readonly<Record<string, unknown>> {
+  return Object.fromEntries(
+    fields
+      .filter((field) => attributes[field] !== undefined)
+      .map((field) => [field, attributes[field]]),
+  );
+}
+
+function normalizeCreatedMediaPath(path: string): string {
+  return path.replace(/^([A-Za-z0-9][A-Za-z0-9._-]*):\/\.\/(?=.)/u, '$1:');
 }
 
 function looselyEqual(actual: unknown, expected: unknown): boolean {

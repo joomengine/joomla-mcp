@@ -4,7 +4,7 @@ The live matrix must use installations owned by the project or explicitly
 authorized for destructive testing. Never point contract tests at a production
 site.
 
-## Repository-managed Joomla 6.1 smoke fixture
+## Repository-managed Joomla 6.1 live fixture
 
 The repository includes a blocking, disposable JoomEngine fixture for the first
 live gate:
@@ -27,8 +27,12 @@ image digest after an intentional image upgrade. The fixture:
    captures native `list` output and `help <command>` for every installed command,
    and dispatches the companion as `www-data`;
 6. confirms the content Web Services route enforces authentication;
-7. records package SHA-256, runtime versions, and resolved image digests; and
-8. always destroys the disposable volumes.
+7. creates a throwaway API token and a host CLI bridge scoped to the fixture;
+8. runs the packaged full live suite through API and companion CLI over stdio
+   and Streamable HTTP;
+9. uploads redacted Markdown, JSON, JUnit, per-action, Joomla, PHP, MCP, and
+   container evidence; and
+10. always destroys the disposable volumes.
 
 JoomEngine's extension and CLI variables execute only during its first
 successful Joomla installation. Never reuse a failed fixture volume: the
@@ -50,6 +54,12 @@ deliberately validating an image upgrade. Set
 `JOOMLA_FIXTURE_ARTIFACT_DIR` to retain bounded diagnostics and evidence.
 `JOOMLA_FIXTURE_KEEP=1` is available for local debugging only; never use it in
 CI.
+
+The API token is captured in a mode-0600 temporary file, exported only to the
+live-test process, deleted before evidence generation completes, and covered by
+recursive report redaction. The host port binds only to loopback. Full runner
+usage, safety controls, statuses, and failure investigation are documented in
+[Live Joomla validation](LIVE_TESTING.md).
 
 ## Fixture set
 
@@ -100,7 +110,7 @@ On each fixture:
 
 1. Build or download the companion ZIP whose digest is under test.
 2. Install it through Joomla's native extension installer.
-3. Verify **Console - JoomEngine MCP for Joomla Companion** is enabled. Version 0.6.0 and
+3. Verify **Console - JoomEngine MCP for Joomla Companion** is enabled. Version 0.7.0 and
    later enable it on first installation while preserving state on upgrades.
 4. Select a dedicated **MCP actor user** with only the permissions for the
    current test group. An unset actor is a required denial case.
@@ -166,8 +176,8 @@ Add these Actions secrets to the repository:
 | Joomla 6.2 | `JOOMLA_62_CONTRACT_BASE_URL`, `JOOMLA_62_CONTRACT_TOKEN` |
 | Joomla 7 canary | `JOOMLA_70_CONTRACT_BASE_URL`, `JOOMLA_70_CONTRACT_TOKEN` |
 
-Hosted CI now includes the JoomEngine package-install and safe companion smoke
-lane described above. The broader companion matrix still requires a runner that
+Hosted CI now includes the JoomEngine package-install and full Super User
+success-path lane described above. The broader compatibility and denial matrix still requires a runner that
 has the exact package, PHP, filesystem access to the disposable Joomla root,
 and a configured least-privilege actor. Prefer an ephemeral or dedicated
 self-hosted runner; do not grant a general repository runner access to a

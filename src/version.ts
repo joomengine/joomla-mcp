@@ -3,4 +3,4 @@
  * with package.json and the Joomla companion manifests.
  */
 export const JOOMLA_MCP_PACKAGE_NAME = '@joomengine/joomla-mcp';
-export const JOOMLA_MCP_VERSION = '0.6.0';
+export const JOOMLA_MCP_VERSION = '0.7.0';

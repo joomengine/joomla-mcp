@@ -30,16 +30,22 @@ const ApiConfigSchema = z
     timeoutMs: z.int().min(1_000).max(300_000).default(30_000),
     maxResponseBytes: z.int().min(1_024).max(52_428_800).default(5_242_880),
     maxPageSize: z.int().min(1).max(500).default(100),
+    allowInsecureLoopback: z.boolean().default(false),
   })
   .strict()
   .superRefine((value, context) => {
     const url = new URL(value.baseUrl);
 
-    if (url.protocol !== 'https:') {
+    const loopbackHttp =
+      url.protocol === 'http:' &&
+      value.allowInsecureLoopback &&
+      ['127.0.0.1', '::1', 'localhost'].includes(url.hostname);
+
+    if (url.protocol !== 'https:' && !loopbackHttp) {
       context.addIssue({
         code: 'custom',
         path: ['baseUrl'],
-        message: 'Joomla API origins must use HTTPS.',
+        message: 'Joomla API origins must use HTTPS; explicit insecure HTTP is limited to loopback fixtures.',
       });
     }
 
@@ -177,9 +183,14 @@ export const RawConfigurationSchema = z
 
 export type RawConfiguration = z.infer<typeof RawConfigurationSchema>;
 
-export type ApiConfig = z.infer<typeof ApiConfigSchema> & {
+export type ApiConfig = Omit<z.infer<typeof ApiConfigSchema>, 'allowInsecureLoopback'> & {
   readonly token: string;
   readonly updateToken?: string;
+  /**
+   * Parsing accepts this only for explicit HTTP loopback fixtures. It remains
+   * optional on the programmatic contract for backward compatibility.
+   */
+  readonly allowInsecureLoopback?: boolean;
 };
 
 export type CliConfig = z.infer<typeof CliConfigSchema>;

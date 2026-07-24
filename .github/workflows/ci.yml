@@ -50,7 +50,7 @@ jobs:
           extensions: zip
           coverage: none
       - name: PHP syntax
-        run: find companion/plugin companion/tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find companion/plugin companion/tests tests/fixtures -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - run: php companion/tests/run.php
       - run: php companion/build.php
       - uses: actions/upload-artifact@v7
@@ -62,12 +62,14 @@ jobs:
   joomla-61-fixture:
     needs: php-companion
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - uses: actions/download-artifact@v8
         with:
           name: pkg_joomlamcp

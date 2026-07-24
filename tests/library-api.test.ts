@@ -33,7 +33,7 @@ const configuration: Configuration = {
 describe('embeddable library API', () => {
   it('exports synchronized package identity', () => {
     expect(JOOMLA_MCP_PACKAGE_NAME).toBe('@joomengine/joomla-mcp');
-    expect(JOOMLA_MCP_VERSION).toBe('0.6.0');
+    expect(JOOMLA_MCP_VERSION).toBe('0.7.0');
   });
 
   it('creates fresh protocol servers over one explicitly shared runtime', async () => {

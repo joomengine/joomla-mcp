@@ -11,6 +11,8 @@ COMPOSE_FILE="${REPOSITORY_ROOT}/tests/fixtures/joomengine/compose.yaml"
 readonly COMPOSE_FILE
 CORE_CLI_COMMANDS_FILE="${REPOSITORY_ROOT}/tests/fixtures/joomengine/core-cli-commands.txt"
 readonly CORE_CLI_COMMANDS_FILE
+JOOMLA_FIXTURE_API_BOOTSTRAP="${REPOSITORY_ROOT}/tests/fixtures/joomengine/bootstrap-api-token.php"
+export JOOMLA_FIXTURE_API_BOOTSTRAP
 
 fail() {
   printf 'JoomEngine fixture failed: %s\n' "$*" >&2
@@ -26,6 +28,7 @@ require_command node
 require_command openssl
 require_command sha256sum
 require_command timeout
+require_command realpath
 docker compose version >/dev/null 2>&1 || fail 'Docker Compose v2 is required.'
 
 companion_zip="${JOOMLA_FIXTURE_COMPANION_ZIP:-}"
@@ -69,12 +72,20 @@ compose=(docker compose --project-name "$project_name" --file "$COMPOSE_FILE")
 collect_diagnostics() {
   "${compose[@]}" ps --all >"${artifact_directory}/compose-ps.txt" 2>&1 || true
   "${compose[@]}" logs --no-color --timestamps >"${artifact_directory}/compose.log" 2>&1 || true
+  local diagnostics_container
+  diagnostics_container="$("${compose[@]}" ps --quiet joomla 2>/dev/null || true)"
+  if [[ -n "$diagnostics_container" ]]; then
+    mkdir -p -- "${artifact_directory}/joomla-logs"
+    docker cp "${diagnostics_container}:/var/www/html/administrator/logs/." \
+      "${artifact_directory}/joomla-logs/" >/dev/null 2>&1 || true
+  fi
 }
 
 cleanup() {
   local status="$1"
   trap - EXIT
   set +e
+  rm -f -- "${artifact_directory}/.api-token"
   collect_diagnostics
 
   if [[ "${JOOMLA_FIXTURE_KEEP:-0}" != '1' ]]; then
@@ -193,7 +204,7 @@ const helpDirectory = process.argv[7];
 const dispatch = JSON.parse(readFileSync(process.argv[8], 'utf8'));
 const names = new Set(Array.isArray(describe.actions) ? describe.actions.map((action) => action.name) : []);
 
-if (describe.protocol !== 'joomla-mcp/1' || describe.companion?.version !== '0.6.0') {
+if (describe.protocol !== 'joomla-mcp/1' || describe.companion?.version !== '0.7.0') {
   throw new Error('The installed companion returned an unexpected protocol or package version.');
 }
 
@@ -281,6 +292,111 @@ case "$api_status" in
   *) fail "the Joomla content API did not enforce authentication (HTTP ${api_status})" ;;
 esac
 
+fixture_port="$("${compose[@]}" port joomla 80 | sed -n 's/.*:\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
+[[ "$fixture_port" =~ ^[0-9]+$ ]] || fail 'unable to resolve the fixture Joomla host port'
+live_fixture_origin="http://127.0.0.1:${fixture_port}"
+readonly live_fixture_origin
+
+api_token_file="${artifact_directory}/.api-token"
+"${compose[@]}" exec --no-TTY --user www-data joomla \
+  php /fixtures/bootstrap-api-token.php >"$api_token_file"
+chmod 0600 -- "$api_token_file"
+JOOMLA_MCP_LIVE_API_TOKEN="$(<"$api_token_file")"
+[[ "$JOOMLA_MCP_LIVE_API_TOKEN" =~ ^[A-Za-z0-9+/=]+$ ]] \
+  || fail 'fixture API-token bootstrap returned an invalid token'
+JOOMLA_MCP_LIVE_APPROVAL_SECRET="$(openssl rand -hex 32)"
+export JOOMLA_MCP_LIVE_API_TOKEN JOOMLA_MCP_LIVE_APPROVAL_SECRET
+
+cli_root="${artifact_directory}/cli-root"
+mkdir -p -- "${cli_root}/cli"
+: >"${cli_root}/cli/joomla.php"
+cli_wrapper="${artifact_directory}/fixture-php"
+docker_binary="$(command -v docker)"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'set -Eeuo pipefail\n'
+  printf 'shift\n'
+  printf 'exec %q exec --interactive --user www-data --workdir /var/www/html %q php /var/www/html/cli/joomla.php "$@"\n' \
+    "$docker_binary" "$joomla_container_id"
+} >"$cli_wrapper"
+chmod 0700 -- "$cli_wrapper"
+
+live_config="${artifact_directory}/live-sites.json"
+node --input-type=module - "$live_config" "$live_fixture_origin" "$cli_root" "$cli_wrapper" <<'NODE'
+import { writeFileSync } from 'node:fs';
+
+const [file, origin, cliRoot, cliWrapper] = process.argv.slice(2);
+const toolsets = [
+  'discovery',
+  'content.read',
+  'content.write',
+  'structure.read',
+  'structure.write',
+  'media.read',
+  'media.write',
+  'users.read',
+  'users.admin',
+  'extensions.read',
+  'extensions.admin',
+  'configuration.read',
+  'configuration.write',
+  'maintenance.read',
+  'maintenance.admin',
+  'core-update',
+  'cli.discovery',
+];
+const configuration = {
+  defaultSite: 'fixture',
+  approval: {
+    secretEnv: 'JOOMLA_MCP_LIVE_APPROVAL_SECRET',
+    ttlMs: 300000,
+    requestTtlMs: 300000,
+    allowIndefinite: false,
+  },
+  sites: {
+    fixture: {
+      toolsets,
+      api: {
+        baseUrl: origin,
+        tokenEnv: 'JOOMLA_MCP_LIVE_API_TOKEN',
+        timeoutMs: 30000,
+        maxResponseBytes: 5242880,
+        maxPageSize: 100,
+        allowInsecureLoopback: true,
+      },
+      cli: {
+        root: cliRoot,
+        phpBinary: cliWrapper,
+        timeoutMs: 120000,
+        maxOutputBytes: 2097152,
+      },
+    },
+  },
+};
+writeFileSync(file, `${JSON.stringify(configuration, null, 2)}\n`, { mode: 0o600 });
+NODE
+
+rm -f -- "$api_token_file"
+
+npm run build --silent
+node "${REPOSITORY_ROOT}/dist/bin/joomla-mcp-live-test.js" \
+  --config "$live_config" \
+  --site fixture \
+  --profile full \
+  --joomla-path all \
+  --mcp-transport all \
+  --families all \
+  --seed "fixture-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}" \
+  --output "${artifact_directory}/live-test" \
+  --repository-commit "${GITHUB_SHA:-local}" \
+  --fixture-digest "companion-sha256=${package_sha256}" \
+  --fixture-digest "joomla-image=${JOOMLA_FIXTURE_IMAGE}" \
+  --fixture-digest "database-image=${JOOMLA_FIXTURE_DATABASE_IMAGE}" \
+  --non-interactive \
+  --confirm-mutations \
+  --disposable \
+  --retain-demo
+
 collect_diagnostics
 for command in \
   'joomla:mcp:describe --format=json --no-interaction --no-ansi' \
@@ -318,7 +434,7 @@ const evidence = {
   schema: 'vdm.joomla-mcp.fixture-evidence/v1',
   repositoryCommit: process.env.JOOMLA_FIXTURE_REPOSITORY_COMMIT,
   companionPackageSha256: process.env.JOOMLA_FIXTURE_PACKAGE_SHA256,
-  companionVersion: '0.6.0',
+  companionVersion: '0.7.0',
   joomlaVersion: dispatch.result.joomlaVersion,
   phpVersion: dispatch.result.phpVersion,
   databaseFamily: 'MariaDB',
@@ -351,6 +467,9 @@ const evidence = {
     'companion catalogue description as www-data',
     'companion system.info dispatch as www-data',
     'content API authentication boundary',
+    'catalogue-complete live MCP validation through stdio and Streamable HTTP',
+    'CRUD and administrative validation through Joomla API and companion CLI',
+    'redacted Markdown, JSON, JUnit, and per-action failure evidence',
   ],
 };
 

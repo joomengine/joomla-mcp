@@ -11,15 +11,17 @@ the status of a broader one.
 | Offline security | `npm run test:security` | Focused authorization, confirmation, and security-boundary checks |
 | Companion boundary | `php companion/tests/run.php` | Framing, registry, ACL preflight, allowlists, confirmation, manifests, and source escape-hatch checks |
 | Companion package | `php companion/build.php` | Installable package ZIP can be assembled |
-| Joomla 6.1 install smoke | `npm run test:fixture:joomengine` | Fresh Joomla 6.1.2/PHP 8.4/MariaDB installs the exact package, validates companion self-test feedback, inventories all 153 installed commands, captures bounded native help for each, dispatches `system.info` as `www-data`, and exposes the authenticated API boundary |
+| Joomla 6.1 live fixture | `npm run test:fixture:joomengine` | Fresh Joomla 6.1.2/PHP 8.4/MariaDB installs the exact package, validates native CLI contracts, then runs the catalogue-complete live suite through API/companion and stdio/Streamable HTTP with redacted failure evidence |
 | API read contract | `npm run test:contract` | Configured live Joomla answers all 36 CRUD collection reads plus safe configuration |
 | Companion read contract | `npm run test:contract` | Configured local Joomla advertises required actions and executes bounded list/status reads through native services |
 | Container build | CI container job | OCI build definition is buildable |
 | Release supply chain | Tag or manual workflow | Version-validated server package, deployment bundle, companion ZIP, OCI image, SBOM, checksums, and provenance jobs execute |
 
-The existing live contracts are read-oriented smoke/shape contracts, not
-mutation, denial, recovery, database-matrix, or production certification. The
-complete release matrix below remains required.
+The repository-managed Joomla 6.1 lane now covers deterministic success,
+mutation, verification, deletion, safety-gate, and cleanup behavior. The
+separate Joomla 6.2, PostgreSQL, least-privilege denial, fault-injection,
+concurrency, and recovery matrix below remains required for production
+certification.
 
 ## Local validation
 
@@ -48,7 +50,7 @@ starts with new volumes and always
 removes them because JoomEngine's extension and CLI environment variables are
 first-install bootstrap facilities.
 
-The bootstrap hook runs only the companion-owned `joomla:mcp:describe`,
+The bootstrap hook first runs only the companion-owned `joomla:mcp:describe`,
 `joomla:mcp:self-test`, and `joomla:mcp:cli-inventory` commands through
 `JOOMLA_CLI_COMMANDS`, then validates their feedback. The inventory uses
 Joomla's installed command registry and records command, argument, and option
@@ -56,9 +58,11 @@ metadata without executing discovered commands. Post-start, the fixture runs
 only Joomla's fixed `list` and `help <command>` discovery paths for all 153
 installed commands—38 core, 111 Component Builder, and four companion
 commands—under per-command time and output bounds. It never invokes a discovered
-mutation. Structured dispatch requests still travel over stdin, and post-start
-assertions explicitly execute as `www-data`. Never place MCP/client/model input
-in the JoomEngine command environment.
+mutation during command inventory. It then creates an ephemeral API token and
+runs the packaged live command against the disposable site through all four
+MCP/Joomla lane combinations. Structured companion dispatch requests travel
+over stdin and execute as `www-data`. Never place MCP/client/model input in the
+JoomEngine command environment. See [Live Joomla validation](LIVE_TESTING.md).
 
 Do not run mutation or maintenance tests against a production Joomla site.
 
@@ -101,9 +105,9 @@ For a fixture behind a firewall, use a dedicated self-hosted runner on the same
 trusted network; do not expose Joomla administration merely to satisfy CI.
 
 The hosted JoomEngine lane removes the external-fixture requirement for the
-Joomla 6.1 package-install and safe companion smoke checks only. Authenticated
-API action contracts, Joomla 6.2, PostgreSQL, least-privilege denial, mutations,
-rollback, and recovery still require their dedicated fixtures.
+Joomla 6.1 package-install and Super User success-path action matrix.
+Joomla 6.2, PostgreSQL, least-privilege denial, fault injection, rollback, and
+recovery still require their dedicated fixtures.
 
 ## Required per-action live contract
 

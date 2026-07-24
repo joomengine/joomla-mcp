@@ -2,7 +2,7 @@
 <extension type="package" method="upgrade">
 	<name>JoomEngine MCP for Joomla Companion Package</name>
 	<packagename>joomlamcp</packagename>
-	<version>0.6.0</version>
+	<version>0.7.0</version>
 	<creationDate>2026-07</creationDate>
 	<author>VDM - Vast Development Method</author>
 	<authorEmail>support@vdm.io</authorEmail>

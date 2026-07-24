@@ -318,16 +318,16 @@ Use `joomla_actions_search` to find actions available to a configured site and a
 
 | Semantic action | Method and Joomla route | Input contract | Toolset / risk | Paths | Status |
 |---|---|---|---|---|---|
-| `templates.administrator-styles.create` | `POST v1/templates/styles/administrator` | data: `home`, `params`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
+| `templates.administrator-styles.create` | `POST v1/templates/styles/administrator` | data: `home`, `params`, `template`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
 | `templates.administrator-styles.delete` | `DELETE v1/templates/styles/administrator/:id` | `id`; optional `etag` | `structure.write` / destructive | API, companion | Executable; live certification pending |
 | `templates.administrator-styles.get` | `GET v1/templates/styles/administrator/:id` | `id` | `structure.read` / read | API, companion | Executable; live certification pending |
 | `templates.administrator-styles.list` | `GET v1/templates/styles/administrator` | bounded `offset`, `limit` | `structure.read` / read | API, companion | Executable; live certification pending |
-| `templates.administrator-styles.update` | `PATCH v1/templates/styles/administrator/:id` | `id`; data: `home`, `params`, `title`; optional `etag` | `structure.write` / write | API, companion | Executable; live certification pending |
-| `templates.site-styles.create` | `POST v1/templates/styles/site` | data: `home`, `params`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
+| `templates.administrator-styles.update` | `PATCH v1/templates/styles/administrator/:id` | `id`; data: `home`, `params`, `template`, `title`; optional `etag` | `structure.write` / write | API, companion | Executable; live certification pending |
+| `templates.site-styles.create` | `POST v1/templates/styles/site` | data: `home`, `params`, `template`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
 | `templates.site-styles.delete` | `DELETE v1/templates/styles/site/:id` | `id`; optional `etag` | `structure.write` / destructive | API, companion | Executable; live certification pending |
 | `templates.site-styles.get` | `GET v1/templates/styles/site/:id` | `id` | `structure.read` / read | API, companion | Executable; live certification pending |
 | `templates.site-styles.list` | `GET v1/templates/styles/site` | bounded `offset`, `limit` | `structure.read` / read | API, companion | Executable; live certification pending |
-| `templates.site-styles.update` | `PATCH v1/templates/styles/site/:id` | `id`; data: `home`, `params`, `title`; optional `etag` | `structure.write` / write | API, companion | Executable; live certification pending |
+| `templates.site-styles.update` | `PATCH v1/templates/styles/site/:id` | `id`; data: `home`, `params`, `template`, `title`; optional `etag` | `structure.write` / write | API, companion | Executable; live certification pending |
 
 ## Users
 

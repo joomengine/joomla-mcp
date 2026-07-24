@@ -1,6 +1,6 @@
 {
   "name": "@joomengine/joomla-mcp",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Embeddable and self-hosted Model Context Protocol server for administering Joomla 6.x.",
   "homepage": "https://github.com/joomengine/joomla-mcp#readme",
   "bugs": {
@@ -62,11 +62,17 @@
       "import": "./dist/security/index.js",
       "default": "./dist/security/index.js"
     },
+    "./live-test": {
+      "types": "./dist/live-test/index.d.ts",
+      "import": "./dist/live-test/index.js",
+      "default": "./dist/live-test/index.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
     "joomla-mcp": "dist/bin/joomla-mcp.js",
-    "joomla-mcp-http": "dist/bin/joomla-mcp-http.js"
+    "joomla-mcp-http": "dist/bin/joomla-mcp-http.js",
+    "joomla-mcp-live-test": "dist/bin/joomla-mcp-live-test.js"
   },
   "sideEffects": false,
   "engines": {
@@ -86,6 +92,7 @@
     "test": "vitest run",
     "test:contract": "vitest run tests/contracts",
     "test:fixture:joomengine": "./scripts/fixtures/run-joomengine.sh",
+    "test:live": "npm run build --silent && node dist/bin/joomla-mcp-live-test.js",
     "test:package": "node scripts/release/test-package-consumer.mjs",
     "test:security": "vitest run tests/*security*.test.ts tests/confirmation-service.test.ts tests/permission-grant-service.test.ts",
     "docs:actions": "node --import tsx scripts/generate-api-action-reference.mts",

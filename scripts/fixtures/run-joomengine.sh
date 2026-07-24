@@ -315,11 +315,28 @@ api_token_file="${artifact_directory}/.api-token"
 "${compose[@]}" exec --no-TTY --user www-data joomla \
   php /fixtures/bootstrap-api-token.php >"$api_token_file"
 chmod 0600 -- "$api_token_file"
-JOOMLA_MCP_LIVE_API_TOKEN="$(<"$api_token_file")"
+JOOMLA_MCP_LIVE_API_TOKEN="$(
+  node --input-type=module - "$api_token_file" <<'NODE'
+import { readFileSync } from 'node:fs';
+
+const secrets = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(String(secrets.apiToken ?? ''));
+NODE
+)"
 [[ "$JOOMLA_MCP_LIVE_API_TOKEN" =~ ^[A-Za-z0-9+/=]+$ ]] \
   || fail 'fixture API-token bootstrap returned an invalid token'
+JOOMLA_MCP_LIVE_UPDATE_TOKEN="$(
+  node --input-type=module - "$api_token_file" <<'NODE'
+import { readFileSync } from 'node:fs';
+
+const secrets = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(String(secrets.updateToken ?? ''));
+NODE
+)"
+[[ "$JOOMLA_MCP_LIVE_UPDATE_TOKEN" =~ ^[A-Fa-f0-9]{64}$ ]] \
+  || fail 'fixture Joomla Update bootstrap returned an invalid token'
 JOOMLA_MCP_LIVE_APPROVAL_SECRET="$(openssl rand -hex 32)"
-export JOOMLA_MCP_LIVE_API_TOKEN JOOMLA_MCP_LIVE_APPROVAL_SECRET
+export JOOMLA_MCP_LIVE_API_TOKEN JOOMLA_MCP_LIVE_UPDATE_TOKEN JOOMLA_MCP_LIVE_APPROVAL_SECRET
 
 cli_root="${artifact_directory}/cli-root"
 mkdir -p -- "${cli_root}/cli"
@@ -373,6 +390,7 @@ const configuration = {
       api: {
         baseUrl: origin,
         tokenEnv: 'JOOMLA_MCP_LIVE_API_TOKEN',
+        updateTokenEnv: 'JOOMLA_MCP_LIVE_UPDATE_TOKEN',
         timeoutMs: 30000,
         maxResponseBytes: 5242880,
         maxPageSize: 100,

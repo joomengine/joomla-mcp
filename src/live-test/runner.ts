@@ -19,6 +19,7 @@ import {
 } from './reporting.js';
 import {
   knownUpstreamLimitation,
+  verifiedDeletionLimitation,
   verifiedPartialMutationLimitation,
 } from './known-limitations.js';
 import {
@@ -580,7 +581,7 @@ async function runCrudProfile(
             if (recovered === undefined) throw error;
             response = {
               upstreamError: errorResult(error),
-              verification,
+              recoveryVerification: verification,
               result: recovered,
             };
           }
@@ -750,7 +751,7 @@ async function runCrudProfile(
         return { response, expected: { deletedOrTrashed: deletion.id } };
       });
       if (outcome !== undefined && getScenario !== undefined && getScenario.joomlaPaths.includes(path)) {
-        if (await verifyDeletion(session, path, site, getScenario, deletion, record)) {
+        if (await verifyDeletion(session, path, site, getScenario, deletion, record, options)) {
           removeRetainedRecord(state, baseId, deletion.id);
         }
       }
@@ -1099,7 +1100,7 @@ async function cleanupRecords(
     if (outcome !== undefined) {
       const getScenario = liveScenarioCatalog().find((candidate) => candidate.id === `${baseId}.get`);
       const verified = getScenario !== undefined && getScenario.joomlaPaths.includes(path)
-        ? await verifyDeletion(session, path, site, getScenario, entity, record, true)
+        ? await verifyDeletion(session, path, site, getScenario, entity, record, options, true)
         : true;
       if (verified) removeRetainedRecord(state, baseId, entity.id);
     }
@@ -1113,6 +1114,7 @@ async function verifyDeletion(
   getScenario: LiveScenario,
   entity: LiveFixtureRecord,
   record: AttemptRecorder,
+  options: LiveTestOptions,
   cleanup = false,
 ): Promise<boolean> {
   const request = { id: entity.id };
@@ -1133,6 +1135,39 @@ async function verifyDeletion(
     } catch (error) {
       if (error instanceof LiveMcpToolError && /(?:404|not found|does not exist)/iu.test(error.message)) {
         return { expected: { absent: true }, actual: { denied: error.message } };
+      }
+      const knownLimitation = verifiedDeletionLimitation({
+        options,
+        joomlaPath: path,
+        scenarioId: getScenario.id,
+        phase: 'verify-deleted',
+        error: errorMessage(error),
+      });
+      if (knownLimitation !== undefined) {
+        const listAction = getScenario.id.replace(/\.get$/u, '.list');
+        const verification = await callRead(
+          session,
+          site,
+          listAction,
+          { offset: 0, limit: 100 },
+          path,
+        );
+        const found = collectEntities(verification).find((candidate) =>
+          looselyEqual(candidate.id, entity.id));
+        const state = found?.attributes['state'] ?? found?.attributes['published'];
+        if (found !== undefined && state !== -2 && state !== '-2') {
+          throw new Error(
+            `${getScenario.id} returned its reviewed post-delete error, but ${entity.id} remains in the active collection.`,
+          );
+        }
+        return {
+          status: 'KNOWN_UPSTREAM_LIMITATION',
+          response: { upstreamError: errorResult(error), collectionVerification: verification },
+          expected: { absentOrTrashState: -2 },
+          actual: found === undefined ? { absent: true } : found.attributes,
+          reason: knownLimitation.explanation,
+          knownLimitation,
+        };
       }
       throw error;
     }
@@ -1828,8 +1863,8 @@ function selectAttributes(
   );
 }
 
-function normalizeCreatedMediaPath(path: string): string {
-  return path.replace(/^([A-Za-z0-9][A-Za-z0-9._-]*):\/\.\/(?=.)/u, '$1:');
+export function normalizeCreatedMediaPath(path: string): string {
+  return path.replace(/^([A-Za-z0-9][A-Za-z0-9._-]*):\/\.\/(?=.)/u, '$1:/');
 }
 
 function looselyEqual(actual: unknown, expected: unknown): boolean {
@@ -1959,12 +1994,14 @@ function readPriority(actionId: string): number {
   return 0;
 }
 
-function specialWritePriority(actionId: string): number {
+export function specialWritePriority(actionId: string): number {
   if (actionId.endsWith('-history.keep')) return 10;
   if (actionId.endsWith('-history.delete')) return 20;
   if (actionId === 'media.files.create') return 10;
   if (actionId === 'media.files.update') return 20;
   if (actionId === 'media.files.delete') return 30;
+  if (actionId === 'scheduler.tasks.state.set') return 10;
+  if (actionId === 'scheduler.tasks.run') return 20;
   if (actionId.endsWith('.create')) return 10;
   if (actionId.endsWith('.update')) return 20;
   if (actionId.endsWith('.delete')) return 30;

@@ -26,16 +26,6 @@ interface KnownLimitationRule {
 
 const directFailureRules: readonly KnownLimitationRule[] = Object.freeze([
   Object.freeze({
-    code: 'joomla-6.1.2-contact-get-after-delete-500',
-    scenarioIds: Object.freeze(['contacts.contacts.get']),
-    phases: Object.freeze(['verify-deleted']),
-    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
-    explanation:
-      'Joomla 6.1.2 returns HTTP 500 when the contact item route reads a contact immediately after its successful deletion.',
-    reference:
-      'https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_contact/src/Controller/ContactController.php',
-  }),
-  Object.freeze({
     code: 'joomla-6.1.2-module-api-create-model-state',
     scenarioIds: Object.freeze(['modules.site.create', 'modules.administrator.create']),
     phases: Object.freeze(['create-showcase', 'create-deletion']),
@@ -90,6 +80,39 @@ const directFailureRules: readonly KnownLimitationRule[] = Object.freeze([
   }),
 ]);
 
+const verifiedDeletionRules: readonly KnownLimitationRule[] = Object.freeze([
+  Object.freeze({
+    code: 'joomla-6.1.2-contact-get-after-delete-500',
+    scenarioIds: Object.freeze(['contacts.contacts.get']),
+    phases: Object.freeze(['verify-deleted']),
+    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    explanation:
+      'Joomla 6.1.2 returns HTTP 500 when the contact item route reads a contact after deletion; the live test accepted this only after the contact disappeared from the active collection.',
+    reference:
+      'https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_contact/src/Controller/ContactController.php',
+  }),
+  Object.freeze({
+    code: 'joomla-6.1.2-message-get-after-delete-500',
+    scenarioIds: Object.freeze(['messages.messages.get']),
+    phases: Object.freeze(['verify-deleted']),
+    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    explanation:
+      'Joomla 6.1.2 returns HTTP 500 when the private-message item route reads a deleted message; the live test accepted this only after the message disappeared from the active collection.',
+    reference:
+      'https://github.com/joomla/joomla-cms/blob/6.1.2/administrator/components/com_messages/src/Model/MessageModel.php',
+  }),
+  Object.freeze({
+    code: 'joomla-6.1.2-newsfeed-get-after-delete-500',
+    scenarioIds: Object.freeze(['newsfeeds.feeds.get']),
+    phases: Object.freeze(['verify-deleted']),
+    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    explanation:
+      'Joomla 6.1.2 returns HTTP 500 when the newsfeed item route reads a deleted feed; the live test accepted this only after the feed disappeared from the active collection.',
+    reference:
+      'https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_newsfeeds/src/Controller/FeedsController.php',
+  }),
+]);
+
 const verifiedPartialRules: readonly KnownLimitationRule[] = Object.freeze([
   Object.freeze({
     code: 'joomla-6.1.2-message-create-response-404',
@@ -123,6 +146,12 @@ export function verifiedPartialMutationLimitation(
   context: KnownLimitationContext,
 ): LiveKnownUpstreamLimitation | undefined {
   return matchRule(context, verifiedPartialRules);
+}
+
+export function verifiedDeletionLimitation(
+  context: KnownLimitationContext,
+): LiveKnownUpstreamLimitation | undefined {
+  return matchRule(context, verifiedDeletionRules);
 }
 
 function matchRule(

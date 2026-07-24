@@ -6,7 +6,12 @@ import type { AddressInfo } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 
-import { entityFromMutation, runLiveTest } from '../src/live-test/runner.js';
+import {
+  entityFromMutation,
+  normalizeCreatedMediaPath,
+  runLiveTest,
+  specialWritePriority,
+} from '../src/live-test/runner.js';
 
 describe('live-test runner', () => {
   it('ignores companion correlation ids when extracting a created resource', () => {
@@ -36,6 +41,39 @@ describe('live-test runner', () => {
       id: 41,
       label: 'Live fixture category',
     });
+  });
+
+  it('uses the exact recovered entity after a persisted create reports an upstream error', () => {
+    const entity = entityFromMutation({
+      upstreamError: { message: 'HTTP 404' },
+      recoveryVerification: {
+        data: [
+          { id: '1', attributes: { subject: 'Earlier message' } },
+          { id: '2', attributes: { subject: 'Recovered message' } },
+        ],
+      },
+      result: {
+        id: '2',
+        attributes: { subject: 'Recovered message' },
+      },
+    }, { subject: 'Recovered message' });
+
+    expect(entity).toMatchObject({
+      id: '2',
+      label: 'Recovered message',
+    });
+  });
+
+  it('normalizes Joomla media paths without dropping the adapter separator', () => {
+    expect(normalizeCreatedMediaPath('local-images:/./fixture.png'))
+      .toBe('local-images:/fixture.png');
+    expect(normalizeCreatedMediaPath('local-images:/fixture.png'))
+      .toBe('local-images:/fixture.png');
+  });
+
+  it('changes scheduler state before running the selected task', () => {
+    expect(specialWritePriority('scheduler.tasks.state.set'))
+      .toBeLessThan(specialWritePriority('scheduler.tasks.run'));
   });
 
   it('runs catalogue CRUD through the real HTTP MCP gateway and Joomla API adapter', async () => {

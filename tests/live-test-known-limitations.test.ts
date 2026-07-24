@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   knownUpstreamLimitation,
+  verifiedDeletionLimitation,
   verifiedPartialMutationLimitation,
 } from '../src/live-test/known-limitations.js';
 import type { LiveTestOptions } from '../src/live-test/types.js';
@@ -63,5 +64,23 @@ describe('reviewed live-test limitations', () => {
     expect(knownUpstreamLimitation(context)).toBeUndefined();
     expect(verifiedPartialMutationLimitation(context)?.code)
       .toBe('joomla-6.1.2-message-create-response-404');
+  });
+
+  it('requires collection verification before classifying a post-delete item error', () => {
+    const context = {
+      options,
+      joomlaPath: 'api' as const,
+      scenarioId: 'messages.messages.get',
+      phase: 'verify-deleted',
+      error:
+        'MCP tool failed: Joomla API returned HTTP 500: {"errors":{"code":500,"title":"Internal server error"}}',
+    };
+    expect(knownUpstreamLimitation(context)).toBeUndefined();
+    expect(verifiedPartialMutationLimitation(context)).toBeUndefined();
+    expect(verifiedDeletionLimitation(context)?.code)
+      .toBe('joomla-6.1.2-message-get-after-delete-500');
+    expect(verifiedDeletionLimitation({ ...context, phase: 'read' })).toBeUndefined();
+    expect(verifiedDeletionLimitation({ ...context, scenarioId: 'messages.messages.list' }))
+      .toBeUndefined();
   });
 });

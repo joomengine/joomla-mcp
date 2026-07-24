@@ -82,7 +82,17 @@ describe('live-test catalogue', () => {
       .toMatchObject({ user_id_to: 42 });
     expect(crudFixtureDefinitions.get('banners.clients')?.create(context, 'showcase'))
       .toHaveProperty('extrainfo', '');
+    const showcaseLanguage = crudFixtureDefinitions.get('languages.content')?.create(context, 'showcase');
+    const deletionLanguage = crudFixtureDefinitions.get('languages.content')?.create(context, 'deletion');
+    expect(showcaseLanguage).toMatchObject({ sef: expect.stringMatching(/^x[a-z]{4}$/u), image: '' });
+    expect(deletionLanguage).toMatchObject({ sef: expect.stringMatching(/^x[a-z]{4}$/u), image: '' });
+    expect(showcaseLanguage?.['sef']).not.toBe(deletionLanguage?.['sef']);
     expect(crudFixtureDefinitions.get('modules.site')?.create(context, 'showcase'))
-      .toMatchObject({ params: { prepare_content: 0 } });
+      .toMatchObject({ params: { prepare_content: 0, layout: '_:default' } });
+    expect(crudFixtureDefinitions.get('modules.site')?.update(context, {
+      id: 7,
+      attributes: {},
+      label: 'Module',
+    })).toMatchObject({ params: { layout: '_:default' } });
   });
 });

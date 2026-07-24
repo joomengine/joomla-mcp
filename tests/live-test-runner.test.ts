@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   entityFromMutation,
+  mediaDirectoryPath,
   mediaUpdateRoutePath,
   normalizeCreatedMediaPath,
   runLiveTest,
@@ -72,9 +73,16 @@ describe('live-test runner', () => {
       .toBe('local-images:/fixture.png');
   });
 
-  it('uses a default-adapter relative path for Joomla media content updates', () => {
-    expect(mediaUpdateRoutePath('local-images:/fixture.png')).toBe('fixture.png');
+  it('uses a default-adapter directory-relative path for Joomla media content updates', () => {
+    expect(mediaUpdateRoutePath('local-images:/live-run/fixture.png')).toBe('live-run/fixture.png');
     expect(mediaUpdateRoutePath('folder/fixture.png')).toBe('folder/fixture.png');
+  });
+
+  it('derives the adapter-qualified directory used by the media fixture', () => {
+    expect(mediaDirectoryPath('local-images:/live-run/fixture.png')).toBe('local-images:live-run');
+    expect(mediaDirectoryPath('live-run/fixture.png')).toBe('live-run');
+    expect(() => mediaDirectoryPath('local-images:/fixture.png'))
+      .toThrow('Media fixture path must include a directory');
   });
 
   it('changes scheduler state before running the selected task', () => {

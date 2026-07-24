@@ -254,10 +254,7 @@ $updateManifest = sprintf(
       <downloadurl type="full" format="zip">%s</downloadurl>
     </downloads>
     <tags><tag>stable</tag></tags>
-    <supported_databases>
-      <database type="mysql" minimum="8.0.13" />
-      <database type="mariadb" minimum="10.4.0" />
-    </supported_databases>
+    <supported_databases mysql="8.0.13" mariadb="10.4.0" />
     <php_minimum>8.3.0</php_minimum>
     <sha256>%s</sha256>
     <sha384>%s</sha384>

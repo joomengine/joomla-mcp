@@ -630,12 +630,17 @@ const safeConfigurationKeys = new Set([
 
 export function selectSafeConfiguration(data: unknown): Record<string, unknown> {
   const record = asRecord(data);
-  const candidate = asRecord(record.attributes ?? asRecord(record.data).attributes ?? record.data ?? record);
+  const resources = Array.isArray(record.data) ? record.data : [record.data ?? record];
   const selected: Record<string, unknown> = {};
 
-  for (const key of safeConfigurationKeys) {
-    if (Object.hasOwn(candidate, key)) {
-      selected[key] = candidate[key];
+  for (const resource of resources) {
+    const resourceRecord = asRecord(resource);
+    const candidate = asRecord(resourceRecord.attributes ?? resourceRecord);
+
+    for (const key of safeConfigurationKeys) {
+      if (Object.hasOwn(candidate, key)) {
+        selected[key] = candidate[key];
+      }
     }
   }
 

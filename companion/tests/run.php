@@ -268,6 +268,8 @@ test('native command output is discarded without an unbounded memory buffer', st
     $source = file_get_contents(dirname(__DIR__) . '/plugin/src/Joomla/JoomlaNativeOperations.php');
     expect(is_string($source), 'Could not read JoomlaNativeOperations source.');
     expect(str_contains($source, 'new NullOutput()'), 'Native commands do not use NullOutput.');
+    expect(str_contains($source, '$command->execute('), 'Native commands do not use Joomla Framework Console execute().');
+    expect(!str_contains($source, '$command->run('), 'Native commands call a non-existent run() method.');
     expect(!str_contains($source, 'BufferedOutput'), 'Native commands retain unbounded human output.');
 });
 
@@ -418,6 +420,56 @@ test('generic writes preview by default and require the signed edge marker to ap
     ]);
     expect($applied['applied'] === true && $applied['id'] === 91, 'Edge-confirmed write was not applied.');
     expect($model->saveCalls === 1 && $model->saved['title'] === 'Safe article', 'Joomla model did not receive validated data.');
+});
+
+test('generic updates merge existing writable fields without replaying sensitive values', static function (): void {
+    $entity = array_values(array_filter(
+        CoreEntityCatalogue::all(),
+        static fn ($candidate): bool => $candidate->id === 'users.users',
+    ))[0];
+    $model = new class {
+        public array $saved = [];
+
+        public function getItem(int $id): object
+        {
+            return (object) [
+                'id' => $id,
+                'name' => 'Existing user',
+                'username' => 'existing-user',
+                'email' => 'existing@example.test',
+                'password' => 'stored-password-hash',
+                'groups' => [2],
+            ];
+        }
+
+        public function save(array $data): bool
+        {
+            $this->saved = $data;
+
+            return true;
+        }
+    };
+    $provider = new class ($model) implements ModelProviderInterface {
+        public function __construct(private object $model)
+        {
+        }
+
+        public function administrator(string $component, string $modelName): object
+        {
+            return $this->model;
+        }
+    };
+    $result = (new CoreEntityAction($entity, 'update', $provider))->execute([
+        'id' => 77,
+        'data' => ['name' => 'Updated user'],
+        'dryRun' => false,
+        '_edgeConfirmed' => true,
+    ]);
+
+    expect($result['applied'] === true, 'The partial update was not applied.');
+    expect($model->saved['name'] === 'Updated user', 'The requested update did not override the existing value.');
+    expect($model->saved['username'] === 'existing-user', 'Required existing fields were not retained.');
+    expect(!array_key_exists('password', $model->saved), 'A stored sensitive value was replayed into an update.');
 });
 
 test('generic writes reject unknown fields and CLI etags before model invocation', static function (): void {

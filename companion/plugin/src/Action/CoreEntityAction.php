@@ -214,9 +214,9 @@ final readonly class CoreEntityAction implements ActionInterface
         }
 
         $this->requireEdgeConfirmation($input);
-        $model = $this->model($this->entity->itemModel, ['save']);
+        $model = $this->model($this->entity->itemModel, ['getItem', 'save']);
         $this->setModelState($model);
-        $payload = array_merge($data, $this->entity->defaults);
+        $payload = array_merge($this->existingWriteData($model, $id), $data, $this->entity->defaults);
         $payload[$this->entity->primaryKey] = $id;
         $this->save($model, $payload);
 
@@ -407,6 +407,33 @@ final readonly class CoreEntityAction implements ActionInterface
         if ($saved !== true) {
             throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla did not save %s.', $this->entity->label));
         }
+    }
+
+    /** @return array<string, mixed> */
+    private function existingWriteData(object $model, int $id): array
+    {
+        try {
+            $item = $model->getItem($id);
+        } catch (Throwable) {
+            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla could not load %s %d for update.', $this->entity->label, $id));
+        }
+
+        if (!is_object($item) && !is_array($item)) {
+            throw new ActionException('NOT_FOUND', sprintf('%s %d was not found.', ucfirst($this->entity->label), $id));
+        }
+
+        $source = is_object($item) ? get_object_vars($item) : $item;
+        $existing = [];
+
+        foreach ($this->entity->writeFields as $field) {
+            if (in_array($field, $this->entity->sensitiveFields, true) || !array_key_exists($field, $source)) {
+                continue;
+            }
+
+            $existing[$field] = $this->safeOutput($source[$field]);
+        }
+
+        return $existing;
     }
 
     private function savedId(object $model, ?int $fallback): ?int

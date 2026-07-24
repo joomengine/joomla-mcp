@@ -59,7 +59,7 @@ function fixture(
 
 fixture('content.categories', [], (_context, value) => category(value));
 fixture('banners.clients', [], (_context, value) => ({
-  name: value.title, contact: 'Joomla MCP live test', email: value.email, state: 1,
+  name: value.title, contact: 'Joomla MCP live test', email: value.email, extrainfo: '', state: 1,
 }));
 fixture('banners.categories', [], (_context, value) => category(value));
 fixture('contacts.categories', [], (_context, value) => category(value));
@@ -67,27 +67,28 @@ fixture('menus.site', [], (_context, value) => ({
   menutype: value.short, title: value.title, description: value.description,
 }));
 fixture('menus.administrator', [], (_context, value) => ({
-  menutype: value.short, title: value.title, description: value.description,
+  menutype: value.short, title: value.short, description: value.description,
 }));
 fixture('users.groups', [], (_context, value) => ({ parent_id: 2, title: value.title }));
 fixture('users.levels', [], (_context, value) => ({ title: value.title, rules: [2], ordering: 1 }));
 fixture('tags.tags', [], (_context, value) => ({
-  parent_id: 1, title: value.title, alias: value.alias, published: 1, access: 1, language: '*',
+  parent_id: 1, title: value.title, alias: value.alias, description: value.description,
+  published: 1, access: 1, language: '*',
 }));
 fixture('templates.site-styles', [], (context, value) => ({
   template: templateName(context, 'templates.site-styles', 'cassiopeia'),
-  title: value.title, home: '0', params: {},
+  title: value.title, home: '0', params: { logoFile: '' },
 }));
 fixture('templates.administrator-styles', [], (context, value) => ({
   template: templateName(context, 'templates.administrator-styles', 'atum'),
-  title: value.title, home: '0', params: {},
+  title: value.title, home: '0', params: { logoFile: '' },
 }));
 fixture('languages.content', [], (_context, value) => ({
   lang_code: value.languageCode,
   title: value.title,
   title_native: value.title,
   sef: value.languageCode.slice(0, 2).toLowerCase(),
-  image: 'en_gb',
+  image: '',
   description: value.description,
   published: 1,
   access: 1,
@@ -103,7 +104,8 @@ fixture('field-groups.users', [], (_context, value) => fieldGroup(value));
 fixture('content.articles', ['content.categories'], (context, value) => ({
   title: value.title,
   alias: value.alias,
-  articletext: `<p>${value.description}</p>`,
+  introtext: `<p>${value.description}</p>`,
+  fulltext: '',
   state: 1,
   catid: requiredId(context, 'content.categories'),
   access: 1,
@@ -161,6 +163,7 @@ fixture('modules.site', [], (_context, value) => ({
   access: 1,
   language: '*',
   assigned: [0],
+  params: { prepare_content: 0 },
 }));
 fixture('modules.administrator', [], (_context, value) => ({
   title: value.title,
@@ -172,6 +175,7 @@ fixture('modules.administrator', [], (_context, value) => ({
   access: 1,
   language: '*',
   assigned: [0],
+  params: { prepare_content: 0 },
 }));
 fixture('users.users', [], (_context, value) => ({
   name: value.title,
@@ -184,7 +188,7 @@ fixture('users.users', [], (_context, value) => ({
   groups: [2],
 }));
 fixture('messages.messages', ['users.users'], (context, value) => ({
-  user_id_to: requiredId(context, 'users.users'),
+  user_id_to: requiredReferenceId(context, 'users.users'),
   folder_id: 0,
   state: 0,
   priority: 0,
@@ -201,6 +205,7 @@ fixture('newsfeeds.feeds', ['newsfeeds.categories'], (context, value) => ({
   cache_time: 15,
   access: 1,
   language: '*',
+  params: { show_feed_image: 1 },
 }));
 fixture('redirects.redirects', [], (_context, value) => ({
   old_url: `https://example.invalid/old/${value.alias}`,
@@ -239,6 +244,8 @@ for (const baseId of [
     required: 0,
     access: 1,
     language: '*',
+    params: { display: 1 },
+    fieldparams: { filter: 0 },
   }));
 }
 
@@ -345,6 +352,12 @@ function defaultUpdate(
 function requiredId(context: LiveFixtureContext, baseId: string): string | number {
   const record = context.get(baseId);
   if (record === undefined) throw new Error(`Fixture prerequisite ${baseId} has no created record.`);
+  return record.id;
+}
+
+function requiredReferenceId(context: LiveFixtureContext, baseId: string): string | number {
+  const record = context.reference(baseId);
+  if (record === undefined) throw new Error(`Fixture prerequisite ${baseId} has no existing reference record.`);
   return record.id;
 }
 

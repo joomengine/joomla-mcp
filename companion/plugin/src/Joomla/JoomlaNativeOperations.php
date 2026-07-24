@@ -98,13 +98,13 @@ final readonly class JoomlaNativeOperations implements NativeOperationsInterface
         try {
             $command = $this->application->getCommand($name);
 
-            if (!is_object($command) || !method_exists($command, 'run')) {
+            if (!is_object($command) || !method_exists($command, 'execute')) {
                 throw new ActionException('NATIVE_COMMAND_UNAVAILABLE', sprintf('Required Joomla command "%s" is incompatible.', $name));
             }
 
             // Discard Joomla's human-oriented console output without retaining
             // an unbounded buffer. The action returns bounded structured data.
-            return (int) $command->run(new ArrayInput($arguments), new NullOutput());
+            return (int) $command->execute(new ArrayInput($arguments), new NullOutput());
         } catch (ActionException $exception) {
             throw $exception;
         } catch (Throwable) {

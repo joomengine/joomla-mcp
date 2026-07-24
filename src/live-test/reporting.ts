@@ -40,6 +40,7 @@ export function statusCounts(attempts: readonly LiveTestAttempt[]): Readonly<Rec
     PASS: 0,
     FAIL: 0,
     EXPECTED_DENIAL: 0,
+    KNOWN_UPSTREAM_LIMITATION: 0,
     SOURCE_ONLY_GATED: 0,
     BLOCKED_BY_PREREQUISITE: 0,
     CLEANUP_FAILED: 0,
@@ -70,6 +71,8 @@ function renderMarkdown(summary: LiveTestSummary): string {
     attempt.status === 'FAIL' || attempt.status === 'CLEANUP_FAILED');
   const blocked = summary.attempts.filter((attempt) =>
     attempt.status === 'BLOCKED_BY_PREREQUISITE' || attempt.status === 'SOURCE_ONLY_GATED');
+  const limitations = summary.attempts.filter((attempt) =>
+    attempt.status === 'KNOWN_UPSTREAM_LIMITATION');
   const lines = [
     '# Joomla MCP live validation report',
     '',
@@ -89,6 +92,7 @@ function renderMarkdown(summary: LiveTestSummary): string {
     `| PASS | ${summary.counts.PASS} | Request and postcondition passed. |`,
     `| FAIL | ${summary.counts.FAIL} | Unexpected action, transport, or assertion failure. |`,
     `| EXPECTED_DENIAL | ${summary.counts.EXPECTED_DENIAL} | A documented safety or Joomla boundary denied the request. |`,
+    `| KNOWN_UPSTREAM_LIMITATION | ${summary.counts.KNOWN_UPSTREAM_LIMITATION} | The exact pinned Joomla fixture reproduced a narrowly matched, documented upstream defect. |`,
     `| SOURCE_ONLY_GATED | ${summary.counts.SOURCE_ONLY_GATED} | Joomla registers the route, but this MCP intentionally keeps it fail-closed. |`,
     `| BLOCKED_BY_PREREQUISITE | ${summary.counts.BLOCKED_BY_PREREQUISITE} | A named prerequisite was unavailable; see the root-cause link. |`,
     `| CLEANUP_FAILED | ${summary.counts.CLEANUP_FAILED} | Test data could not be removed or state could not be restored. |`,
@@ -110,6 +114,24 @@ function renderMarkdown(summary: LiveTestSummary): string {
     for (const attempt of blocked) {
       lines.push(
         `| \`${attempt.scenarioId}\` | ${attempt.status} | ${cell(attempt.reason ?? 'Not supplied')} | ${attempt.rootCauseId === undefined ? '—' : `\`${attempt.rootCauseId}\``} |`,
+      );
+    }
+    lines.push('');
+  }
+
+  if (limitations.length > 0) {
+    lines.push(
+      '## Known upstream limitations',
+      '',
+      'These actions were executed. They are non-failing only because the exact pinned fixture, action, phase, and observed error matched a reviewed limitation. A different Joomla image or error remains a failure.',
+      '',
+      '| Attempt | Action | Lane | Code | Why | Reference |',
+      '| --- | --- | --- | --- | --- | --- |',
+    );
+    for (const attempt of limitations) {
+      const limitation = attempt.knownLimitation;
+      lines.push(
+        `| \`${attempt.id}\` | \`${attempt.scenarioId}\` | ${attempt.mcpTransport}/${attempt.joomlaPath} | \`${limitation?.code ?? attempt.failureCode ?? 'known_upstream'}\` | ${cell(limitation?.explanation ?? attempt.reason ?? 'Not supplied')} | ${limitation === undefined ? '—' : `[source](${limitation.reference})`} |`,
       );
     }
     lines.push('');
@@ -140,6 +162,7 @@ function renderJunit(summary: LiveTestSummary): string {
   const failures = summary.counts.FAIL + summary.counts.CLEANUP_FAILED;
   const skipped =
     summary.counts.EXPECTED_DENIAL +
+    summary.counts.KNOWN_UPSTREAM_LIMITATION +
     summary.counts.SOURCE_ONLY_GATED +
     summary.counts.BLOCKED_BY_PREREQUISITE;
   const cases = summary.attempts.map((attempt) => {

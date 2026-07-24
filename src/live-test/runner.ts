@@ -534,7 +534,22 @@ async function runCrudProfile(
     }
 
     const showcase = state.records.get(baseId);
-    if (showcase === undefined) continue;
+    if (showcase === undefined) {
+      for (const [operation, phase] of [
+        ['get', 'read-back-created'],
+        ['update', 'update-showcase'],
+        ['delete', 'delete-candidate'],
+      ] as const) {
+        const scenario = scenarioById.get(`${baseId}.${operation}`);
+        if (scenario === undefined || !scenario.joomlaPaths.includes(path)) continue;
+        const blocked = new BlockedError(
+          `${scenario.id} requires a successfully created ${baseId} showcase fixture.`,
+          [`${baseId}.create`],
+        );
+        await record(session, path, scenario, phase, {}, async () => { throw blocked; });
+      }
+      continue;
+    }
     const getScenario = scenarioById.get(`${baseId}.get`);
     if (getScenario !== undefined && getScenario.joomlaPaths.includes(path)) {
       const input = await prepareScenarioInput(
@@ -650,7 +665,7 @@ function createFixtureData(
   purpose: 'showcase' | 'deletion',
 ): Readonly<Record<string, unknown>> {
   if (purpose !== 'deletion' || deleteSemantics(baseId) === 'permanent') return data;
-  const trash = trashData(data);
+  const trash = trashData(baseId, data);
   return trash === undefined ? data : Object.freeze({ ...data, ...trash });
 }
 
@@ -659,8 +674,10 @@ function deleteSemantics(baseId: string): 'resource-model-defined' | 'permanent'
 }
 
 function trashData(
+  baseId: string,
   attributes: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> | undefined {
+  if (baseId === 'contacts.contacts') return Object.freeze({ published: -2 });
   if (Object.hasOwn(attributes, 'published')) return Object.freeze({ published: -2 });
   if (Object.hasOwn(attributes, 'state')) return Object.freeze({ state: -2 });
   return undefined;
@@ -705,9 +722,21 @@ async function runSpecialProfile(
     );
     if (input === undefined) continue;
     await record(session, path, scenario, 'read', input, async () => {
-      const response = await callRead(session, siteId, scenario.id, input, path);
-      state.reads.set(scenario.id, response);
-      return { response };
+      try {
+        const response = await callRead(session, siteId, scenario.id, input, path);
+        state.reads.set(scenario.id, response);
+        return { response };
+      } catch (error) {
+        if (scenario.id === 'privacy.requests.export' && isJoomlaHttpError(error, 404)) {
+          return {
+            status: 'EXPECTED_DENIAL',
+            response: errorResult(error),
+            expected: 'Joomla denies export until the privacy request has been confirmed and processed.',
+            reason: 'The selected privacy request is pending, so Joomla correctly returned HTTP 404 instead of exporting data.',
+          };
+        }
+        throw error;
+      }
     });
   }
 
@@ -745,7 +774,7 @@ async function runSpecialProfile(
       () => specialWriteInput(scenario.id, state, options.seed),
     );
     if (input === undefined) continue;
-    await record(session, path, scenario, 'write', input, async () => {
+    const outcome = await record(session, path, scenario, 'write', input, async () => {
       const response = await executeSpecialWrite(
         session,
         path,
@@ -756,7 +785,109 @@ async function runSpecialProfile(
         options.seed,
       );
       rememberSpecialWrite(scenario.id, input, response, state);
+      if (
+        scenario.id === 'languages.overrides.site.create' ||
+        scenario.id === 'languages.overrides.administrator.create'
+      ) {
+        const data = asRecord(input['data']);
+        assertLanguageOverride(
+          response,
+          String(data['key'] ?? ''),
+          String(data['override'] ?? ''),
+          scenario.id,
+        );
+        return {
+          response,
+          expected: { id: data['key'], value: data['override'] },
+          actual: firstEntity(response),
+        };
+      }
       return { response };
+    });
+    if (outcome !== undefined) {
+      await runSpecialReadBack(
+        session,
+        path,
+        siteId,
+        scenario,
+        input,
+        outcome.response,
+        selected,
+        record,
+      );
+    }
+  }
+}
+
+async function runSpecialReadBack(
+  session: LiveMcpSession,
+  path: LiveJoomlaPath,
+  site: string,
+  writeScenario: LiveScenario,
+  writeInput: Readonly<Record<string, unknown>>,
+  writeResponse: unknown,
+  selected: readonly LiveScenario[],
+  record: AttemptRecorder,
+): Promise<void> {
+  if (writeScenario.id === 'privacy.requests.create') {
+    const created = firstEntity(writeResponse);
+    if (created === undefined) return;
+    const getScenario = selected.find((scenario) => scenario.id === 'privacy.requests.get');
+    if (getScenario !== undefined && getScenario.joomlaPaths.includes(path)) {
+      const input = { id: numericId(created.id) };
+      await record(session, path, getScenario, 'read-back-created', input, async () => {
+        const response = await callRead(session, site, getScenario.id, input, path);
+        const actual = firstEntity(response);
+        assertEntityId(actual, created.id, getScenario.id);
+        const expectedEmail = asRecord(writeInput['data'])['email'];
+        if (!looselyEqual(actual?.attributes['email'], expectedEmail)) {
+          throw new Error('Created privacy request did not return the submitted email address.');
+        }
+        return { response, expected: { id: created.id, email: expectedEmail }, actual };
+      });
+    }
+    const exportScenario = selected.find((scenario) => scenario.id === 'privacy.requests.export');
+    if (exportScenario !== undefined && exportScenario.joomlaPaths.includes(path)) {
+      const input = { id: numericId(created.id) };
+      await record(session, path, exportScenario, 'read-back-pending', input, async () => {
+        try {
+          return { response: await callRead(session, site, exportScenario.id, input, path) };
+        } catch (error) {
+          if (!isJoomlaHttpError(error, 404)) throw error;
+          return {
+            status: 'EXPECTED_DENIAL',
+            response: errorResult(error),
+            expected: 'Joomla denies export until the newly created privacy request is confirmed and processed.',
+            reason: 'The newly created privacy request is pending, so Joomla correctly returned HTTP 404 instead of exporting data.',
+          };
+        }
+      });
+    }
+    return;
+  }
+
+  if (
+    writeScenario.id === 'languages.overrides.site.create' ||
+    writeScenario.id === 'languages.overrides.administrator.create'
+  ) {
+    const getScenario = selected.find((scenario) =>
+      scenario.id === writeScenario.id.replace('.create', '.get'));
+    if (getScenario === undefined || !getScenario.joomlaPaths.includes(path)) return;
+    const data = asRecord(writeInput['data']);
+    const input = { language: writeInput['language'], constant: data['key'] };
+    await record(session, path, getScenario, 'read-back-created', input, async () => {
+      const response = await callRead(session, site, getScenario.id, input, path);
+      assertLanguageOverride(
+        response,
+        String(data['key'] ?? ''),
+        String(data['override'] ?? ''),
+        getScenario.id,
+      );
+      return {
+        response,
+        expected: { id: data['key'], value: data['override'] },
+        actual: firstEntity(response),
+      };
     });
   }
 }
@@ -775,7 +906,7 @@ async function cleanupRecords(
     if (scenario === undefined || !scenario.joomlaPaths.includes(path)) continue;
     const trash = deleteSemantics(baseId) === 'permanent'
       ? undefined
-      : trashData(entity.attributes);
+      : trashData(baseId, entity.attributes);
     if (trash !== undefined) {
       const updateScenario = liveScenarioCatalog().find((candidate) => candidate.id === `${baseId}.update`);
       if (updateScenario !== undefined && updateScenario.joomlaPaths.includes(path)) {
@@ -1043,7 +1174,10 @@ function specialWriteInput(
   if (actionId === 'languages.overrides.site.create' || actionId === 'languages.overrides.administrator.create') {
     const lane = safeSegment(state.lane).toUpperCase().replaceAll('-', '_');
     const constant = `JOOMLA_MCP_LIVE_${safeSeed}_${lane}`;
-    return { language: 'en-GB', data: { key: constant, override: `Joomla MCP live ${seed}`, both: false } };
+    return {
+      language: 'en-GB',
+      data: { id: '', key: constant, override: `Joomla MCP live ${seed}`, both: false },
+    };
   }
   if (actionId === 'languages.overrides.site.delete' || actionId === 'languages.overrides.administrator.delete') {
     const lane = safeSegment(state.lane).toUpperCase().replaceAll('-', '_');
@@ -1108,13 +1242,15 @@ function rememberSpecialWrite(
 ): void {
   if (actionId === 'media.files.create') {
     const data = asRecord(input['data']);
-    if (typeof data['path'] === 'string') {
-      state.reads.set('live.media.path', data['path']);
+    const responsePath = findDeepValue(response, 'path');
+    const mediaPath = typeof responsePath === 'string' ? responsePath : data['path'];
+    if (typeof mediaPath === 'string') {
+      state.reads.set('live.media.path', mediaPath);
       state.created.push({
         lane: state.lane,
         family: 'media.files',
-        id: data['path'],
-        label: `Live-test media ${data['path']}`,
+        id: mediaPath,
+        label: `Live-test media ${mediaPath}`,
       });
     }
   }
@@ -1276,19 +1412,6 @@ async function executeSpecialWrite(
       : undefined;
     return { applied, verification };
   }
-  if (
-    scenario.id === 'languages.overrides.site.create' ||
-    scenario.id === 'languages.overrides.administrator.create'
-  ) {
-    const data = asRecord(input['data']);
-    const constant = data['key'];
-    const readAction = scenario.id.replace('.create', '.get');
-    const verification = typeof constant === 'string'
-      ? await callRead(session, site, readAction, { language: input['language'], constant }, path)
-      : undefined;
-    state.reads.set(`${scenario.id}.constant`, constant);
-    return { applied, verification };
-  }
   if (scenario.id === 'media.files.delete') {
     try {
       await callRead(session, site, 'media.files.get', { path: input['path'] }, path);
@@ -1378,7 +1501,8 @@ function firstEntity(value: unknown): LiveFixtureRecord | undefined {
   const candidate = findEntity(value);
   if (candidate === undefined) return undefined;
   const id = candidate['id'] ?? candidate['lang_id'] ?? candidate['message_id'] ??
-    candidate['update_site_id'] ?? candidate['extension_id'];
+    candidate['update_site_id'] ?? candidate['updateSiteId'] ??
+    candidate['extension_id'] ?? candidate['extensionId'];
   if (typeof id !== 'string' && typeof id !== 'number') return undefined;
   const attributesValue = asRecord(candidate['attributes']);
   const attributes = Object.keys(attributesValue).length > 0
@@ -1406,7 +1530,8 @@ function collectEntities(value: unknown): readonly LiveFixtureRecord[] {
     }
     const record = asRecord(candidate);
     const id = record['id'] ?? record['lang_id'] ?? record['message_id'] ??
-      record['update_site_id'] ?? record['extension_id'];
+      record['update_site_id'] ?? record['updateSiteId'] ??
+      record['extension_id'] ?? record['extensionId'];
     if ((typeof id === 'string' || typeof id === 'number') && isResourceEntityRecord(record)) {
       const attributesValue = asRecord(record['attributes']);
       const attributes = Object.keys(attributesValue).length > 0
@@ -1440,8 +1565,10 @@ function findEntity(value: unknown, depth = 0): Readonly<Record<string, unknown>
   if (
     (typeof record['id'] === 'string' || typeof record['id'] === 'number' ||
       typeof record['lang_id'] === 'number' || typeof record['message_id'] === 'number' ||
-      typeof record['update_site_id'] === 'number' ||
-      typeof record['extension_id'] === 'number') &&
+      typeof record['update_site_id'] === 'number' || typeof record['update_site_id'] === 'string' ||
+      typeof record['updateSiteId'] === 'number' || typeof record['updateSiteId'] === 'string' ||
+      typeof record['extension_id'] === 'number' || typeof record['extension_id'] === 'string' ||
+      typeof record['extensionId'] === 'number' || typeof record['extensionId'] === 'string') &&
     isResourceEntityRecord(record)
   ) {
     return record;
@@ -1489,6 +1616,24 @@ function assertEntityId(
 ): void {
   if (entity === undefined || String(entity.id) !== String(expected)) {
     throw new Error(`${action} returned resource ${String(entity?.id ?? 'none')}; expected ${String(expected)}.`);
+  }
+}
+
+function assertLanguageOverride(
+  response: unknown,
+  expectedConstant: string,
+  expectedValue: string,
+  action: string,
+): void {
+  const entity = firstEntity(response);
+  if (
+    entity === undefined ||
+    String(entity.id) !== expectedConstant ||
+    String(entity.attributes['value'] ?? '') !== expectedValue
+  ) {
+    throw new Error(
+      `${action} did not return language override ${expectedConstant} with the submitted value.`,
+    );
   }
 }
 
@@ -1583,6 +1728,11 @@ function classifyError(error: unknown): string {
   if (/companion/iu.test(message)) return 'companion_error';
   if (/postcondition|expected|returned resource/iu.test(message)) return 'postcondition_failed';
   return 'unexpected_error';
+}
+
+function isJoomlaHttpError(error: unknown, status: number): boolean {
+  return error instanceof LiveMcpToolError &&
+    new RegExp(`Joomla API returned HTTP ${status}(?:\\D|$)`, 'iu').test(error.message);
 }
 
 function findDeepValue(value: unknown, key: string, depth = 0): unknown {

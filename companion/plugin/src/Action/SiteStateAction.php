@@ -93,7 +93,15 @@ final readonly class SiteStateAction implements ActionInterface
         $after = $this->operations->siteOfflineState();
 
         if ($exitCode !== 0 || $after !== $offline) {
-            throw new ActionException('POSTCONDITION_FAILED', 'Joomla did not verify the requested site state.');
+            throw new ActionException(
+                'POSTCONDITION_FAILED',
+                sprintf(
+                    'Joomla did not verify the requested site state (exit=%d, requested=%s, observed=%s).',
+                    $exitCode,
+                    $offline ? 'offline' : 'online',
+                    $after ? 'offline' : 'online',
+                ),
+            );
         }
 
         return [

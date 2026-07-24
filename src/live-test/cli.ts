@@ -35,6 +35,7 @@ export async function runLiveTestCli(argv = process.argv.slice(2)): Promise<numb
   output.write(
     `Joomla MCP live validation ${summary.exitCode === 0 ? 'passed' : 'failed'}: ` +
     `${summary.counts.PASS} passed, ${summary.counts.FAIL} failed, ` +
+    `${summary.counts.KNOWN_UPSTREAM_LIMITATION} known upstream limitations, ` +
     `${summary.counts.BLOCKED_BY_PREREQUISITE} blocked, ${summary.counts.SOURCE_ONLY_GATED} source-gated, ` +
     `${summary.counts.CLEANUP_FAILED} cleanup failures.\n` +
     `Evidence: ${resolve(options.outputDirectory)}\n`,

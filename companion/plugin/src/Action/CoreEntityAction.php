@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VDM\Plugin\Console\JoomlaMcp\Action;
 
 use JsonSerializable;
+use Joomla\CMS\Factory;
 use Throwable;
 use VDM\Plugin\Console\JoomlaMcp\Contract\ActionInterface;
 use VDM\Plugin\Console\JoomlaMcp\Contract\ModelProviderInterface;
@@ -371,6 +372,10 @@ final readonly class CoreEntityAction implements ActionInterface
 
         foreach ($this->entity->modelState as $key => $value) {
             $model->setState($key, $value);
+
+            if ($key === 'filter.extension' && is_string($value) && $value !== '') {
+                Factory::getApplication()->getInput()->set('extension', $value);
+            }
         }
     }
 
@@ -698,7 +703,7 @@ final readonly class CoreEntityAction implements ActionInterface
     private function orderingFields(): array
     {
         $fields = array_values(array_unique(array_intersect(
-            ['id', $this->entity->primaryKey, 'title', 'name', 'ordering', 'state', 'published', 'created', 'modified'],
+            [$this->entity->primaryKey, 'id', 'title', 'name', 'ordering', 'state', 'published', 'created', 'modified'],
             $this->entity->readFields,
         )));
 

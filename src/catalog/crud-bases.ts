@@ -93,12 +93,12 @@ export const joomlaCrudBases: readonly CrudBaseDescriptor[] = Object.freeze([
   crud({
     id: 'menus.site-items', domain: 'menus', resource: 'site-menu-item', collectionName: 'Site menu items', itemName: 'Site menu item',
     basePath: 'v1/menus/site/items', controller: 'items', component: 'com_menus', defaults: { client_id: 0 },
-    plugin: 'menus', className: 'Menus', toolset: 'structure.read', deleteSemantics: 'permanent',
+    plugin: 'menus', className: 'Menus', toolset: 'structure.read',
   }),
   crud({
     id: 'menus.administrator-items', domain: 'menus', resource: 'administrator-menu-item', collectionName: 'Administrator menu items', itemName: 'Administrator menu item',
     basePath: 'v1/menus/administrator/items', controller: 'items', component: 'com_menus', defaults: { client_id: 1 },
-    plugin: 'menus', className: 'Menus', toolset: 'structure.read', deleteSemantics: 'permanent',
+    plugin: 'menus', className: 'Menus', toolset: 'structure.read',
   }),
   crud({
     id: 'modules.site', domain: 'modules', resource: 'site-module', collectionName: 'Site modules', itemName: 'Site module',

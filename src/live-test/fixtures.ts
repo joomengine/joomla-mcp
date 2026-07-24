@@ -81,12 +81,12 @@ fixture('templates.site-styles', [], (context, value) => ({
 }));
 fixture('templates.administrator-styles', [], (context, value) => ({
   template: templateName(context, 'templates.administrator-styles', 'atum'),
-  title: value.title, home: '0', params: { logoFile: '' },
+  title: value.title, home: '0', params: { colorScheme: 'os' },
 }));
 fixture('languages.content', [], (_context, value) => ({
   lang_code: value.languageCode,
-  title: value.title,
-  title_native: value.title,
+  title: value.short,
+  title_native: value.short,
   sef: value.languageCode.slice(0, 2).toLowerCase(),
   image: '',
   description: value.description,
@@ -120,6 +120,7 @@ fixture('banners.banners', ['banners.clients', 'banners.categories'], (context, 
   alias: value.alias,
   description: value.description,
   custombannercode: `<span>${value.description}</span>`,
+  params: { imageurl: '' },
   state: 1,
   language: '*',
 }));
@@ -128,6 +129,7 @@ fixture('contacts.contacts', ['contacts.categories'], (context, value) => ({
   alias: value.alias,
   catid: requiredId(context, 'contacts.categories'),
   email_to: value.email,
+  params: { show_email_form: 1 },
   published: 1,
   access: 1,
   language: '*',
@@ -143,7 +145,8 @@ fixture('menus.site-items', ['menus.site'], (context, value) => ({
   parent_id: 1,
   access: 1,
   language: '*',
-}));
+}), (context, value) =>
+  menuItem(context, value, 'menus.site', 'index.php?option=com_content&view=featured'));
 fixture('menus.administrator-items', ['menus.administrator'], (context, value) => ({
   menutype: requiredAttribute(context, 'menus.administrator', 'menutype'),
   title: value.title,
@@ -154,7 +157,8 @@ fixture('menus.administrator-items', ['menus.administrator'], (context, value) =
   parent_id: 1,
   access: 1,
   language: '*',
-}));
+}), (context, value) =>
+  menuItem(context, value, 'menus.administrator', 'index.php?option=com_cpanel&view=cpanel'));
 fixture('modules.site', [], (_context, value) => ({
   title: value.title,
   content: `<p>${value.description}</p>`,
@@ -209,6 +213,7 @@ fixture('newsfeeds.feeds', ['newsfeeds.categories'], (context, value) => ({
   language: '*',
   description: value.description,
   metadesc: '',
+  metadata: { robots: '' },
   params: { show_feed_image: 1 },
 }));
 fixture('redirects.redirects', [], (_context, value) => ({
@@ -293,12 +298,12 @@ function names(
   baseId: string,
   purpose: 'showcase' | 'deletion' | 'updated',
 ): FixtureNames {
-  const compact = `${context.seed}-${context.lane}-${baseId}-${purpose}`
+  const raw = `${context.seed}-${context.lane}-${baseId}-${purpose}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, '-')
-    .replace(/^-|-$/gu, '')
-    .slice(0, 54);
-  const hash = shortHash(compact);
+    .replace(/^-|-$/gu, '');
+  const compact = raw.slice(0, 54);
+  const hash = shortHash(raw);
   const languageBytes = [
     parseInt(hash.slice(0, 2), 16),
     parseInt(hash.slice(2, 4), 16),
@@ -316,6 +321,25 @@ function names(
     languageCode:
       `${letter(languageBytes[0]!, false)}${letter(languageBytes[1]!, false)}-` +
       `${letter(languageBytes[2]!, true)}${letter(languageBytes[3]!, true)}`,
+  };
+}
+
+function menuItem(
+  context: LiveFixtureContext,
+  value: FixtureNames,
+  menuBaseId: 'menus.site' | 'menus.administrator',
+  link: string,
+): Readonly<Record<string, unknown>> {
+  return {
+    menutype: requiredAttribute(context, menuBaseId, 'menutype'),
+    title: value.title,
+    alias: value.alias,
+    link,
+    type: 'component',
+    published: 1,
+    parent_id: 1,
+    access: 1,
+    language: '*',
   };
 }
 

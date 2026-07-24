@@ -88,6 +88,7 @@ const privacyRequestSchema = exactObject({
 }, ['email']);
 
 const languageOverrideSchema = exactObject({
+  id: { type: 'string', maxLength: 255 },
   key: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z][A-Za-z0-9_.-]*$' },
   override: { type: 'string', maxLength: 65_535 },
   both: booleanLike,

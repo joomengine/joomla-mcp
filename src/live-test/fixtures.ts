@@ -90,6 +90,7 @@ fixture('languages.content', [], (_context, value) => ({
   sef: value.languageCode.slice(0, 2).toLowerCase(),
   image: '',
   description: value.description,
+  metadesc: '',
   published: 1,
   access: 1,
 }));
@@ -117,6 +118,7 @@ fixture('banners.banners', ['banners.clients', 'banners.categories'], (context, 
   type: 1,
   name: value.title,
   alias: value.alias,
+  description: value.description,
   custombannercode: `<span>${value.description}</span>`,
   state: 1,
   language: '*',
@@ -205,6 +207,8 @@ fixture('newsfeeds.feeds', ['newsfeeds.categories'], (context, value) => ({
   cache_time: 15,
   access: 1,
   language: '*',
+  description: value.description,
+  metadesc: '',
   params: { show_feed_image: 1 },
 }));
 fixture('redirects.redirects', [], (_context, value) => ({
@@ -239,7 +243,9 @@ for (const baseId of [
     title: value.title,
     name: value.alias.replaceAll('-', '_'),
     label: value.title,
+    default_value: '',
     type: 'text',
+    description: value.description,
     state: 1,
     required: 0,
     access: 1,
@@ -346,6 +352,7 @@ function defaultUpdate(
   if (baseId === 'users.users') return { name: value.title };
   if (baseId === 'messages.messages') return { subject: value.title };
   if (baseId === 'redirects.redirects') return { comment: value.description };
+  if (baseId === 'menus.administrator') return { title: value.short };
   return { title: value.title };
 }
 

@@ -23,6 +23,7 @@ describe('live-test evidence', () => {
     });
     expect(configurationFingerprint({ b: 2, a: 1 }))
       .toBe(configurationFingerprint({ a: 1, b: 2 }));
+    expect(redact(Array.from({ length: 1_251 }, (_, index) => index))).toHaveLength(1_251);
   });
 
   it('writes Markdown, JSON, JUnit, and one redacted file per attempt', async () => {

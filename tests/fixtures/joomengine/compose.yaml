@@ -1,4 +1,12 @@
 services:
+  mailpit:
+    image: "${JOOMLA_FIXTURE_MAIL_IMAGE:-axllent/mailpit:v1.30.5}"
+    environment:
+      MP_MAX_MESSAGES: "100"
+    networks:
+      - fixture
+    restart: "no"
+
   mariadb:
     image: "${JOOMLA_FIXTURE_DATABASE_IMAGE:-mariadb:11.4@sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7}"
     environment:
@@ -20,6 +28,8 @@ services:
   joomla:
     image: "${JOOMLA_FIXTURE_IMAGE:-octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372}"
     depends_on:
+      mailpit:
+        condition: service_started
       mariadb:
         condition: service_healthy
     environment:

@@ -48,6 +48,7 @@ export JOOMLA_FIXTURE_COMPANION_ZIP="$companion_zip"
 
 JOOMLA_FIXTURE_IMAGE="${JOOMLA_FIXTURE_IMAGE:-octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372}"
 JOOMLA_FIXTURE_DATABASE_IMAGE="${JOOMLA_FIXTURE_DATABASE_IMAGE:-mariadb:11.4@sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7}"
+JOOMLA_FIXTURE_MAIL_IMAGE="${JOOMLA_FIXTURE_MAIL_IMAGE:-axllent/mailpit:v1.30.5}"
 JOOMLA_FIXTURE_DATABASE_NAME="${JOOMLA_FIXTURE_DATABASE_NAME:-joomlamcp}"
 JOOMLA_FIXTURE_DATABASE_USER="${JOOMLA_FIXTURE_DATABASE_USER:-joomlamcp}"
 JOOMLA_FIXTURE_DATABASE_PASSWORD="${JOOMLA_FIXTURE_DATABASE_PASSWORD:-$(openssl rand -hex 24)}"
@@ -56,7 +57,7 @@ JOOMLA_FIXTURE_ADMIN_PASSWORD="${JOOMLA_FIXTURE_ADMIN_PASSWORD:-$(openssl rand -
 export JOOMLA_FIXTURE_ADMIN_PASSWORD JOOMLA_FIXTURE_DATABASE_IMAGE
 export JOOMLA_FIXTURE_DATABASE_NAME JOOMLA_FIXTURE_DATABASE_PASSWORD
 export JOOMLA_FIXTURE_DATABASE_ROOT_PASSWORD JOOMLA_FIXTURE_DATABASE_USER
-export JOOMLA_FIXTURE_IMAGE
+export JOOMLA_FIXTURE_IMAGE JOOMLA_FIXTURE_MAIL_IMAGE
 
 artifact_directory="${JOOMLA_FIXTURE_ARTIFACT_DIR:-${TMPDIR:-/tmp}/joomla-mcp-joomengine-evidence}"
 mkdir -p -- "$artifact_directory"
@@ -131,6 +132,19 @@ readonly fixture_origin
 "${compose[@]}" exec --no-TTY --user www-data --workdir /var/www/html joomla \
   php cli/joomla.php joomla:mcp:cli-inventory --format=json --no-interaction --no-ansi \
   >"${artifact_directory}/cli-inventory.json"
+
+"${compose[@]}" exec --no-TTY --user www-data --workdir /var/www/html joomla \
+  php cli/joomla.php config:set \
+    mailer=smtp \
+    smtphost=mailpit \
+    smtpport=1025 \
+    smtpsecure=none \
+    smtpauth=0 \
+    mailonline=1 \
+    mailfrom=fixture@example.invalid \
+    fromname=Joomla-MCP-Fixture \
+    --no-interaction --no-ansi \
+  >"${artifact_directory}/mail-configuration.txt"
 
 "${compose[@]}" exec --no-TTY --user www-data --workdir /var/www/html joomla \
   php cli/joomla.php list --no-interaction --no-ansi \
@@ -392,10 +406,11 @@ node "${REPOSITORY_ROOT}/dist/bin/joomla-mcp-live-test.js" \
   --fixture-digest "companion-sha256=${package_sha256}" \
   --fixture-digest "joomla-image=${JOOMLA_FIXTURE_IMAGE}" \
   --fixture-digest "database-image=${JOOMLA_FIXTURE_DATABASE_IMAGE}" \
+  --fixture-digest "mail-image=${JOOMLA_FIXTURE_MAIL_IMAGE}" \
   --non-interactive \
   --confirm-mutations \
   --disposable \
-  --retain-demo
+  --cleanup
 
 collect_diagnostics
 for command in \

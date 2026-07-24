@@ -38,6 +38,7 @@ bash -n tests/fixtures/static-joomengine.test.sh
 
 assert_contains "$COMPOSE_FILE" 'JOOMLA_FIXTURE_IMAGE:-octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372}'
 assert_contains "$COMPOSE_FILE" 'mariadb:11.4@sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7'
+assert_contains "$COMPOSE_FILE" 'axllent/mailpit:v1.30.5'
 assert_contains "$COMPOSE_FILE" 'JOOMLA_EXTENSIONS_PATHS: /fixtures/pkg_joomlamcp.zip'
 assert_contains "$COMPOSE_FILE" 'JOOMLA_CLI_COMMANDS:'
 assert_contains "$COMPOSE_FILE" 'joomla:mcp:describe --format=json'
@@ -73,6 +74,8 @@ assert_contains "$RUNNER" '--confirm-mutations'
 assert_contains "$RUNNER" '--disposable'
 assert_contains "$RUNNER" '--mcp-transport all'
 assert_contains "$RUNNER" '--joomla-path all'
+assert_contains "$RUNNER" 'smtphost=mailpit'
+assert_contains "$RUNNER" '--cleanup'
 assert_not_contains "$RUNNER" 'eval '
 assert_contains "$API_BOOTSTRAP" "'profile_value' => \$encodedSeed"
 assert_contains "$API_BOOTSTRAP" "'profile_value' => '1'"

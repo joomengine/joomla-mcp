@@ -234,13 +234,15 @@ Common failure codes:
 
 The `joomla-61-fixture` job builds and installs the companion, creates a
 throwaway Super User API token inside the isolated fixture, publishes Joomla
-only on a random loopback port, and creates a local CLI bridge that executes as
+only on a random loopback port, configures an internal Mailpit SMTP sink for
+contact-form delivery, and creates a local CLI bridge that executes as
 `www-data` inside the container. It then runs the same packaged command with:
 
 - `full`;
 - API and companion CLI;
 - stdio and Streamable HTTP;
 - explicit non-interactive mutation and disposable flags;
+- cleanup verification before volume destruction;
 - all action families.
 
 The token and approval secret exist only for the process lifetime and are

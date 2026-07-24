@@ -19,6 +19,7 @@ interface KnownLimitationRule {
   readonly code: string;
   readonly scenarioIds: readonly string[];
   readonly phases: readonly string[];
+  readonly joomlaPaths?: readonly LiveJoomlaPath[];
   readonly error: RegExp;
   readonly explanation: string;
   readonly reference: string;
@@ -78,6 +79,17 @@ const directFailureRules: readonly KnownLimitationRule[] = Object.freeze([
     reference:
       'https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_languages/src/Controller/OverridesController.php#L154-L163',
   }),
+  Object.freeze({
+    code: 'joomla-6.1.2-scheduler-state-null-checkout',
+    scenarioIds: Object.freeze(['scheduler.tasks.state.set']),
+    phases: Object.freeze(['write']),
+    joomlaPaths: Object.freeze(['cli'] as const),
+    error: /Joomla command "scheduler:state" exited 1\. Output: .*Task ID '\d+' is checked out!/u,
+    explanation:
+      'Joomla 6.1.2 scheduler:state treats an unlocked task with a null lock owner as checked out because the generic checkout check compares null to the CLI user identifier.',
+    reference:
+      'https://github.com/joomla/joomla-cms/blob/6.1.2/libraries/src/Console/TasksStateCommand.php#L126-L132',
+  }),
 ]);
 
 const verifiedDeletionRules: readonly KnownLimitationRule[] = Object.freeze([
@@ -134,6 +146,16 @@ const verifiedPartialRules: readonly KnownLimitationRule[] = Object.freeze([
     reference:
       'https://github.com/joomla/joomla-cms/blob/6.1.2/libraries/src/MVC/Controller/ApiController.php#L523-L535',
   }),
+  Object.freeze({
+    code: 'joomla-6.1.2-message-update-creates-replacement',
+    scenarioIds: Object.freeze(['messages.messages.get']),
+    phases: Object.freeze(['read-back-updated']),
+    error: /Updated messages\.messages did not return the expected changed fields\./u,
+    explanation:
+      'Joomla 6.1.2 validates message PATCH data with a form that omits message_id, so the request creates a replacement message while returning the unchanged original; the live test accepted this only after finding the exact replacement and deleting it.',
+    reference:
+      'https://github.com/joomla/joomla-cms/blob/6.1.2/administrator/components/com_messages/forms/message.xml',
+  }),
 ]);
 
 export function knownUpstreamLimitation(
@@ -159,8 +181,9 @@ function matchRule(
   rules: readonly KnownLimitationRule[],
 ): LiveKnownUpstreamLimitation | undefined {
   const fixture = context.options.fixtureDigests?.['joomla-image'];
-  if (fixture !== joomla612Fixture || context.joomlaPath !== 'api') return undefined;
+  if (fixture !== joomla612Fixture) return undefined;
   const rule = rules.find((candidate) =>
+    (candidate.joomlaPaths ?? ['api']).includes(context.joomlaPath) &&
     candidate.scenarioIds.includes(context.scenarioId) &&
     candidate.phases.includes(context.phase) &&
     candidate.error.test(context.error));

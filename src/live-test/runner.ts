@@ -720,9 +720,68 @@ async function runCrudProfile(
             const response = await callRead(session, site, getScenario.id, readInputValue, path);
             const entity = firstEntity(response);
             assertEntityId(entity, showcase.id, getScenario.id);
-            const attributes = assertChangedFields(response, changes, baseId);
-            state.records.set(baseId, entity!);
-            return { response, expected: changes, actual: attributes };
+            try {
+              const attributes = assertChangedFields(response, changes, baseId);
+              state.records.set(baseId, entity!);
+              return { response, expected: changes, actual: attributes };
+            } catch (error) {
+              const knownLimitation = verifiedPartialMutationLimitation({
+                options,
+                joomlaPath: path,
+                scenarioId: getScenario.id,
+                phase: 'read-back-updated',
+                error: errorMessage(error),
+              });
+              if (knownLimitation === undefined || baseId !== 'messages.messages') throw error;
+              const collection = await callRead(
+                session,
+                site,
+                'messages.messages.list',
+                { offset: 0, limit: 100 },
+                path,
+              );
+              const replacement = collectEntities(collection).find((candidate) =>
+                !looselyEqual(candidate.id, showcase.id) &&
+                entityMatchesFields(candidate, changes));
+              if (replacement === undefined) throw error;
+              const replacementCleanup = await callWrite(
+                session,
+                site,
+                'messages.messages.delete',
+                { id: numericId(replacement.id) },
+                path,
+              );
+              const cleanupVerification = await callRead(
+                session,
+                site,
+                'messages.messages.list',
+                { offset: 0, limit: 100 },
+                path,
+              );
+              if (collectEntities(cleanupVerification).some((candidate) =>
+                looselyEqual(candidate.id, replacement.id))) {
+                throw new Error(
+                  `Joomla created replacement message ${replacement.id} during PATCH and its cleanup did not remove it.`,
+                );
+              }
+              return {
+                status: 'KNOWN_UPSTREAM_LIMITATION',
+                response: {
+                  originalReadBack: response,
+                  replacementVerification: collection,
+                  replacementCleanup,
+                  cleanupVerification,
+                },
+                expected: changes,
+                actual: {
+                  original: entity?.attributes,
+                  replacement,
+                  replacementRemoved: true,
+                },
+                reason: knownLimitation.explanation,
+                knownLimitation,
+              };
+            }
           });
         }
       }
@@ -1339,7 +1398,7 @@ function specialWriteInput(
     return typeof path !== 'string'
       ? new BlockedError('Media update requires a successful media.files.create.', ['media.files.create'])
       : {
-        path,
+          path: mediaUpdateRoutePath(path),
         data: {
             content: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=',
             override: true,
@@ -1843,13 +1902,23 @@ function assertChangedFields(
   baseId: string,
 ): Readonly<Record<string, unknown>> {
   const attributes = firstEntity(response)?.attributes ?? {};
-  const matched = Object.entries(changes)
-    .filter(([key]) => key !== 'password' && key !== 'password2')
-    .every(([key, value]) => looselyEqual(attributes[key], value));
+  const matched = entityMatchesFields(
+    { id: 0, attributes, label: baseId },
+    changes,
+  );
   if (!matched) {
     throw new Error(`Updated ${baseId} did not return the expected changed fields.`);
   }
   return attributes;
+}
+
+function entityMatchesFields(
+  entity: LiveFixtureRecord,
+  changes: Readonly<Record<string, unknown>>,
+): boolean {
+  return Object.entries(changes)
+    .filter(([key]) => key !== 'password' && key !== 'password2')
+    .every(([key, value]) => looselyEqual(entity.attributes[key], value));
 }
 
 function selectAttributes(
@@ -1865,6 +1934,12 @@ function selectAttributes(
 
 export function normalizeCreatedMediaPath(path: string): string {
   return path.replace(/^([A-Za-z0-9][A-Za-z0-9._-]*):\/\.\/(?=.)/u, '$1:/');
+}
+
+export function mediaUpdateRoutePath(path: string): string {
+  const separator = path.indexOf(':');
+  const relative = separator < 0 ? path : path.slice(separator + 1);
+  return relative.replace(/^\/+/u, '');
 }
 
 function looselyEqual(actual: unknown, expected: unknown): boolean {

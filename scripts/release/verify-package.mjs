@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
-const requiredExports = ['.', './adapters', './catalog', './config', './http', './security', './package.json'];
+const requiredExports = ['.', './adapters', './catalog', './config', './http', './live-test', './security', './package.json'];
 
 assert(manifest.name === '@joomengine/joomla-mcp', 'Unexpected npm package name.');
 assert(manifest.private !== true, 'The npm package must not be marked private.');
@@ -37,10 +37,12 @@ const requiredFiles = [
   'dist/index.d.ts',
   'dist/bin/joomla-mcp.js',
   'dist/bin/joomla-mcp-http.js',
+  'dist/bin/joomla-mcp-live-test.js',
   'dist/catalog/index.js',
   'dist/config/index.js',
   'dist/http/index.js',
   'dist/infrastructure/index.js',
+  'dist/live-test/index.js',
   'dist/security/index.js',
   'docs/LIBRARY.md',
   'docs/RELEASING.md',

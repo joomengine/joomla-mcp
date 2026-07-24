@@ -41,6 +41,19 @@ try {
     existsSync(join(consumer, 'node_modules/.bin/joomla-mcp-http')),
     'Missing joomla-mcp-http binary.',
   );
+  assert(
+    existsSync(join(consumer, 'node_modules/.bin/joomla-mcp-live-test')),
+    'Missing joomla-mcp-live-test binary.',
+  );
+  const liveHelp = run(
+    process.execPath,
+    [join(consumer, 'node_modules/@joomengine/joomla-mcp/dist/bin/joomla-mcp-live-test.js'), '--help'],
+    consumer,
+  );
+  assert(
+    liveHelp.stdout.includes('Joomla MCP live validation'),
+    'The packaged live-test binary did not expose its command help.',
+  );
 
   writeFileSync(join(consumer, 'verify.mjs'), `
 import assert from 'node:assert/strict';
@@ -55,6 +68,7 @@ import { ToolsetSchema } from '@joomengine/joomla-mcp/config';
 import { JwksJwtVerifier } from '@joomengine/joomla-mcp/security';
 import { JoomlaApiClient } from '@joomengine/joomla-mcp/adapters';
 import { createRemoteHttpServer } from '@joomengine/joomla-mcp/http';
+import { liveScenarioCatalog } from '@joomengine/joomla-mcp/live-test';
 
 assert.equal(JOOMLA_MCP_PACKAGE_NAME, '@joomengine/joomla-mcp');
 assert.equal(JOOMLA_MCP_VERSION, '${JSON.parse(readFileSync('package.json', 'utf8')).version}');
@@ -65,6 +79,7 @@ assert.equal(typeof ToolsetSchema.parse, 'function');
 assert.equal(typeof JwksJwtVerifier, 'function');
 assert.equal(typeof JoomlaApiClient, 'function');
 assert.equal(typeof createRemoteHttpServer, 'function');
+assert.equal(typeof liveScenarioCatalog, 'function');
 
 const configuration = {
   defaultSite: 'example',
@@ -96,6 +111,7 @@ import {
 } from '@joomengine/joomla-mcp';
 import type { JoomlaApiResponse } from '@joomengine/joomla-mcp/adapters';
 import type { AuthorizedPrincipal } from '@joomengine/joomla-mcp/http';
+import type { LiveTestSummary } from '@joomengine/joomla-mcp/live-test';
 
 const configuration: Configuration = {
   defaultSite: 'example',
@@ -119,9 +135,11 @@ const application: JoomlaMcpApplication = createJoomlaMcp({
 });
 const response: JoomlaApiResponse | undefined = undefined;
 const principal: AuthorizedPrincipal | undefined = undefined;
+const liveSummary: LiveTestSummary | undefined = undefined;
 void application;
 void response;
 void principal;
+void liveSummary;
 `);
   writeFileSync(join(consumer, 'tsconfig.json'), `${JSON.stringify({
     compilerOptions: {

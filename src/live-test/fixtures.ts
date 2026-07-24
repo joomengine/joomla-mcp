@@ -1,0 +1,376 @@
+import { joomlaCrudBases } from '../catalog/crud-bases.js';
+
+export interface LiveFixtureRecord {
+  readonly id: string | number;
+  readonly attributes: Readonly<Record<string, unknown>>;
+  readonly label: string;
+}
+
+export interface LiveFixtureContext {
+  readonly lane: string;
+  readonly seed: string;
+  get(baseId: string): LiveFixtureRecord | undefined;
+  reference(baseId: string): LiveFixtureRecord | undefined;
+}
+
+export interface CrudFixtureDefinition {
+  readonly baseId: string;
+  readonly dependencies: readonly string[];
+  create(context: LiveFixtureContext, purpose: 'showcase' | 'deletion'): Readonly<Record<string, unknown>>;
+  update(context: LiveFixtureContext, record: LiveFixtureRecord): Readonly<Record<string, unknown>>;
+}
+
+interface FixtureNames {
+  readonly title: string;
+  readonly description: string;
+  readonly alias: string;
+  readonly short: string;
+  readonly username: string;
+  readonly email: string;
+  readonly password: string;
+  readonly languageCode: string;
+}
+
+type Factory = (
+  context: LiveFixtureContext,
+  value: FixtureNames,
+) => Readonly<Record<string, unknown>>;
+
+const definitions = new Map<string, CrudFixtureDefinition>();
+
+function fixture(
+  baseId: string,
+  dependencies: readonly string[],
+  create: Factory,
+  update?: Factory,
+): void {
+  const definition: CrudFixtureDefinition = {
+    baseId,
+    dependencies: Object.freeze([...dependencies]),
+    create: (context: LiveFixtureContext, purpose: 'showcase' | 'deletion') =>
+      create(context, names(context, baseId, purpose)),
+    update: (context: LiveFixtureContext) => (update ?? ((_inner, value) => defaultUpdate(baseId, value)))(
+      context,
+      names(context, baseId, 'updated'),
+    ),
+  };
+  definitions.set(baseId, Object.freeze(definition));
+}
+
+fixture('content.categories', [], (_context, value) => category(value));
+fixture('banners.clients', [], (_context, value) => ({
+  name: value.title, contact: 'Joomla MCP live test', email: value.email, state: 1,
+}));
+fixture('banners.categories', [], (_context, value) => category(value));
+fixture('contacts.categories', [], (_context, value) => category(value));
+fixture('menus.site', [], (_context, value) => ({
+  menutype: value.short, title: value.title, description: value.description,
+}));
+fixture('menus.administrator', [], (_context, value) => ({
+  menutype: value.short, title: value.title, description: value.description,
+}));
+fixture('users.groups', [], (_context, value) => ({ parent_id: 2, title: value.title }));
+fixture('users.levels', [], (_context, value) => ({ title: value.title, rules: [2], ordering: 1 }));
+fixture('tags.tags', [], (_context, value) => ({
+  parent_id: 1, title: value.title, alias: value.alias, published: 1, access: 1, language: '*',
+}));
+fixture('templates.site-styles', [], (context, value) => ({
+  template: templateName(context, 'templates.site-styles', 'cassiopeia'),
+  title: value.title, home: '0', params: {},
+}));
+fixture('templates.administrator-styles', [], (context, value) => ({
+  template: templateName(context, 'templates.administrator-styles', 'atum'),
+  title: value.title, home: '0', params: {},
+}));
+fixture('languages.content', [], (_context, value) => ({
+  lang_code: value.languageCode,
+  title: value.title,
+  title_native: value.title,
+  sef: value.languageCode.slice(0, 2).toLowerCase(),
+  image: 'en_gb',
+  description: value.description,
+  published: 1,
+  access: 1,
+}));
+fixture('newsfeeds.categories', [], (_context, value) => category(value));
+fixture('field-groups.content-articles', [], (_context, value) => fieldGroup(value));
+fixture('field-groups.content-categories', [], (_context, value) => fieldGroup(value));
+fixture('field-groups.contact', [], (_context, value) => fieldGroup(value));
+fixture('field-groups.contact-mail', [], (_context, value) => fieldGroup(value));
+fixture('field-groups.contact-categories', [], (_context, value) => fieldGroup(value));
+fixture('field-groups.users', [], (_context, value) => fieldGroup(value));
+
+fixture('content.articles', ['content.categories'], (context, value) => ({
+  title: value.title,
+  alias: value.alias,
+  articletext: `<p>${value.description}</p>`,
+  state: 1,
+  catid: requiredId(context, 'content.categories'),
+  access: 1,
+  language: '*',
+}));
+fixture('banners.banners', ['banners.clients', 'banners.categories'], (context, value) => ({
+  cid: requiredId(context, 'banners.clients'),
+  catid: requiredId(context, 'banners.categories'),
+  type: 1,
+  name: value.title,
+  alias: value.alias,
+  custombannercode: `<span>${value.description}</span>`,
+  state: 1,
+  language: '*',
+}));
+fixture('contacts.contacts', ['contacts.categories'], (context, value) => ({
+  name: value.title,
+  alias: value.alias,
+  catid: requiredId(context, 'contacts.categories'),
+  email_to: value.email,
+  published: 1,
+  access: 1,
+  language: '*',
+  misc: value.description,
+}));
+fixture('menus.site-items', ['menus.site'], (context, value) => ({
+  menutype: requiredAttribute(context, 'menus.site', 'menutype'),
+  title: value.title,
+  alias: value.alias,
+  link: 'index.php?option=com_content&view=featured',
+  type: 'component',
+  published: 1,
+  parent_id: 1,
+  access: 1,
+  language: '*',
+}));
+fixture('menus.administrator-items', ['menus.administrator'], (context, value) => ({
+  menutype: requiredAttribute(context, 'menus.administrator', 'menutype'),
+  title: value.title,
+  alias: value.alias,
+  link: 'index.php?option=com_cpanel&view=cpanel',
+  type: 'component',
+  published: 1,
+  parent_id: 1,
+  access: 1,
+  language: '*',
+}));
+fixture('modules.site', [], (_context, value) => ({
+  title: value.title,
+  content: `<p>${value.description}</p>`,
+  module: 'mod_custom',
+  position: 'sidebar-right',
+  published: 1,
+  showtitle: 1,
+  access: 1,
+  language: '*',
+  assigned: [0],
+}));
+fixture('modules.administrator', [], (_context, value) => ({
+  title: value.title,
+  content: `<p>${value.description}</p>`,
+  module: 'mod_custom',
+  position: 'cpanel',
+  published: 1,
+  showtitle: 1,
+  access: 1,
+  language: '*',
+  assigned: [0],
+}));
+fixture('users.users', [], (_context, value) => ({
+  name: value.title,
+  username: value.username,
+  email: value.email,
+  password: value.password,
+  password2: value.password,
+  block: 0,
+  sendEmail: 0,
+  groups: [2],
+}));
+fixture('messages.messages', ['users.users'], (context, value) => ({
+  user_id_to: requiredId(context, 'users.users'),
+  folder_id: 0,
+  state: 0,
+  priority: 0,
+  subject: value.title,
+  message: value.description,
+}));
+fixture('newsfeeds.feeds', ['newsfeeds.categories'], (context, value) => ({
+  catid: requiredId(context, 'newsfeeds.categories'),
+  name: value.title,
+  alias: value.alias,
+  link: `https://example.invalid/${value.alias}.xml`,
+  published: 1,
+  numarticles: 5,
+  cache_time: 15,
+  access: 1,
+  language: '*',
+}));
+fixture('redirects.redirects', [], (_context, value) => ({
+  old_url: `https://example.invalid/old/${value.alias}`,
+  new_url: `https://example.invalid/new/${value.alias}`,
+  comment: value.description,
+  published: 1,
+  header: 301,
+}));
+
+for (const baseId of [
+  'fields.content-articles',
+  'fields.content-categories',
+  'fields.contact',
+  'fields.contact-mail',
+  'fields.contact-categories',
+  'fields.users',
+] as const) {
+  const groupId = baseId === 'fields.content-articles'
+    ? 'field-groups.content-articles'
+    : baseId === 'fields.content-categories'
+      ? 'field-groups.content-categories'
+      : baseId === 'fields.contact'
+        ? 'field-groups.contact'
+        : baseId === 'fields.contact-mail'
+          ? 'field-groups.contact-mail'
+          : baseId === 'fields.contact-categories'
+            ? 'field-groups.contact-categories'
+            : 'field-groups.users';
+  fixture(baseId, [groupId], (context, value) => ({
+    group_id: requiredId(context, groupId),
+    title: value.title,
+    name: value.alias.replaceAll('-', '_'),
+    label: value.title,
+    type: 'text',
+    state: 1,
+    required: 0,
+    access: 1,
+    language: '*',
+  }));
+}
+
+export const crudFixtureDefinitions: ReadonlyMap<string, CrudFixtureDefinition> = definitions;
+
+export const crudFixtureOrder: readonly string[] = Object.freeze(topologicalOrder());
+
+export function assertCompleteCrudFixtures(): void {
+  const catalogueIds = new Set(joomlaCrudBases.map((base) => base.id));
+  const missing = [...catalogueIds].filter((id) => !definitions.has(id));
+  const extra = [...definitions.keys()].filter((id) => !catalogueIds.has(id));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(`Live CRUD fixtures are incomplete (missing: ${missing.join(', ') || 'none'}; extra: ${extra.join(', ') || 'none'}).`);
+  }
+}
+
+function topologicalOrder(): string[] {
+  assertCompleteCrudFixtures();
+  const ordered: string[] = [];
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (id: string): void => {
+    if (visited.has(id)) return;
+    if (visiting.has(id)) throw new Error(`Live CRUD fixture dependency cycle at ${id}.`);
+    visiting.add(id);
+    for (const dependency of definitions.get(id)?.dependencies ?? []) visit(dependency);
+    visiting.delete(id);
+    visited.add(id);
+    ordered.push(id);
+  };
+
+  for (const base of joomlaCrudBases) visit(base.id);
+  return ordered;
+}
+
+function names(
+  context: LiveFixtureContext,
+  baseId: string,
+  purpose: 'showcase' | 'deletion' | 'updated',
+): FixtureNames {
+  const compact = `${context.seed}-${context.lane}-${baseId}-${purpose}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-|-$/gu, '')
+    .slice(0, 54);
+  const hash = shortHash(compact);
+  const languageBytes = [
+    parseInt(hash.slice(0, 2), 16),
+    parseInt(hash.slice(2, 4), 16),
+    parseInt(hash.slice(4, 6), 16),
+    parseInt(hash.slice(6, 8), 16),
+  ];
+  return {
+    title: `Joomla MCP live ${purpose} ${baseId} ${hash}`,
+    description: `Generated by Joomla MCP live test ${context.seed}; lane ${context.lane}; ${purpose}.`,
+    alias: `jmcp-${compact.slice(0, 38)}-${hash}`,
+    short: `jmcp${hash}${purpose[0]}`.slice(0, 20),
+    username: `jmcp_${hash}_${purpose[0]}`,
+    email: `jmcp-${hash}-${purpose[0]}@example.invalid`,
+    password: `Jmcp-${hash}-Live!9x`,
+    languageCode:
+      `${letter(languageBytes[0]!, false)}${letter(languageBytes[1]!, false)}-` +
+      `${letter(languageBytes[2]!, true)}${letter(languageBytes[3]!, true)}`,
+  };
+}
+
+function category(value: FixtureNames): Readonly<Record<string, unknown>> {
+  return {
+    parent_id: 1,
+    title: value.title,
+    alias: value.alias,
+    description: value.description,
+    published: 1,
+    access: 1,
+    language: '*',
+  };
+}
+
+function fieldGroup(value: FixtureNames): Readonly<Record<string, unknown>> {
+  return {
+    title: value.title,
+    description: value.description,
+    state: 1,
+    access: 1,
+    language: '*',
+  };
+}
+
+function defaultUpdate(
+  baseId: string,
+  value: FixtureNames,
+): Readonly<Record<string, unknown>> {
+  if (baseId === 'banners.banners' || baseId === 'banners.clients' ||
+      baseId === 'contacts.contacts' || baseId === 'newsfeeds.feeds') {
+    return { name: value.title };
+  }
+  if (baseId === 'users.users') return { name: value.title };
+  if (baseId === 'messages.messages') return { subject: value.title };
+  if (baseId === 'redirects.redirects') return { comment: value.description };
+  return { title: value.title };
+}
+
+function requiredId(context: LiveFixtureContext, baseId: string): string | number {
+  const record = context.get(baseId);
+  if (record === undefined) throw new Error(`Fixture prerequisite ${baseId} has no created record.`);
+  return record.id;
+}
+
+function requiredAttribute(context: LiveFixtureContext, baseId: string, name: string): unknown {
+  const value = context.get(baseId)?.attributes[name];
+  if (value === undefined || value === null || value === '') {
+    throw new Error(`Fixture prerequisite ${baseId} has no ${name} attribute.`);
+  }
+  return value;
+}
+
+function templateName(context: LiveFixtureContext, baseId: string, fallback: string): string {
+  const value = context.reference(baseId)?.attributes['template'];
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function shortHash(value: string): string {
+  let hash = 2_166_136_261;
+  for (const character of value) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function letter(value: number, upper: boolean): string {
+  const codePoint = (upper ? 65 : 97) + (value % 26);
+  return String.fromCodePoint(codePoint);
+}

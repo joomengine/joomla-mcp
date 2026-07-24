@@ -74,8 +74,8 @@ export const crudWriteFieldsByBaseId: Readonly<Record<string, readonly string[]>
     'metadesc', 'metakey', 'metadata', 'images', 'urls', 'language', 'publish_up',
     'publish_down', 'ordering',
   ]),
-  'templates.site-styles': Object.freeze(['home', 'title', 'params']),
-  'templates.administrator-styles': Object.freeze(['home', 'title', 'params']),
+  'templates.site-styles': Object.freeze(['template', 'home', 'title', 'params']),
+  'templates.administrator-styles': Object.freeze(['template', 'home', 'title', 'params']),
   'languages.content': Object.freeze([
     'lang_code', 'title', 'title_native', 'sef', 'image', 'description', 'metadesc',
     'sitename', 'published', 'access', 'ordering',

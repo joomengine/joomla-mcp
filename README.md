@@ -30,6 +30,9 @@ TypeScript is a Tier 1 MCP SDK while PHP is Tier 3. For convenience, TypeScript 
 - MCP over stdio or authenticated Streamable HTTP.
 - Versioned ESM package with typed root and subpath exports for host applications.
 - OCI image, Docker Compose, and systemd deployment foundations.
+- Interactive and unattended catalogue-complete live validation with
+  deterministic Joomla fixtures, safety confirmation, and redacted
+  Markdown/JSON/JUnit failure evidence.
 
 The generated [API action reference](docs/API_ACTIONS.md) lists every route, semantic ID, accepted field set, transport, risk, and source-only gate. The release truth table is in [docs/COVERAGE.md](docs/COVERAGE.md). An implemented action is not described as production-verified until it has passed the corresponding live Joomla matrix.
 
@@ -46,7 +49,7 @@ The generated [API action reference](docs/API_ACTIONS.md) lists every route, sem
 Install the public, versioned package:
 
 ```bash
-npm install @joomengine/joomla-mcp@^0.6.0
+npm install @joomengine/joomla-mcp@^0.7.0
 ```
 
 Create a transport-neutral application without starting a process or binding a
@@ -93,8 +96,8 @@ export JOOMLA_MCP_APPROVAL_SECRET="$(openssl rand -hex 32)"
 
 Do not put production secrets in shell history, source control, client configuration, or command arguments. Use the operating-system service manager or a secret store.
 
-To build the companion and prove a fresh installation against the repository's
-disposable Joomla 6.1/JoomEngine fixture:
+To build the companion and prove a fresh installation plus the complete live
+MCP matrix against the repository's disposable Joomla 6.1/JoomEngine fixture:
 
 ```bash
 php companion/build.php
@@ -102,12 +105,24 @@ npm run test:fixture:joomengine
 ```
 
 This requires Docker with Compose v2. The fixture uses fresh isolated volumes,
-publishes no host ports, performs its HTTP checks as `www-data` inside the
-internal fixture network, generates throwaway credentials, records non-secret
-image/package evidence, inventories all installed CLI commands, captures native
-help without executing discovered commands, and removes the site and database after the run. It is
-an install and native-command smoke gate, not permission, mutation, or recovery
-certification.
+publishes Joomla only on a random loopback port, generates throwaway
+credentials and an ephemeral API token, inventories installed CLI contracts,
+then exercises the full action catalogue through API/companion and
+stdio/Streamable HTTP before removing the site and database. Failures upload
+redacted Markdown, JSON, JUnit, per-action evidence, and runtime logs before
+teardown. See [live validation](docs/LIVE_TESTING.md).
+
+To select a live demo site interactively:
+
+```bash
+npm run build
+npx joomla-mcp-live-test
+```
+
+Mutation profiles print the exact target and require a typed hostname/run-seed
+acknowledgement. Unattended mutation runs require explicit
+`--confirm-mutations`; the full privileged profile additionally requires
+`--disposable`.
 
 ## Use over stdio
 
@@ -207,6 +222,7 @@ Do not enable destructive or privileged toolsets until their live and recovery g
 - [Action coverage and release status](docs/COVERAGE.md)
 - [Deployment, upgrades, and rollback](docs/DEPLOYMENT.md)
 - [Fixture setup and live verification](docs/FIXTURES.md)
+- [Interactive, unattended, and CI live validation](docs/LIVE_TESTING.md)
 - [Operations and monitoring](docs/OPERATIONS.md)
 - [PHP companion](docs/PHP_COMPANION.md)
 - [Remote Streamable HTTP](docs/REMOTE_HTTP.md)

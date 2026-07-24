@@ -10,7 +10,7 @@ registration code.
 Pin a compatible version in the consuming application:
 
 ```bash
-npm install @joomengine/joomla-mcp@^0.6.0
+npm install @joomengine/joomla-mcp@^0.7.0
 ```
 
 For exact, reproducible deployments:
@@ -18,7 +18,7 @@ For exact, reproducible deployments:
 ```json
 {
   "dependencies": {
-    "@joomengine/joomla-mcp": "0.6.0"
+    "@joomengine/joomla-mcp": "0.7.0"
   }
 }
 ```
@@ -34,7 +34,7 @@ release asset:
 ```json
 {
   "dependencies": {
-    "@joomengine/joomla-mcp": "https://github.com/joomengine/joomla-mcp/releases/download/v0.6.0/joomengine-mcp-for-joomla-v0.6.0.tgz"
+    "@joomengine/joomla-mcp": "https://github.com/joomengine/joomla-mcp/releases/download/v0.7.0/joomengine-mcp-for-joomla-v0.7.0.tgz"
   }
 }
 ```
@@ -51,11 +51,16 @@ attestations.
 | `@joomengine/joomla-mcp/catalog` | Complete source-backed Joomla action catalogue and resolution helpers |
 | `@joomengine/joomla-mcp/adapters` | Joomla API and companion CLI transport contracts and default implementations |
 | `@joomengine/joomla-mcp/http` | Authenticated Streamable HTTP gateway, authorization, limits, audit, and request-policy contracts |
+| `@joomengine/joomla-mcp/live-test` | Catalogue-complete live-test runner, scenario/fixture metadata, evidence writers, and public result types |
 | `@joomengine/joomla-mcp/security` | Confirmation, operator grant, fingerprinting, and JWKS verification primitives |
 | `@joomengine/joomla-mcp/package.json` | Package metadata for tooling that explicitly needs it |
 
 JavaScript and TypeScript consumers use the same ESM exports. Declaration
 files and source maps are included in the package.
+
+The packaged `joomla-mcp-live-test` binary uses the live-test subpath. Hosts
+may call `runLiveTest()` programmatically with the same explicit safety
+options and consume `LiveTestSummary`; see [live validation](LIVE_TESTING.md).
 
 ## Create an application
 

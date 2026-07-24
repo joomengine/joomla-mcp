@@ -39,6 +39,38 @@ describe('RawConfigurationSchema', () => {
     expect(result.error?.message).toContain('defaultSite');
   });
 
+  it('allows HTTP only for an explicitly opted-in loopback fixture', () => {
+    const allowed = RawConfigurationSchema.safeParse({
+      defaultSite: 'fixture',
+      sites: {
+        fixture: {
+          toolsets: ['discovery'],
+          api: {
+            baseUrl: 'http://127.0.0.1:8080',
+            tokenEnv: 'JOOMLA_TOKEN',
+            allowInsecureLoopback: true,
+          },
+        },
+      },
+    });
+    const forbidden = RawConfigurationSchema.safeParse({
+      defaultSite: 'fixture',
+      sites: {
+        fixture: {
+          toolsets: ['discovery'],
+          api: {
+            baseUrl: 'http://192.0.2.10',
+            tokenEnv: 'JOOMLA_TOKEN',
+            allowInsecureLoopback: true,
+          },
+        },
+      },
+    });
+
+    expect(allowed.success).toBe(true);
+    expect(forbidden.success).toBe(false);
+  });
+
   it('validates a fixed HTTPS OAuth/JWKS remote transport policy', () => {
     const result = RawConfigurationSchema.safeParse({
       defaultSite: 'production',

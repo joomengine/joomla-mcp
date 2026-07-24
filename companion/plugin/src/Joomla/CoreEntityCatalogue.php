@@ -278,13 +278,13 @@ final class CoreEntityCatalogue
             new CoreEntityDefinition(
                 'templates.site-styles', 'site template styles', 'com_templates', 'Styles', 'Style',
                 ['id', 'template', 'client_id', 'home', 'title', 'params'],
-                ['home', 'title', 'params'],
+                ['template', 'home', 'title', 'params'],
                 ['client_id' => 0], ['filter.client_id' => 0], supportsState: false,
             ),
             new CoreEntityDefinition(
                 'templates.administrator-styles', 'administrator template styles', 'com_templates', 'Styles', 'Style',
                 ['id', 'template', 'client_id', 'home', 'title', 'params'],
-                ['home', 'title', 'params'],
+                ['template', 'home', 'title', 'params'],
                 ['client_id' => 1], ['filter.client_id' => 1], supportsState: false, highRisk: true,
             ),
             new CoreEntityDefinition(

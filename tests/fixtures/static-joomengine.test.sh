@@ -8,6 +8,7 @@ readonly SCRIPT_DIRECTORY
 REPOSITORY_ROOT="$(cd -- "${SCRIPT_DIRECTORY}/../.." && pwd -P)"
 readonly REPOSITORY_ROOT
 COMPOSE_FILE="tests/fixtures/joomengine/compose.yaml"
+API_BOOTSTRAP="tests/fixtures/joomengine/bootstrap-api-token.php"
 RUNNER="scripts/fixtures/run-joomengine.sh"
 CORE_CLI_COMMANDS_FILE="tests/fixtures/joomengine/core-cli-commands.txt"
 
@@ -28,7 +29,7 @@ assert_not_contains() {
 
 cd -- "$REPOSITORY_ROOT"
 
-for file in "$COMPOSE_FILE" "$RUNNER" "$CORE_CLI_COMMANDS_FILE" companion/plugin/script.php; do
+for file in "$COMPOSE_FILE" "$RUNNER" "$CORE_CLI_COMMANDS_FILE" "$API_BOOTSTRAP" companion/plugin/script.php; do
   [[ -s "$file" ]] || fail "required file is missing or empty: $file"
 done
 
@@ -46,7 +47,8 @@ assert_not_contains "$COMPOSE_FILE" 'cache:clean'
 assert_not_contains "$COMPOSE_FILE" 'extension:list'
 assert_contains "$COMPOSE_FILE" 'read_only: true'
 assert_contains "$COMPOSE_FILE" 'internal: true'
-assert_not_contains "$COMPOSE_FILE" 'ports:'
+assert_contains "$COMPOSE_FILE" '"127.0.0.1::80"'
+assert_contains "$COMPOSE_FILE" 'JOOMLA_FIXTURE_API_BOOTSTRAP'
 assert_not_contains "$COMPOSE_FILE" ':latest'
 assert_not_contains "$COMPOSE_FILE" 'privileged: true'
 assert_not_contains "$COMPOSE_FILE" 'network_mode: host'
@@ -65,6 +67,11 @@ assert_contains "$RUNNER" 'php cli/joomla.php list --no-interaction --no-ansi'
 assert_contains "$RUNNER" 'timeout --signal=TERM --kill-after=2s 20s'
 assert_contains "$RUNNER" 'api/index.php/v1/content/articles'
 assert_contains "$RUNNER" 'docker image inspect'
+assert_contains "$RUNNER" 'joomla-mcp-live-test.js'
+assert_contains "$RUNNER" '--confirm-mutations'
+assert_contains "$RUNNER" '--disposable'
+assert_contains "$RUNNER" '--mcp-transport all'
+assert_contains "$RUNNER" '--joomla-path all'
 assert_not_contains "$RUNNER" 'eval '
 
 [[ "$(sed '/^$/d' "$CORE_CLI_COMMANDS_FILE" | wc -l | tr -d '[:space:]')" == '38' ]] \
@@ -84,6 +91,7 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
   : >"${temporary_directory}/pkg_joomlamcp.zip"
   JOOMLA_FIXTURE_ADMIN_PASSWORD='fixture-admin-password-12345' \
   JOOMLA_FIXTURE_COMPANION_ZIP="${temporary_directory}/pkg_joomlamcp.zip" \
+  JOOMLA_FIXTURE_API_BOOTSTRAP="${REPOSITORY_ROOT}/${API_BOOTSTRAP}" \
   JOOMLA_FIXTURE_DATABASE_NAME='joomlamcp' \
   JOOMLA_FIXTURE_DATABASE_PASSWORD='fixture-database-password' \
   JOOMLA_FIXTURE_DATABASE_ROOT_PASSWORD='fixture-root-password' \

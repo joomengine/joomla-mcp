@@ -48,11 +48,17 @@ services:
     init: true
     networks:
       - fixture
+    ports:
+      - "127.0.0.1::80"
     restart: "no"
     volumes:
       - type: bind
         source: "${JOOMLA_FIXTURE_COMPANION_ZIP:?Set JOOMLA_FIXTURE_COMPANION_ZIP}"
         target: /fixtures/pkg_joomlamcp.zip
+        read_only: true
+      - type: bind
+        source: "${JOOMLA_FIXTURE_API_BOOTSTRAP:?Set JOOMLA_FIXTURE_API_BOOTSTRAP}"
+        target: /fixtures/bootstrap-api-token.php
         read_only: true
       - joomla-data:/var/www/html
 

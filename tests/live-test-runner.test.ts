@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   entityFromMutation,
+  mediaAdapterSelector,
   mediaDirectoryPath,
   mediaUpdateRoutePath,
   normalizeCreatedMediaPath,
@@ -76,6 +77,12 @@ describe('live-test runner', () => {
   it('uses a default-adapter directory-relative path for Joomla media content updates', () => {
     expect(mediaUpdateRoutePath('local-images:/live-run/fixture.png')).toBe('live-run/fixture.png');
     expect(mediaUpdateRoutePath('folder/fixture.png')).toBe('folder/fixture.png');
+  });
+
+  it('selects the created file adapter without requesting a media move', () => {
+    expect(mediaAdapterSelector('local-images:/live-run/fixture.png')).toBe('local-images:');
+    expect(() => mediaAdapterSelector('live-run/fixture.png'))
+      .toThrow('Media fixture path must identify its adapter');
   });
 
   it('derives the adapter-qualified directory used by the media fixture', () => {

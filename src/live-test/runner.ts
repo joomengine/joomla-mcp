@@ -1400,7 +1400,8 @@ function specialWriteInput(
       ? new BlockedError('Media update requires a successful media.files.create.', ['media.files.create'])
       : {
           path: mediaUpdateRoutePath(path),
-        data: {
+          data: {
+            path: mediaAdapterSelector(path),
             content: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=',
             override: true,
           },
@@ -1997,6 +1998,14 @@ export function mediaUpdateRoutePath(path: string): string {
   const separator = path.indexOf(':');
   const relative = separator < 0 ? path : path.slice(separator + 1);
   return relative.replace(/^\/+/u, '');
+}
+
+export function mediaAdapterSelector(path: string): string {
+  const separator = path.indexOf(':');
+  if (separator <= 0) {
+    throw new Error(`Media fixture path must identify its adapter: ${path}`);
+  }
+  return `${path.slice(0, separator)}:`;
 }
 
 export function mediaDirectoryPath(path: string): string {

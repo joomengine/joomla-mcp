@@ -152,6 +152,44 @@ test('dispatcher executes an explicitly registered action', static function () u
     expect($result['ok'] === true && $result['result']['value'] === 'ok', 'Registered action did not execute.');
 });
 
+test('dispatcher discards incidental action output', static function () use ($allow): void {
+    $noisyAction = new class implements ActionInterface {
+        public function descriptor(): ActionDescriptor
+        {
+            return new ActionDescriptor(
+                'test.noisy',
+                'Return one value after incidental Joomla output.',
+                'read',
+                [],
+                ['type' => 'object', 'additionalProperties' => false],
+                ['type' => 'object'],
+            );
+        }
+
+        public function execute(array $input): array
+        {
+            echo "incidental Joomla output\n";
+
+            return ['value' => 'clean'];
+        }
+    };
+    $service = new DispatchService(new ActionRegistry([$noisyAction]), $allow);
+
+    ob_start();
+
+    try {
+        $encoded = $service->handleJson(
+            '{"protocol":"joomla-mcp/1","id":10,"action":"test.noisy","input":{}}',
+        );
+    } finally {
+        $leaked = ob_get_clean();
+    }
+
+    $result = jsonObject($encoded);
+    expect($leaked === '', 'Action output leaked outside the dispatcher.');
+    expect($result['ok'] === true && $result['result']['value'] === 'clean', 'Noisy action corrupted its JSON response.');
+});
+
 test('dispatcher rejects unknown actions', static function () use ($allow): void {
     $service = new DispatchService(new ActionRegistry(), $allow);
     $result = jsonObject($service->handleJson(

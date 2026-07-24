@@ -1385,9 +1385,10 @@ function specialWriteInput(
         };
   }
   if (actionId === 'media.files.create') {
+    const directory = `joomla-mcp-live-${safeSegment(seed)}-${safeSegment(state.lane)}`;
     return {
       data: {
-        path: `local-images:joomla-mcp-live-${safeSegment(seed)}-${safeSegment(state.lane)}.png`,
+        path: `local-images:${directory}/fixture.png`,
         content: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
         override: false,
       },
@@ -1499,22 +1500,36 @@ function rememberSpecialWrite(
 ): void {
   if (actionId === 'media.files.create') {
     const data = asRecord(input['data']);
-    const responsePath = findDeepValue(response, 'path');
+    const responsePath = findDeepValue(asRecord(response)['applied'] ?? response, 'path');
     const mediaPath = typeof responsePath === 'string'
       ? normalizeCreatedMediaPath(responsePath)
       : data['path'];
     if (typeof mediaPath === 'string') {
+      const directoryPath = mediaDirectoryPath(mediaPath);
       state.reads.set('live.media.path', mediaPath);
+      state.reads.set('live.media.directory', directoryPath);
       state.created.push({
         lane: state.lane,
         family: 'media.files',
         id: mediaPath,
         label: `Live-test media ${mediaPath}`,
       });
+      state.created.push({
+        lane: state.lane,
+        family: 'media.directories',
+        id: directoryPath,
+        label: `Live-test media directory ${directoryPath}`,
+      });
     }
   }
   if (actionId === 'media.files.delete' && typeof input['path'] === 'string') {
     removeRetainedRecord(state, 'media.files', input['path']);
+    const directoryPath = state.reads.get('live.media.directory');
+    if (typeof directoryPath === 'string') {
+      removeRetainedRecord(state, 'media.directories', directoryPath);
+      state.reads.delete('live.media.directory');
+    }
+    state.reads.delete('live.media.path');
   }
   if (
     actionId === 'languages.overrides.site.create' ||
@@ -1568,6 +1583,46 @@ async function executeSpecialWrite(
   state: LaneState,
   seed: string,
 ): Promise<unknown> {
+  let directoryCreation: unknown;
+  if (scenario.id === 'media.files.create') {
+    const filePath = asRecord(input['data'])['path'];
+    if (typeof filePath !== 'string') {
+      throw new Error('Media fixture creation requires a deterministic file path.');
+    }
+    const directoryPath = mediaDirectoryPath(filePath);
+    directoryCreation = await callWrite(
+      session,
+      site,
+      scenario.id,
+      { data: { path: directoryPath, override: false } },
+      path,
+    );
+    try {
+      const applied = await callWrite(session, site, scenario.id, input, path);
+      const verification = await callRead(
+        session,
+        site,
+        'media.files.get',
+        { path: filePath },
+        path,
+      );
+      return { applied, directoryCreation, verification };
+    } catch (error) {
+      try {
+        await callWrite(
+          session,
+          site,
+          'media.files.delete',
+          { path: directoryPath },
+          path,
+        );
+      } catch {
+        // Preserve the file-creation failure as the primary diagnostic.
+      }
+      throw error;
+    }
+  }
+
   const applied = await callWrite(session, site, scenario.id, input, path);
 
   if (scenario.id === 'configuration.application.update') {
@@ -1657,30 +1712,32 @@ async function executeSpecialWrite(
     }, path);
     return { applied, verification, restoration: restored };
   }
-  if (scenario.id === 'media.files.create') {
-    const mediaPath = asRecord(input['data'])['path'];
-    const verification = typeof mediaPath === 'string'
-      ? await callRead(session, site, 'media.files.get', { path: mediaPath }, path)
-      : undefined;
-    return { applied, verification };
-  }
   if (scenario.id === 'media.files.update') {
-    const mediaPath = input['path'];
-    const verification = typeof mediaPath === 'string'
-      ? await callRead(session, site, 'media.files.get', { path: mediaPath }, path)
+    const canonicalPath = state.reads.get('live.media.path');
+    const verification = typeof canonicalPath === 'string'
+      ? await callRead(session, site, 'media.files.get', { path: canonicalPath }, path)
       : undefined;
     return { applied, verification };
   }
   if (scenario.id === 'media.files.delete') {
-    try {
-      await callRead(session, site, 'media.files.get', { path: input['path'] }, path);
-      throw new Error(`Deleted media path ${String(input['path'])} remains readable.`);
-    } catch (error) {
-      if (!(error instanceof LiveMcpToolError) || !/(?:404|not found|does not exist)/iu.test(error.message)) {
-        throw error;
-      }
+    await assertMediaAbsent(session, site, input['path'], path);
+    const directoryPath = state.reads.get('live.media.directory');
+    let directoryDeletion: unknown;
+    if (typeof directoryPath === 'string') {
+      directoryDeletion = await callWrite(
+        session,
+        site,
+        scenario.id,
+        { path: directoryPath },
+        path,
+      );
+      await assertMediaAbsent(session, site, directoryPath, path);
     }
-    return { applied, verification: { absent: true } };
+    return {
+      applied,
+      ...(directoryDeletion === undefined ? {} : { directoryDeletion }),
+      verification: { absent: true, directoryAbsent: directoryDeletion !== undefined },
+    };
   }
 
   void seed;
@@ -1940,6 +1997,33 @@ export function mediaUpdateRoutePath(path: string): string {
   const separator = path.indexOf(':');
   const relative = separator < 0 ? path : path.slice(separator + 1);
   return relative.replace(/^\/+/u, '');
+}
+
+export function mediaDirectoryPath(path: string): string {
+  const separator = path.indexOf(':');
+  const prefix = separator < 0 ? '' : path.slice(0, separator + 1);
+  const relative = (separator < 0 ? path : path.slice(separator + 1)).replace(/^\/+/u, '');
+  const directory = relative.slice(0, Math.max(0, relative.lastIndexOf('/')));
+  if (directory.length === 0) {
+    throw new Error(`Media fixture path must include a directory: ${path}`);
+  }
+  return `${prefix}${directory}`;
+}
+
+async function assertMediaAbsent(
+  session: LiveMcpSession,
+  site: string,
+  mediaPath: unknown,
+  path: LiveJoomlaPath,
+): Promise<void> {
+  try {
+    await callRead(session, site, 'media.files.get', { path: mediaPath }, path);
+    throw new Error(`Deleted media path ${String(mediaPath)} remains readable.`);
+  } catch (error) {
+    if (!(error instanceof LiveMcpToolError) || !/(?:404|not found|does not exist)/iu.test(error.message)) {
+      throw error;
+    }
+  }
 }
 
 function looselyEqual(actual: unknown, expected: unknown): boolean {

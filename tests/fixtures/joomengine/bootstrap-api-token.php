@@ -249,6 +249,7 @@ $updateManifest = sprintf(
     <description>Local disposable-fixture package for endpoint validation.</description>
     <element>joomla</element>
     <type>file</type>
+    <client>site</client>
     <version>%s</version>
     <downloads>
       <downloadurl type="full" format="zip">%s</downloadurl>

@@ -57,7 +57,10 @@ CI.
 
 The API token is captured in a mode-0600 temporary file, exported only to the
 live-test process, deleted before evidence generation completes, and covered by
-recursive report redaction. The host port binds only to loopback. Full runner
+recursive report redaction. MariaDB remains exclusively on the internal fixture
+network. Joomla also joins a dedicated bridge edge because Docker suppresses
+published ports for containers attached only to an internal network; that edge
+publishes only an ephemeral loopback listener and no database port. Full runner
 usage, safety controls, statuses, and failure investigation are documented in
 [Live Joomla validation](LIVE_TESTING.md).
 

@@ -48,6 +48,7 @@ services:
     init: true
     networks:
       - fixture
+      - host-edge
     ports:
       - "127.0.0.1:0:80"
     restart: "no"
@@ -65,6 +66,8 @@ services:
 networks:
   fixture:
     internal: true
+  host-edge:
+    driver: bridge
 
 volumes:
   joomla-data:

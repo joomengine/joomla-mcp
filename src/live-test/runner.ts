@@ -927,6 +927,22 @@ function trashData(
   attributes: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> | undefined {
   if (baseId === 'contacts.contacts') return Object.freeze({ published: -2 });
+  if (baseId === 'modules.site' || baseId === 'modules.administrator') {
+    const params = asRecord(attributes['params']);
+    return Object.freeze({
+      ...selectAttributes(attributes, [
+        'title', 'content', 'module', 'position', 'showtitle', 'access',
+        'language', 'assigned',
+      ]),
+      published: -2,
+      params: {
+        ...params,
+        layout: typeof params['layout'] === 'string' && params['layout'].length > 0
+          ? params['layout']
+          : '_:default',
+      },
+    });
+  }
   if (baseId === 'menus.site-items' || baseId === 'menus.administrator-items') {
     return Object.freeze({
       ...selectAttributes(attributes, [

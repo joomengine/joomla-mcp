@@ -147,8 +147,14 @@ npm run test:live -- \
 ```
 
 `--fail-fast` stops at the first unexpected failure. The default continues
-independent scenarios, links dependent failures to their root cause, writes
-all available evidence, and exits nonzero after the report is complete.
+all independent scenarios, links dependent failures to their root cause, and
+exits nonzero only after the complete report is written. Before exiting, the
+command prints every direct `FAIL` and `CLEANUP_FAILED` result to standard
+output with its action, phase, MCP/Joomla lane, failure code, reason,
+expected/actual values when available, and exact reproduction command. It then
+groups blocked descendants under their originating attempt so GitHub Actions
+logs expose the complete actionable failure set without counting one root cause
+as dozens of separate defects.
 
 ## Operation flow
 

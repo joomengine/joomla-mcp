@@ -88,6 +88,8 @@ assert_contains "$API_BOOTSTRAP" 'Joomla MCP live prerequisite consent'
 assert_contains "$API_BOOTSTRAP" "status, request_type"
 assert_contains "$API_BOOTSTRAP" "type = 'extension'"
 assert_contains "$API_BOOTSTRAP" 'core-update.xml'
+assert_contains "$API_BOOTSTRAP" '<supported_databases mysql="8.0.13" mariadb="10.4.0" />'
+assert_not_contains "$API_BOOTSTRAP" '<database type='
 assert_contains "$API_BOOTSTRAP" "'updateToken' => \$updateToken"
 assert_not_contains "$API_BOOTSTRAP" "json_encode(\$encodedSeed"
 assert_not_contains "$API_BOOTSTRAP" 'json_encode(true'

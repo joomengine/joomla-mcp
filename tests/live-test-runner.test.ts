@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   entityFromMutation,
+  liveTestExitCode,
   mediaAdapterSelector,
   mediaDirectoryPath,
   mediaUpdateRoutePath,
@@ -95,6 +96,36 @@ describe('live-test runner', () => {
   it('changes scheduler state before running the selected task', () => {
     expect(specialWritePriority('scheduler.tasks.state.set'))
       .toBeLessThan(specialWritePriority('scheduler.tasks.run'));
+  });
+
+  it('prepares, notifies, and finalizes a Joomla Update in dependency order', () => {
+    expect(specialWritePriority('joomla-update.prepare'))
+      .toBeLessThan(specialWritePriority('joomla-update.notification.success'));
+    expect(specialWritePriority('joomla-update.notification.failed'))
+      .toBeLessThan(specialWritePriority('joomla-update.finalize'));
+  });
+
+  it('fails complete disposable certification when any prerequisite remains blocked', () => {
+    const counts = {
+      PASS: 100,
+      FAIL: 0,
+      EXPECTED_DENIAL: 0,
+      KNOWN_UPSTREAM_LIMITATION: 0,
+      SOURCE_ONLY_GATED: 0,
+      BLOCKED_BY_PREREQUISITE: 1,
+      CLEANUP_FAILED: 0,
+    } as const;
+
+    expect(liveTestExitCode({
+      profile: 'full',
+      disposable: true,
+      families: [],
+    }, counts)).toBe(1);
+    expect(liveTestExitCode({
+      profile: 'read',
+      disposable: false,
+      families: [],
+    }, counts)).toBe(0);
   });
 
   it('runs catalogue CRUD through the real HTTP MCP gateway and Joomla API adapter', async () => {

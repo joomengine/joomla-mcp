@@ -37,6 +37,9 @@ describe('live-test catalogue', () => {
       ['templates.administrator-styles', {
         id: 2, attributes: { template: 'atum' }, label: 'Atum',
       }],
+      ['users.users', {
+        id: 3, attributes: { name: 'Fixture administrator' }, label: 'Fixture administrator',
+      }],
     ]);
     for (const baseId of crudFixtureOrder) {
       const definition = crudFixtureDefinitions.get(baseId)!;
@@ -56,5 +59,30 @@ describe('live-test catalogue', () => {
       expect(showcase).not.toEqual(deletion);
       records.set(baseId, { id: records.size + 100, attributes: showcase, label: baseId });
     }
+  });
+
+  it('uses values accepted by both the API and companion fixture lanes', () => {
+    const existingUser: LiveFixtureRecord = {
+      id: 42,
+      attributes: { name: 'Fixture administrator' },
+      label: 'Fixture administrator',
+    };
+    const context = {
+      lane: 'test-cli',
+      seed: 'accepted-values',
+      get: (_id: string) => undefined,
+      reference: (id: string) => id === 'users.users' ? existingUser : undefined,
+    };
+
+    expect(crudFixtureDefinitions.get('content.articles')?.create({
+      ...context,
+      get: () => ({ id: 7, attributes: {}, label: 'Category' }),
+    }, 'showcase')).toMatchObject({ introtext: expect.any(String), fulltext: '' });
+    expect(crudFixtureDefinitions.get('messages.messages')?.create(context, 'showcase'))
+      .toMatchObject({ user_id_to: 42 });
+    expect(crudFixtureDefinitions.get('banners.clients')?.create(context, 'showcase'))
+      .toHaveProperty('extrainfo', '');
+    expect(crudFixtureDefinitions.get('modules.site')?.create(context, 'showcase'))
+      .toMatchObject({ params: { prepare_content: 0 } });
   });
 });

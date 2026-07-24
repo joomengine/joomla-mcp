@@ -504,7 +504,7 @@ async function runCrudProfile(
           `create-${purpose}`,
           { purpose },
           record,
-          () => ({ data: definition.create(context, purpose) }),
+          () => ({ data: createFixtureData(definition.create(context, purpose), purpose) }),
         );
         if (input === undefined) {
           if (purpose === 'showcase') break;
@@ -644,6 +644,23 @@ async function runCrudProfile(
   }
 }
 
+function createFixtureData(
+  data: Readonly<Record<string, unknown>>,
+  purpose: 'showcase' | 'deletion',
+): Readonly<Record<string, unknown>> {
+  if (purpose !== 'deletion') return data;
+  const trash = trashData(data);
+  return trash === undefined ? data : Object.freeze({ ...data, ...trash });
+}
+
+function trashData(
+  attributes: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> | undefined {
+  if (Object.hasOwn(attributes, 'published')) return Object.freeze({ published: -2 });
+  if (Object.hasOwn(attributes, 'state')) return Object.freeze({ state: -2 });
+  return undefined;
+}
+
 async function runSpecialProfile(
   session: LiveMcpSession,
   path: LiveJoomlaPath,
@@ -751,6 +768,18 @@ async function cleanupRecords(
     if (entity === undefined) continue;
     const scenario = liveScenarioCatalog().find((candidate) => candidate.id === `${baseId}.delete`);
     if (scenario === undefined || !scenario.joomlaPaths.includes(path)) continue;
+    const trash = trashData(entity.attributes);
+    if (trash !== undefined) {
+      const updateScenario = liveScenarioCatalog().find((candidate) => candidate.id === `${baseId}.update`);
+      if (updateScenario !== undefined && updateScenario.joomlaPaths.includes(path)) {
+        const trashInput = { id: numericId(entity.id), data: trash };
+        const trashed = await record(session, path, updateScenario, 'cleanup-trash-showcase', trashInput, async () => ({
+          response: await callWrite(session, site, updateScenario.id, trashInput, path),
+          expected: trash,
+        }), true);
+        if (trashed === undefined) continue;
+      }
+    }
     const input = await prepareScenarioInput(
       session,
       path,
@@ -885,6 +914,13 @@ function readInput(actionId: string, state: LaneState): Readonly<Record<string, 
     'system.info',
     'core.update.status',
   ].includes(actionId)) return {};
+  if (actionId === 'media.directory.list') return { path: 'local-images:', offset: 0, limit: 20 };
+  if ([
+    'menus.administrator-item-types.list',
+    'menus.site-item-types.list',
+    'modules.administrator-types.list',
+    'modules.site-types.list',
+  ].includes(actionId)) return {};
   if (actionId.endsWith('.list')) {
     if (actionId.startsWith('languages.overrides.')) return { language: 'en-GB', offset: 0, limit: 20 };
     if (actionId.includes('-history.')) {
@@ -924,7 +960,6 @@ function readInput(actionId: string, state: LaneState): Readonly<Record<string, 
     return new BlockedError(`${actionId} requires an existing catalogue record.`, [`${baseId}.list`]);
   }
   if (actionId.endsWith('.export')) return idFromRead(state, actionId.replace('.export', '.list'));
-  if (actionId === 'media.directory.list') return { path: 'local-images:', offset: 0, limit: 20 };
   if (actionId === 'joomla-update.healthcheck' || actionId === 'joomla-update.status') return {};
   return {};
 }
@@ -957,7 +992,7 @@ function specialWriteInput(
   if (actionId === 'media.files.create') {
     return {
       data: {
-        path: `local-images:/joomla-mcp-live-${safeSegment(seed)}-${safeSegment(state.lane)}.txt`,
+        path: `local-images:joomla-mcp-live-${safeSegment(seed)}-${safeSegment(state.lane)}.txt`,
         content: Buffer.from(`Joomla MCP live fixture ${seed}\n`).toString('base64'),
         override: false,
       },
@@ -991,7 +1026,12 @@ function specialWriteInput(
     return { id: numericId(plugin.id), data: { enabled: enabled === 1 ? 0 : 1 } };
   }
   if (actionId === 'privacy.requests.create') {
-    return { data: { email: `privacy-${safeSegment(seed)}@example.invalid`, request_type: 'export' } };
+    return {
+      data: {
+        email: `privacy-${safeSegment(seed)}-${safeSegment(state.lane)}@example.invalid`,
+        request_type: 'export',
+      },
+    };
   }
   if (actionId === 'languages.overrides.site.create' || actionId === 'languages.overrides.administrator.create') {
     const constant = `JOOMLA_MCP_LIVE_${safeSeed}`;
@@ -1327,7 +1367,8 @@ function historyBase(actionId: string): string | undefined {
 function firstEntity(value: unknown): LiveFixtureRecord | undefined {
   const candidate = findEntity(value);
   if (candidate === undefined) return undefined;
-  const id = candidate['id'] ?? candidate['lang_id'] ?? candidate['message_id'] ?? candidate['extension_id'];
+  const id = candidate['id'] ?? candidate['lang_id'] ?? candidate['message_id'] ??
+    candidate['update_site_id'] ?? candidate['extension_id'];
   if (typeof id !== 'string' && typeof id !== 'number') return undefined;
   const attributesValue = asRecord(candidate['attributes']);
   const attributes = Object.keys(attributesValue).length > 0
@@ -1354,7 +1395,8 @@ function collectEntities(value: unknown): readonly LiveFixtureRecord[] {
       return;
     }
     const record = asRecord(candidate);
-    const id = record['id'] ?? record['lang_id'] ?? record['message_id'] ?? record['extension_id'];
+    const id = record['id'] ?? record['lang_id'] ?? record['message_id'] ??
+      record['update_site_id'] ?? record['extension_id'];
     if ((typeof id === 'string' || typeof id === 'number') && isResourceEntityRecord(record)) {
       const attributesValue = asRecord(record['attributes']);
       const attributes = Object.keys(attributesValue).length > 0
@@ -1388,6 +1430,7 @@ function findEntity(value: unknown, depth = 0): Readonly<Record<string, unknown>
   if (
     (typeof record['id'] === 'string' || typeof record['id'] === 'number' ||
       typeof record['lang_id'] === 'number' || typeof record['message_id'] === 'number' ||
+      typeof record['update_site_id'] === 'number' ||
       typeof record['extension_id'] === 'number') &&
     isResourceEntityRecord(record)
   ) {

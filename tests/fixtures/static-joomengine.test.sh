@@ -76,7 +76,7 @@ assert_contains "$RUNNER" '--joomla-path all'
 assert_not_contains "$RUNNER" 'eval '
 assert_contains "$API_BOOTSTRAP" "'profile_value' => \$encodedSeed"
 assert_contains "$API_BOOTSTRAP" "'profile_value' => '1'"
-assert_not_contains "$API_BOOTSTRAP" 'json_encode($encodedSeed'
+assert_not_contains "$API_BOOTSTRAP" "json_encode(\$encodedSeed"
 assert_not_contains "$API_BOOTSTRAP" 'json_encode(true'
 
 [[ "$(sed '/^$/d' "$CORE_CLI_COMMANDS_FILE" | wc -l | tr -d '[:space:]')" == '38' ]] \

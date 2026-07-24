@@ -22,7 +22,11 @@ jobs:
       - run: npm run validate
       - name: Validate deployment and rollback artifacts
         run: ./tests/deploy/static-deployment.test.sh
-      - run: npm audit --omit=dev --audit-level=high
+      - name: Audit production dependencies
+        run: node scripts/ci/npm-audit.mjs
+        env:
+          NPM_AUDIT_ATTEMPTS: 3
+          NPM_AUDIT_RETRY_DELAY_MS: 5000
 
   container:
     runs-on: ubuntu-latest

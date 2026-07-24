@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace VDM\Plugin\Console\JoomlaMcp\Joomla;
 
 use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Console\Output\NullOutput;
+use Symfony\Component\Console\Output\StreamOutput;
 use Throwable;
 use VDM\Plugin\Console\JoomlaMcp\Contract\NativeOperationsInterface;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
@@ -106,9 +106,36 @@ final readonly class JoomlaNativeOperations implements NativeOperationsInterface
                 throw new ActionException('NATIVE_COMMAND_UNAVAILABLE', sprintf('Required Joomla command "%s" is incompatible.', $name));
             }
 
-            // Discard Joomla's human-oriented console output without retaining
-            // an unbounded buffer. The action returns bounded structured data.
-            return (int) $command->execute(new ArrayInput($arguments), new NullOutput());
+            $stream = fopen('php://temp/maxmemory:4096', 'w+b');
+
+            if ($stream === false) {
+                throw new ActionException('NATIVE_COMMAND_FAILED', 'Could not allocate bounded native-command diagnostics.');
+            }
+
+            try {
+                $exitCode = (int) $command->execute(new ArrayInput($arguments), new StreamOutput($stream));
+                rewind($stream);
+                $diagnostic = stream_get_contents($stream, 2_048);
+            } finally {
+                fclose($stream);
+            }
+
+            if ($exitCode !== 0) {
+                $detail = is_string($diagnostic)
+                    ? trim(preg_replace('/\s+/u', ' ', strip_tags($diagnostic)) ?? '')
+                    : '';
+                throw new ActionException(
+                    'NATIVE_COMMAND_FAILED',
+                    sprintf(
+                        'Joomla command "%s" exited %d.%s',
+                        $name,
+                        $exitCode,
+                        $detail === '' ? '' : ' Output: ' . substr($detail, 0, 1_500),
+                    ),
+                );
+            }
+
+            return $exitCode;
         } catch (ActionException $exception) {
             throw $exception;
         } catch (Throwable) {

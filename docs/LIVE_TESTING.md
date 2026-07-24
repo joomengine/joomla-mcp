@@ -230,6 +230,24 @@ accepted only for the exact pinned fixture identity plus an exact
 action/phase/error signature documented in the report. The same action on a
 different Joomla image, or a changed error on the pinned image, is `FAIL`.
 
+For a mutation whose Joomla response reports failure after changing state, the
+status also requires a successful independent read-back of the exact submitted
+identifier or fields. If that verification is absent or differs, the attempt is
+`FAIL`.
+
+The pinned Joomla 6.1.2 fixture currently documents these reviewed behaviors:
+
+| API behavior | Why the report can classify it | Joomla source |
+|---|---|---|
+| Contact item GET returns 500 immediately after a successful delete | Exact contact action, `verify-deleted` phase, image digest, and 500 body must match | [Contact API controller](https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_contact/src/Controller/ContactController.php) |
+| Site or administrator module POST reports missing `params` | The generic save runs before the modules controller seeds its edit-model client state; the companion lane remains executable | [Modules API controller](https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_modules/src/Controller/ModulesController.php) |
+| Private-message POST returns 404 after storing the message | A list read must find the exact submitted subject before the attempt is accepted and cleanup continues | [Generic API add flow](https://github.com/joomla/joomla-cms/blob/6.1.2/libraries/src/MVC/Controller/ApiController.php#L369-L379) |
+| Content-language PATCH reports an empty check-in failure after storing the fields | An item read must match every submitted field before update or cleanup continues | [Generic API post-save check](https://github.com/joomla/joomla-cms/blob/6.1.2/libraries/src/MVC/Controller/ApiController.php#L523-L535) |
+| Override item GET, site create, delete, or cache refresh fails in the reviewed signature | Joomla filters the string item ID as an integer, coerces the named site client as administrator, or delegates the file-backed operation through an incompatible generic path | [Overrides controller](https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_languages/src/Controller/OverridesController.php), [override model](https://github.com/joomla/joomla-cms/blob/6.1.2/administrator/components/com_languages/src/Model/OverrideModel.php) |
+
+This table describes fixture evidence, not a blanket Joomla-version waiver.
+Every rule is encoded and unit-tested as an exact match.
+
 Common failure codes:
 
 | Code | First check |

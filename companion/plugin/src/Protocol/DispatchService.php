@@ -6,6 +6,7 @@ namespace VDM\Plugin\Console\JoomlaMcp\Protocol;
 
 use JsonException;
 use Throwable;
+use VDM\Plugin\Console\JoomlaMcp\Contract\ActionInterface;
 use VDM\Plugin\Console\JoomlaMcp\Contract\CapabilityResolverInterface;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionRegistry;
@@ -35,7 +36,7 @@ final readonly class DispatchService
                 throw new ActionException('ACCESS_DENIED', 'The configured MCP actor lacks a required Joomla permission.');
             }
 
-            $result = $action->execute($request['input']);
+            $result = $this->executeWithoutOutput($action, $request['input']);
 
             try {
                 $encodedResult = json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -64,6 +65,32 @@ final readonly class DispatchService
             return json_encode($response, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         } catch (JsonException) {
             return '{"protocol":"joomla-mcp/1","id":null,"ok":false,"error":{"code":"ENCODING_FAILED","message":"Response encoding failed."}}';
+        }
+    }
+
+    /**
+     * Prevent incidental Joomla model or command output from corrupting the
+     * one-JSON-object CLI protocol. The callback discards chunks as they are
+     * produced so noisy actions cannot grow an unbounded in-memory buffer.
+     *
+     * @param array<string, mixed> $input
+     *
+     * @return array<string, mixed>
+     */
+    private function executeWithoutOutput(ActionInterface $action, array $input): array
+    {
+        $initialLevel = ob_get_level();
+
+        if (!ob_start(static fn(string $buffer): string => '', 4096)) {
+            throw new ActionException('ACTION_FAILED', 'The Joomla action output could not be isolated.');
+        }
+
+        try {
+            return $action->execute($input);
+        } finally {
+            while (ob_get_level() > $initialLevel) {
+                ob_end_clean();
+            }
         }
     }
 

@@ -64,6 +64,16 @@ describe('reviewed live-test limitations', () => {
     expect(knownUpstreamLimitation(context)).toBeUndefined();
     expect(verifiedPartialMutationLimitation(context)?.code)
       .toBe('joomla-6.1.2-message-create-response-404');
+
+    const replacementContext = {
+      ...context,
+      scenarioId: 'messages.messages.get',
+      phase: 'read-back-updated',
+      error: 'Updated messages.messages did not return the expected changed fields.',
+    };
+    expect(knownUpstreamLimitation(replacementContext)).toBeUndefined();
+    expect(verifiedPartialMutationLimitation(replacementContext)?.code)
+      .toBe('joomla-6.1.2-message-update-creates-replacement');
   });
 
   it('requires collection verification before classifying a post-delete item error', () => {
@@ -82,5 +92,24 @@ describe('reviewed live-test limitations', () => {
     expect(verifiedDeletionLimitation({ ...context, phase: 'read' })).toBeUndefined();
     expect(verifiedDeletionLimitation({ ...context, scenarioId: 'messages.messages.list' }))
       .toBeUndefined();
+  });
+
+  it('matches the pinned Joomla scheduler checkout defect only on the CLI path', () => {
+    const context = {
+      options,
+      joomlaPath: 'cli' as const,
+      scenarioId: 'scheduler.tasks.state.set',
+      phase: 'write',
+      error:
+        'Joomla companion NATIVE_COMMAND_FAILED: Joomla command "scheduler:state" exited 1. Output: Change Task State ================= [ERROR] Task ID \'2\' is checked out!',
+    };
+    expect(knownUpstreamLimitation(context)?.code)
+      .toBe('joomla-6.1.2-scheduler-state-null-checkout');
+    expect(knownUpstreamLimitation({ ...context, joomlaPath: 'api' })).toBeUndefined();
+    expect(knownUpstreamLimitation({ ...context, phase: 'read' })).toBeUndefined();
+    expect(knownUpstreamLimitation({
+      ...context,
+      error: 'Joomla command "scheduler:state" exited 1. Output: permission denied',
+    })).toBeUndefined();
   });
 });

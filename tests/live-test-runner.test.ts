@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   entityFromMutation,
+  mediaUpdateRoutePath,
   normalizeCreatedMediaPath,
   runLiveTest,
   specialWritePriority,
@@ -69,6 +70,11 @@ describe('live-test runner', () => {
       .toBe('local-images:/fixture.png');
     expect(normalizeCreatedMediaPath('local-images:/fixture.png'))
       .toBe('local-images:/fixture.png');
+  });
+
+  it('uses a default-adapter relative path for Joomla media content updates', () => {
+    expect(mediaUpdateRoutePath('local-images:/fixture.png')).toBe('fixture.png');
+    expect(mediaUpdateRoutePath('folder/fixture.png')).toBe('folder/fixture.png');
   });
 
   it('changes scheduler state before running the selected task', () => {

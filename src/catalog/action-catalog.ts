@@ -330,7 +330,9 @@ export function resolveJoomlaWriteRequest(actionId: string, input: unknown): Res
   if (action.bodyPolicy === 'required' && values['data'] === undefined) {
     throw new Error(`Joomla action ${action.id} requires a mutation body.`);
   }
-  const body = values['data'] === undefined ? undefined : normalizeMutationBody(values['data'], action);
+  const body = values['data'] === undefined
+    ? undefined
+    : withFixedMutationDefaults(action.id, normalizeMutationBody(values['data'], action));
   const etag = values['etag'] === undefined ? undefined : normalizeEtag(values['etag']);
 
   return Object.freeze({
@@ -339,6 +341,21 @@ export function resolveJoomlaWriteRequest(actionId: string, input: unknown): Res
     ...(body === undefined ? {} : { body }),
     ...(etag === undefined ? {} : { etag }),
   });
+}
+
+function withFixedMutationDefaults(
+  actionId: string,
+  body: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
+  const context = base?.controllerDefaults['context'];
+
+  // Joomla's com_fields API route supplies the fixed context for reads, but
+  // its create/update model also expects that context in the form data. Keep
+  // it internal so callers cannot select an arbitrary component context.
+  return typeof context === 'string'
+    ? Object.freeze({ ...body, context })
+    : body;
 }
 
 function assertPlainInput(input: unknown): Readonly<Record<string, unknown>> {

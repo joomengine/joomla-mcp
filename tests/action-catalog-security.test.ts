@@ -69,6 +69,18 @@ describe('action catalogue request safety', () => {
     }
   });
 
+  it('injects fixed field contexts without exposing them as caller input', () => {
+    expect(resolveJoomlaWriteRequest('field-groups.content-articles.create', {
+      data: { title: 'Fixture group' },
+    }).body).toEqual({
+      title: 'Fixture group',
+      context: 'com_content.article',
+    });
+    expect(() => resolveJoomlaWriteRequest('field-groups.content-articles.create', {
+      data: { title: 'Fixture group', context: 'com_users.user' },
+    })).toThrow('Unsupported field-groups.content-articles.create data properties');
+  });
+
   it('requires all template parameters and does not permit undeclared substitutions', () => {
     const action = getJoomlaReadAction('languages.overrides.administrator.get');
     expect(action).toBeDefined();

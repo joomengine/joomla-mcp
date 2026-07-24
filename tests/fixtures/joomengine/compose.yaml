@@ -49,7 +49,7 @@ services:
     networks:
       - fixture
     ports:
-      - "127.0.0.1::80"
+      - "127.0.0.1:0:80"
     restart: "no"
     volumes:
       - type: bind

@@ -24,15 +24,19 @@ final readonly class JoomlaNativeOperations implements NativeOperationsInterface
 
     public function siteOfflineState(): bool
     {
-        // SiteUpCommand/SiteDownCommand ultimately persist JConfig via config:set.
-        // Reload JConfig after a transition rather than trusting console process state.
-        if (class_exists('JConfig')) {
-            try {
-                $configuration = new \JConfig();
+        // SiteUpCommand/SiteDownCommand persist configuration.php, while the
+        // already-loaded JConfig class retains the pre-command value.
+        if (defined('JPATH_CONFIGURATION')) {
+            $configurationFile = JPATH_CONFIGURATION . '/configuration.php';
+            $contents = @file_get_contents($configurationFile);
 
-                return (bool) ($configuration->offline ?? false);
-            } catch (Throwable) {
-                // Fall through to Joomla's active application configuration.
+            if (is_string($contents)
+                && preg_match(
+                    '/public\\s+\\$offline\\s*=\\s*(true|false|0|1|[\'"]0[\'"]|[\'"]1[\'"])\\s*;/i',
+                    $contents,
+                    $match,
+                ) === 1) {
+                return in_array(strtolower(trim($match[1], '\'"')), ['true', '1'], true);
             }
         }
 

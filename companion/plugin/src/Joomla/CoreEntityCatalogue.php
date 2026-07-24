@@ -176,13 +176,13 @@ final class CoreEntityCatalogue
                 'menus.site', 'site menus', 'com_menus', 'Menus', 'Menu',
                 ['id', 'menutype', 'title', 'description', 'client_id'],
                 ['menutype', 'title', 'description'],
-                ['client_id' => 0], ['filter.client_id' => 0], supportsState: false,
+                ['client_id' => 0], ['client_id' => 0], supportsState: false,
             ),
             new CoreEntityDefinition(
                 'menus.administrator', 'administrator menus', 'com_menus', 'Menus', 'Menu',
                 ['id', 'menutype', 'title', 'description', 'client_id'],
                 ['menutype', 'title', 'description'],
-                ['client_id' => 1], ['filter.client_id' => 1], supportsState: false,
+                ['client_id' => 1], ['client_id' => 1], supportsState: false,
                 highRisk: true,
             ),
             new CoreEntityDefinition(
@@ -221,7 +221,7 @@ final class CoreEntityCatalogue
                     'title', 'note', 'content', 'ordering', 'position', 'published', 'module', 'access',
                     'showtitle', 'params', 'language', 'assigned',
                 ],
-                ['client_id' => 0], ['filter.client_id' => 0],
+                ['client_id' => 0], ['client_id' => 0],
             ),
             new CoreEntityDefinition(
                 'modules.administrator', 'administrator modules', 'com_modules', 'Modules', 'Module',
@@ -233,7 +233,7 @@ final class CoreEntityCatalogue
                     'title', 'note', 'content', 'ordering', 'position', 'published', 'module', 'access',
                     'showtitle', 'params', 'language', 'assigned',
                 ],
-                ['client_id' => 1], ['filter.client_id' => 1], highRisk: true,
+                ['client_id' => 1], ['client_id' => 1], highRisk: true,
             ),
             new CoreEntityDefinition(
                 'users.users', 'users', 'com_users', 'Users', 'User',
@@ -279,13 +279,13 @@ final class CoreEntityCatalogue
                 'templates.site-styles', 'site template styles', 'com_templates', 'Styles', 'Style',
                 ['id', 'template', 'client_id', 'home', 'title', 'params'],
                 ['template', 'home', 'title', 'params'],
-                ['client_id' => 0], ['filter.client_id' => 0], supportsState: false,
+                ['client_id' => 0], ['client_id' => 0], supportsState: false,
             ),
             new CoreEntityDefinition(
                 'templates.administrator-styles', 'administrator template styles', 'com_templates', 'Styles', 'Style',
                 ['id', 'template', 'client_id', 'home', 'title', 'params'],
                 ['template', 'home', 'title', 'params'],
-                ['client_id' => 1], ['filter.client_id' => 1], supportsState: false, highRisk: true,
+                ['client_id' => 1], ['client_id' => 1], supportsState: false, highRisk: true,
             ),
             new CoreEntityDefinition(
                 'languages.content', 'content languages', 'com_languages', 'Languages', 'Language',

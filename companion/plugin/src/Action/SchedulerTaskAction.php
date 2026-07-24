@@ -117,7 +117,15 @@ final readonly class SchedulerTaskAction implements ActionInterface
             : $exitCode === 0;
 
         if ($this->operation === 'state' && ($exitCode !== 0 || !$matches)) {
-            throw new ActionException('POSTCONDITION_FAILED', 'Joomla did not verify the requested scheduler task state.');
+            throw new ActionException(
+                'POSTCONDITION_FAILED',
+                sprintf(
+                    'Joomla did not verify the requested scheduler task state (exit=%d, requested=%d, observed=%s).',
+                    $exitCode,
+                    (int) $state,
+                    json_encode($after['state'] ?? null, JSON_UNESCAPED_SLASHES),
+                ),
+            );
         }
 
         return [

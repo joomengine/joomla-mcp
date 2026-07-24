@@ -4,6 +4,7 @@ export const liveTestStatuses = [
   'PASS',
   'FAIL',
   'EXPECTED_DENIAL',
+  'KNOWN_UPSTREAM_LIMITATION',
   'SOURCE_ONLY_GATED',
   'BLOCKED_BY_PREREQUISITE',
   'CLEANUP_FAILED',
@@ -82,7 +83,16 @@ export interface LiveTestAttempt {
   readonly rootCauseId?: string;
   readonly reproduction: string;
   readonly source?: LiveScenarioSource;
+  readonly knownLimitation?: LiveKnownUpstreamLimitation;
   readonly cleanup?: boolean;
+}
+
+export interface LiveKnownUpstreamLimitation {
+  readonly code: string;
+  readonly fixture: string;
+  readonly explanation: string;
+  readonly reference: string;
+  readonly observedError: string;
 }
 
 export interface LiveTestEnvironment {

@@ -20,6 +20,8 @@ final readonly class JoomlaModelProvider implements ModelProviderInterface
             throw new ActionException('JOOMLA_RUNTIME_UNAVAILABLE', 'The Joomla component runtime is unavailable.');
         }
 
+        $this->defineComponentPaths($component);
+
         try {
             $componentInstance = $this->application->bootComponent($component);
         } catch (Throwable) {
@@ -45,5 +47,24 @@ final readonly class JoomlaModelProvider implements ModelProviderInterface
         }
 
         return $model;
+    }
+
+    private function defineComponentPaths(string $component): void
+    {
+        if (!preg_match('/^com_[a-z0-9_]+$/', $component)) {
+            throw new ActionException('COMPONENT_UNAVAILABLE', 'The requested Joomla component name is invalid.');
+        }
+
+        if (defined('JPATH_ADMINISTRATOR') && !defined('JPATH_COMPONENT_ADMINISTRATOR')) {
+            define('JPATH_COMPONENT_ADMINISTRATOR', JPATH_ADMINISTRATOR . '/components/' . $component);
+        }
+
+        if (defined('JPATH_SITE') && !defined('JPATH_COMPONENT_SITE')) {
+            define('JPATH_COMPONENT_SITE', JPATH_SITE . '/components/' . $component);
+        }
+
+        if (defined('JPATH_COMPONENT_ADMINISTRATOR') && !defined('JPATH_COMPONENT')) {
+            define('JPATH_COMPONENT', JPATH_COMPONENT_ADMINISTRATOR);
+        }
     }
 }

@@ -196,6 +196,7 @@ Statuses have precise meanings:
 | `PASS` | Dispatch and postcondition succeeded | pass |
 | `FAIL` | Unexpected transport, Joomla, validation, or postcondition failure | fail |
 | `EXPECTED_DENIAL` | Safety policy intentionally prevented dispatch | pass, reported |
+| `KNOWN_UPSTREAM_LIMITATION` | The exact pinned fixture, action, phase, and error matched a reviewed Joomla defect after dispatch | pass, reported with source reference |
 | `SOURCE_ONLY_GATED` | Known source route is deliberately non-executable | pass, reported |
 | `BLOCKED_BY_PREREQUISITE` | Named prerequisite was absent or failed | pass, reported with root cause |
 | `CLEANUP_FAILED` | Generated data/state could not be removed/restored | fail |
@@ -216,6 +217,12 @@ Statuses have precise meanings:
    submitted value.
 9. Treat every `CLEANUP_FAILED` as operationally significant. Review
    `retainedRecords` and remove only records carrying the exact run label.
+
+`KNOWN_UPSTREAM_LIMITATION` is deliberately narrower than a skip. The request
+was dispatched and its failure evidence was captured. The classification is
+accepted only for the exact pinned fixture identity plus an exact
+action/phase/error signature documented in the report. The same action on a
+different Joomla image, or a changed error on the pinned image, is `FAIL`.
 
 Common failure codes:
 

@@ -10,6 +10,7 @@ import type {
 
 const sensitiveKey = /authorization|cookie|password|secret|token|acknowledgement|confirmation/i;
 const maximumStringLength = 32_768;
+const maximumArrayLength = 10_000;
 
 export async function writeLiveTestReports(
   directory: string,
@@ -54,7 +55,7 @@ export function redact(value: unknown, depth = 0): unknown {
       ? value
       : `${value.slice(0, maximumStringLength)}…[truncated ${value.length - maximumStringLength} characters]`;
   }
-  if (Array.isArray(value)) return value.slice(0, 1_000).map((entry) => redact(entry, depth + 1));
+  if (Array.isArray(value)) return value.slice(0, maximumArrayLength).map((entry) => redact(entry, depth + 1));
   if (typeof value !== 'object' || value === null) return value;
 
   const output: Record<string, unknown> = {};

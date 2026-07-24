@@ -48,8 +48,9 @@ companion checks explicitly use `www-data`, and this lane is not evidence for a
 production operating-system least-privilege boundary.
 
 The default keeps the requested `octoleo/joomengine:6` label and pins the
-validated registry digest. Set `JOOMLA_FIXTURE_IMAGE` and
-`JOOMLA_FIXTURE_DATABASE_IMAGE` to new immutable digest references only when
+validated registry digest. Set `JOOMLA_FIXTURE_IMAGE`,
+`JOOMLA_FIXTURE_DATABASE_IMAGE`, and the version-pinned
+`JOOMLA_FIXTURE_MAIL_IMAGE` only when
 deliberately validating an image upgrade. Set
 `JOOMLA_FIXTURE_ARTIFACT_DIR` to retain bounded diagnostics and evidence.
 `JOOMLA_FIXTURE_KEEP=1` is available for local debugging only; never use it in

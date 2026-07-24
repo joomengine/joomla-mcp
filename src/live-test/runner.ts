@@ -504,7 +504,7 @@ async function runCrudProfile(
           `create-${purpose}`,
           { purpose },
           record,
-          () => ({ data: createFixtureData(definition.create(context, purpose), purpose) }),
+          () => ({ data: createFixtureData(baseId, definition.create(context, purpose), purpose) }),
         );
         if (input === undefined) {
           if (purpose === 'showcase') break;
@@ -645,12 +645,17 @@ async function runCrudProfile(
 }
 
 function createFixtureData(
+  baseId: string,
   data: Readonly<Record<string, unknown>>,
   purpose: 'showcase' | 'deletion',
 ): Readonly<Record<string, unknown>> {
-  if (purpose !== 'deletion') return data;
+  if (purpose !== 'deletion' || deleteSemantics(baseId) === 'permanent') return data;
   const trash = trashData(data);
   return trash === undefined ? data : Object.freeze({ ...data, ...trash });
+}
+
+function deleteSemantics(baseId: string): 'resource-model-defined' | 'permanent' {
+  return joomlaCrudBases.find((base) => base.id === baseId)?.deleteSemantics ?? 'resource-model-defined';
 }
 
 function trashData(
@@ -768,7 +773,9 @@ async function cleanupRecords(
     if (entity === undefined) continue;
     const scenario = liveScenarioCatalog().find((candidate) => candidate.id === `${baseId}.delete`);
     if (scenario === undefined || !scenario.joomlaPaths.includes(path)) continue;
-    const trash = trashData(entity.attributes);
+    const trash = deleteSemantics(baseId) === 'permanent'
+      ? undefined
+      : trashData(entity.attributes);
     if (trash !== undefined) {
       const updateScenario = liveScenarioCatalog().find((candidate) => candidate.id === `${baseId}.update`);
       if (updateScenario !== undefined && updateScenario.joomlaPaths.includes(path)) {
@@ -992,8 +999,8 @@ function specialWriteInput(
   if (actionId === 'media.files.create') {
     return {
       data: {
-        path: `local-images:joomla-mcp-live-${safeSegment(seed)}-${safeSegment(state.lane)}.txt`,
-        content: Buffer.from(`Joomla MCP live fixture ${seed}\n`).toString('base64'),
+        path: `local-images:joomla-mcp-live-${safeSegment(seed)}-${safeSegment(state.lane)}.png`,
+        content: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
         override: false,
       },
     };
@@ -1003,9 +1010,9 @@ function specialWriteInput(
     return typeof path !== 'string'
       ? new BlockedError('Media update requires a successful media.files.create.', ['media.files.create'])
       : {
-          path,
-          data: {
-            content: Buffer.from(`Joomla MCP live fixture ${seed} updated\n`).toString('base64'),
+        path,
+        data: {
+            content: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=',
             override: true,
           },
         };
@@ -1034,14 +1041,17 @@ function specialWriteInput(
     };
   }
   if (actionId === 'languages.overrides.site.create' || actionId === 'languages.overrides.administrator.create') {
-    const constant = `JOOMLA_MCP_LIVE_${safeSeed}`;
+    const lane = safeSegment(state.lane).toUpperCase().replaceAll('-', '_');
+    const constant = `JOOMLA_MCP_LIVE_${safeSeed}_${lane}`;
     return { language: 'en-GB', data: { key: constant, override: `Joomla MCP live ${seed}`, both: false } };
   }
   if (actionId === 'languages.overrides.site.delete' || actionId === 'languages.overrides.administrator.delete') {
-    return { language: 'en-GB', constant: `JOOMLA_MCP_LIVE_${safeSeed}` };
+    const lane = safeSegment(state.lane).toUpperCase().replaceAll('-', '_');
+    return { language: 'en-GB', constant: `JOOMLA_MCP_LIVE_${safeSeed}_${lane}` };
   }
   if (actionId === 'languages.overrides.search') {
-    return { data: { searchstring: `JOOMLA_MCP_LIVE_${safeSeed}`, searchtype: 'constant' } };
+    const lane = safeSegment(state.lane).toUpperCase().replaceAll('-', '_');
+    return { data: { searchstring: `JOOMLA_MCP_LIVE_${safeSeed}_${lane}`, searchtype: 'constant' } };
   }
   if (actionId === 'languages.overrides.refresh') return {};
   if (actionId === 'joomla-update.prepare') {

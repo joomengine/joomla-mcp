@@ -108,12 +108,18 @@ final readonly class CoreEntityAction implements ActionInterface
 
         try {
             $rawItems = $model->getItems();
-        } catch (Throwable) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla could not list %s.', $this->entity->label));
+        } catch (Throwable $exception) {
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf('Joomla could not list %s.%s', $this->entity->label, $this->modelFailureDetail($model, $exception)),
+            );
         }
 
         if (!is_array($rawItems)) {
-            throw new ActionException('MODEL_RESULT_INVALID', sprintf('The Joomla %s model returned an invalid list.', $this->entity->label));
+            throw new ActionException(
+                'MODEL_RESULT_INVALID',
+                sprintf('The Joomla %s model returned an invalid list.%s', $this->entity->label, $this->modelFailureDetail($model)),
+            );
         }
 
         $items = [];
@@ -152,8 +158,11 @@ final readonly class CoreEntityAction implements ActionInterface
 
         try {
             $item = $model->getItem($id);
-        } catch (Throwable) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla could not get %s %d.', $this->entity->label, $id));
+        } catch (Throwable $exception) {
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf('Joomla could not get %s %d.%s', $this->entity->label, $id, $this->modelFailureDetail($model, $exception)),
+            );
         }
 
         if (!is_object($item) && !is_array($item)) {
@@ -241,12 +250,18 @@ final readonly class CoreEntityAction implements ActionInterface
 
         try {
             $deleted = $model->delete($ids);
-        } catch (Throwable) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla could not delete %s %d.', $this->entity->label, $id));
+        } catch (Throwable $exception) {
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf('Joomla could not delete %s %d.%s', $this->entity->label, $id, $this->modelFailureDetail($model, $exception)),
+            );
         }
 
         if ($deleted !== true) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla did not delete %s %d.', $this->entity->label, $id));
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf('Joomla did not delete %s %d.%s', $this->entity->label, $id, $this->modelFailureDetail($model)),
+            );
         }
 
         return $this->applied('delete', $id, null);
@@ -271,12 +286,28 @@ final readonly class CoreEntityAction implements ActionInterface
 
         try {
             $changed = $model->publish($ids, $state);
-        } catch (Throwable) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla could not change the state of %s %d.', $this->entity->label, $id));
+        } catch (Throwable $exception) {
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf(
+                    'Joomla could not change the state of %s %d.%s',
+                    $this->entity->label,
+                    $id,
+                    $this->modelFailureDetail($model, $exception),
+                ),
+            );
         }
 
         if ($changed !== true) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla did not change the state of %s %d.', $this->entity->label, $id));
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf(
+                    'Joomla did not change the state of %s %d.%s',
+                    $this->entity->label,
+                    $id,
+                    $this->modelFailureDetail($model),
+                ),
+            );
         }
 
         $item = $this->verifyState($id, $state);
@@ -400,12 +431,18 @@ final readonly class CoreEntityAction implements ActionInterface
     {
         try {
             $saved = $model->save($payload);
-        } catch (Throwable) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla could not save %s.', $this->entity->label));
+        } catch (Throwable $exception) {
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf('Joomla could not save %s.%s', $this->entity->label, $this->modelFailureDetail($model, $exception)),
+            );
         }
 
         if ($saved !== true) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla did not save %s.', $this->entity->label));
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf('Joomla did not save %s.%s', $this->entity->label, $this->modelFailureDetail($model)),
+            );
         }
     }
 
@@ -414,8 +451,16 @@ final readonly class CoreEntityAction implements ActionInterface
     {
         try {
             $item = $model->getItem($id);
-        } catch (Throwable) {
-            throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla could not load %s %d for update.', $this->entity->label, $id));
+        } catch (Throwable $exception) {
+            throw new ActionException(
+                'MODEL_OPERATION_FAILED',
+                sprintf(
+                    'Joomla could not load %s %d for update.%s',
+                    $this->entity->label,
+                    $id,
+                    $this->modelFailureDetail($model, $exception),
+                ),
+            );
         }
 
         if (!is_object($item) && !is_array($item)) {
@@ -434,6 +479,25 @@ final readonly class CoreEntityAction implements ActionInterface
         }
 
         return $existing;
+    }
+
+    private function modelFailureDetail(object $model, ?Throwable $exception = null): string
+    {
+        $detail = $exception?->getMessage() ?? '';
+
+        if ($detail === '' && method_exists($model, 'getError')) {
+            try {
+                $modelError = $model->getError();
+                $detail = is_string($modelError) ? $modelError : '';
+            } catch (Throwable) {
+                $detail = '';
+            }
+        }
+
+        $detail = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $detail) ?? '';
+        $detail = trim(preg_replace('/\s+/u', ' ', $detail) ?? '');
+
+        return $detail === '' ? '' : ' Joomla model detail: ' . substr($detail, 0, 500);
     }
 
     private function savedId(object $model, ?int $fallback): ?int

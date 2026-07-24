@@ -79,6 +79,7 @@ jobs:
           JOOMLA_FIXTURE_ARTIFACT_DIR: ${{ runner.temp }}/joomengine-fixture
           JOOMLA_FIXTURE_DATABASE_IMAGE: mariadb:11.4@sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7
           JOOMLA_FIXTURE_IMAGE: octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372
+          JOOMLA_FIXTURE_MAIL_IMAGE: axllent/mailpit:v1.30.5
         run: ./scripts/fixtures/run-joomengine.sh
       - uses: actions/upload-artifact@v7
         if: always()

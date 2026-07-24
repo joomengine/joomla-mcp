@@ -472,6 +472,44 @@ test('generic updates merge existing writable fields without replaying sensitive
     expect(!array_key_exists('password', $model->saved), 'A stored sensitive value was replayed into an update.');
 });
 
+test('generic model failures retain one bounded actionable Joomla reason', static function (): void {
+    $entity = CoreEntityCatalogue::all()[0];
+    $model = new class {
+        public function save(array $data): bool
+        {
+            return false;
+        }
+
+        public function getError(): string
+        {
+            return "Required category is missing.\n" . str_repeat('x', 700);
+        }
+    };
+    $provider = new class ($model) implements ModelProviderInterface {
+        public function __construct(private object $model)
+        {
+        }
+
+        public function administrator(string $component, string $modelName): object
+        {
+            return $this->model;
+        }
+    };
+
+    try {
+        (new CoreEntityAction($entity, 'create', $provider))->execute([
+            'data' => ['title' => 'Invalid article'],
+            'dryRun' => false,
+            '_edgeConfirmed' => true,
+        ]);
+        expect(false, 'A failed Joomla model save was reported as successful.');
+    } catch (ActionException $exception) {
+        expect(str_contains($exception->getMessage(), 'Required category is missing.'), 'The Joomla model reason was discarded.');
+        expect(strlen($exception->getMessage()) < 650, 'The Joomla model reason was not bounded.');
+        expect(!str_contains($exception->getMessage(), "\n"), 'Control characters escaped into the model failure.');
+    }
+});
+
 test('generic writes reject unknown fields and CLI etags before model invocation', static function (): void {
     $entity = CoreEntityCatalogue::all()[0];
     $provider = new class implements ModelProviderInterface {

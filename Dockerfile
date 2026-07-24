@@ -1,4 +1,5 @@
-FROM node:22.17.1-alpine AS build
+ARG SOURCE_DATE_EPOCH=0
+FROM node:22.17.1-alpine@sha256:5539840ce9d013fa13e3b9814c9353024be7ac75aca5db6d039504a56c04ea59 AS build
 
 WORKDIR /app
 
@@ -12,7 +13,9 @@ RUN npm run build \
     && npm prune --omit=dev \
     && npm cache clean --force
 
-FROM node:22.17.1-alpine
+FROM node:22.17.1-alpine@sha256:5539840ce9d013fa13e3b9814c9353024be7ac75aca5db6d039504a56c04ea59
+
+ARG SOURCE_DATE_EPOCH=0
 
 LABEL org.opencontainers.image.authors="Vast Development Method" \
       org.opencontainers.image.description="Self-hosted Model Context Protocol server for Joomla 6.x" \

@@ -92,8 +92,10 @@
     "docs:actions:check": "node --import tsx scripts/generate-api-action-reference.mts --check",
     "package:check": "node scripts/release/verify-package.mjs",
     "prepack": "npm run build",
+    "version:check": "node scripts/release/sync-version.mjs --check",
+    "version:plan": "node scripts/release/plan-version.mjs",
     "version:sync": "node scripts/release/sync-version.mjs",
-    "validate": "npm run check && npm test && npm run docs:actions:check && npm run build && npm run package:check && npm run test:package"
+    "validate": "npm run version:check && npm run check && npm test && npm run docs:actions:check && npm run build && npm run package:check && npm run test:package"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

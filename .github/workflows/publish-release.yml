@@ -1,0 +1,758 @@
+name: Publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Exact SemVer already anchored by v<version>
+        required: true
+        type: string
+      source_run_id:
+        description: Orchestrator run ID; leave empty only for audited manual recovery
+        required: false
+        type: string
+
+concurrency:
+  group: release-${{ github.repository_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify tag-ref publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      tag: ${{ steps.identity.outputs.tag }}
+      prerelease: ${{ steps.identity.outputs.prerelease }}
+      npm_tag: ${{ steps.identity.outputs.npm_tag }}
+      release_commit: ${{ steps.identity.outputs.release_commit }}
+      release_public: ${{ steps.release.outputs.release_public }}
+    steps:
+      - name: Require an authorized orchestrator or maintainer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          if [[ "${{ github.run_attempt }}" != '1' ]]; then
+            echo 'Do not re-run publication jobs; dispatch Release with Auto or Current to reconcile state.' >&2
+            exit 1
+          fi
+
+          actor="${DISPATCH_ACTOR}"
+          if [[ "${actor}" == 'github-actions[bot]' ]]; then
+            if [[ ! "${SOURCE_RUN_ID}" =~ ^[1-9][0-9]*$ ]]; then
+              echo 'Automated publication requires its source Release run ID.' >&2
+              exit 1
+            fi
+            source_run="$(
+              gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}"
+            )"
+            test "$(jq -r .event <<< "${source_run}")" = 'workflow_dispatch'
+            test "$(jq -r .path <<< "${source_run}")" = '.github/workflows/release.yml'
+            test "$(jq -r .head_branch <<< "${source_run}")" = 'main'
+            actor="$(jq -r .actor.login <<< "${source_run}")"
+          fi
+
+          permission="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/${GITHUB_REPOSITORY}/collaborators/${actor}/permission" \
+              --jq '.role_name // .permission'
+          )"
+          case "${permission}" in
+            admin|maintain) ;;
+            *)
+              echo "${actor} has ${permission} permission; publication requires maintain or admin." >&2
+              exit 1
+              ;;
+          esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22.17.1'
+          cache: npm
+      - id: identity
+        name: Verify source, tag, and complete version identity
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          node scripts/release/verify-version.mjs
+          tag="v${RELEASE_VERSION}"
+          release_commit="$(git rev-parse HEAD)"
+          test "${GITHUB_REF}" = "refs/tags/${tag}"
+          test "${release_commit}" = "${GITHUB_SHA}"
+          test "$(git rev-list -n 1 "${tag}")" = "${release_commit}"
+
+          if [[ "${RELEASE_VERSION}" == *-* ]]; then
+            prerelease='true'
+            npm_tag='next'
+          else
+            prerelease='false'
+            npm_tag='latest'
+          fi
+          {
+            echo "version=${RELEASE_VERSION}"
+            echo "tag=${tag}"
+            echo "prerelease=${prerelease}"
+            echo "npm_tag=${npm_tag}"
+            echo "release_commit=${release_commit}"
+          } >> "${GITHUB_OUTPUT}"
+      - id: release
+        name: Inspect the GitHub release boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PRERELEASE: ${{ steps.identity.outputs.prerelease }}
+          RELEASE_TAG: ${{ steps.identity.outputs.tag }}
+        run: |
+          release_json="$(
+            gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft,isPrerelease 2>/dev/null || true
+          )"
+          if [[ -z "${release_json}" ]]; then
+            echo 'release_public=false' >> "${GITHUB_OUTPUT}"
+          else
+            test "$(jq -r .isPrerelease <<< "${release_json}")" = "${RELEASE_PRERELEASE}"
+            if [[ "$(jq -r .isDraft <<< "${release_json}")" == 'false' ]]; then
+              echo 'release_public=true' >> "${GITHUB_OUTPUT}"
+            else
+              echo 'release_public=false' >> "${GITHUB_OUTPUT}"
+            fi
+          fi
+
+  server:
+    name: Validate and package Node server
+    needs: verify
+    if: needs.verify.outputs.release_public != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.verify.outputs.release_commit }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22.17.1'
+          cache: npm
+      - run: npm ci
+      - run: npm run validate
+      - name: Build deterministic server and deployment packages
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          mkdir -p release-assets
+          npm pack --ignore-scripts --pack-destination release-assets
+          mv release-assets/*.tgz "release-assets/joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz"
+          tar \
+            --sort=name \
+            --mtime='@0' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -czf "release-assets/joomengine-mcp-for-joomla-deployment-${RELEASE_TAG}.tar.gz" \
+            README.md LICENSE SECURITY.md Dockerfile \
+            config/sites.example.json config/sites.single-site-readonly.example.json \
+            deploy scripts/deploy \
+            docs/CLIENTS.md docs/DEPLOYMENT.md docs/LIBRARY.md docs/OPERATIONS.md \
+            docs/RELEASING.md docs/SINGLE_SITE.md docs/TROUBLESHOOTING.md
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-path: release-assets/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: server-${{ needs.verify.outputs.tag }}-${{ github.run_attempt }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  companion:
+    name: Validate and package Joomla companion
+    needs: verify
+    if: needs.verify.outputs.release_public != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.verify.outputs.release_commit }}
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          extensions: zip
+          coverage: none
+      - run: php companion/tests/run.php
+      - name: Build the companion reproducibly
+        run: |
+          first="$(php companion/build.php)"
+          first_digest="$(sha256sum "${first}" | cut -d' ' -f1)"
+          first_plugin_digest="$(sha256sum companion/dist/plg_console_joomlamcp.zip | cut -d' ' -f1)"
+          second="$(php companion/build.php)"
+          second_digest="$(sha256sum "${second}" | cut -d' ' -f1)"
+          second_plugin_digest="$(sha256sum companion/dist/plg_console_joomlamcp.zip | cut -d' ' -f1)"
+          test "${first}" = "${second}"
+          test "${first_digest}" = "${second_digest}"
+          test "${first_plugin_digest}" = "${second_plugin_digest}"
+      - name: Verify companion package name
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+        run: test -f "companion/dist/pkg_joomlamcp-${RELEASE_VERSION}.zip"
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-path: companion/dist/pkg_joomlamcp-*.zip
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: companion-${{ needs.verify.outputs.tag }}-${{ github.run_attempt }}
+          path: companion/dist/pkg_joomlamcp-*.zip
+          if-no-files-found: error
+
+  sbom:
+    name: Generate source SBOM
+    needs: verify
+    if: needs.verify.outputs.release_public != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.verify.outputs.release_commit }}
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: joomengine-mcp-for-joomla-${{ needs.verify.outputs.tag }}.spdx.json
+          upload-artifact: false
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-path: joomengine-mcp-for-joomla-${{ needs.verify.outputs.tag }}.spdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: sbom-${{ needs.verify.outputs.tag }}-${{ github.run_attempt }}
+          path: joomengine-mcp-for-joomla-${{ needs.verify.outputs.tag }}.spdx.json
+          if-no-files-found: error
+
+  stage:
+    name: Stage or recover exact release assets
+    needs: [verify, server, companion, sbom]
+    if: >-
+      always()
+      && needs.verify.result == 'success'
+      && (
+        needs.verify.outputs.release_public == 'true'
+        || (
+          needs.server.result == 'success'
+          && needs.companion.result == 'success'
+          && needs.sbom.result == 'success'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.verify.outputs.release_commit }}
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Download immutable public assets
+        if: needs.verify.outputs.release_public == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          mkdir -p release-assets
+          gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir release-assets
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        if: needs.verify.outputs.release_public != 'true'
+        with:
+          pattern: '*-${{ needs.verify.outputs.tag }}-${{ github.run_attempt }}'
+          path: release-assets
+          merge-multiple: true
+      - name: Generate provisional release metadata
+        if: needs.verify.outputs.release_public != 'true'
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+          RELEASE_PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          node scripts/release/render-release-metadata.mjs release-assets
+          (
+            cd release-assets
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' \
+              | sort \
+              | xargs sha256sum > SHA256SUMS
+          )
+      - name: Create or reconcile the durable draft
+        if: needs.verify.outputs.release_public != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+          RELEASE_PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          previous_tag="$(
+            git tag --list 'v*' --sort=-v:refname \
+              | grep -Fxv "${RELEASE_TAG}" \
+              | head -n 1 \
+              || true
+          )"
+          arguments=(
+            --method POST
+            "repos/${GITHUB_REPOSITORY}/releases/generate-notes"
+            -f "tag_name=${RELEASE_TAG}"
+            -f "target_commitish=${RELEASE_COMMIT}"
+          )
+          if [[ -n "${previous_tag}" ]]; then
+            arguments+=(-f "previous_tag_name=${previous_tag}")
+          fi
+          gh api "${arguments[@]}" --jq .body > /tmp/release-notes.md
+          test -s /tmp/release-notes.md
+
+          release_json="$(
+            gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft,isPrerelease 2>/dev/null || true
+          )"
+          mapfile -t assets < <(find release-assets -maxdepth 1 -type f -print | sort)
+          if [[ -z "${release_json}" ]]; then
+            flags=(--draft)
+            if [[ "${RELEASE_PRERELEASE}" == 'true' ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "${RELEASE_TAG}" "${assets[@]}" \
+              --verify-tag \
+              --title "JoomEngine MCP for Joomla ${RELEASE_TAG}" \
+              --notes-file /tmp/release-notes.md \
+              "${flags[@]}"
+          else
+            test "$(jq -r .isDraft <<< "${release_json}")" = 'true'
+            test "$(jq -r .isPrerelease <<< "${release_json}")" = "${RELEASE_PRERELEASE}"
+            gh release edit "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "JoomEngine MCP for Joomla ${RELEASE_TAG}" \
+              --notes-file /tmp/release-notes.md \
+              --prerelease="${RELEASE_PRERELEASE}"
+            gh release upload "${RELEASE_TAG}" "${assets[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          fi
+      - name: Verify the complete asset contract
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+          RELEASE_PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          RELEASE_PUBLIC: ${{ needs.verify.outputs.release_public }}
+        run: |
+          expected="$(
+            printf '%s\n' \
+              "SHA256SUMS" \
+              "joomengine-mcp-for-joomla-${RELEASE_TAG}.spdx.json" \
+              "joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz" \
+              "joomengine-mcp-for-joomla-deployment-${RELEASE_TAG}.tar.gz" \
+              "pkg_joomlamcp-${RELEASE_VERSION}.zip" \
+              "release-manifest.json" \
+              | sort
+          )"
+          actual="$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)"
+          test "${actual}" = "${expected}"
+          (
+            cd release-assets
+            sha256sum -c SHA256SUMS
+          )
+          manifest=release-assets/release-manifest.json
+          test "$(jq -r .version "${manifest}")" = "${RELEASE_VERSION}"
+          test "$(jq -r .tag "${manifest}")" = "${RELEASE_TAG}"
+          test "$(jq -r .commit "${manifest}")" = "${RELEASE_COMMIT}"
+          test "$(jq -r .prerelease "${manifest}")" = "${RELEASE_PRERELEASE}"
+          test "$(jq -r .npm.package "${manifest}")" = '@joomengine/joomla-mcp'
+          test "$(jq -r .oci.image "${manifest}")" = "ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_TAG}"
+
+          if [[ "${RELEASE_PUBLIC}" == 'true' ]]; then
+            npm_integrity="$(jq -r .npm.integrity "${manifest}")"
+            oci_digest="$(jq -r .oci.digest "${manifest}")"
+            [[ "${npm_integrity}" =~ ^sha512-[A-Za-z0-9+/]{86}==$ ]]
+            [[ "${oci_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+            asset="release-assets/joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz"
+            local_integrity="sha512-$(openssl dgst -sha512 -binary "${asset}" | base64 -w0)"
+            test "${local_integrity}" = "${npm_integrity}"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-assets-${{ needs.verify.outputs.tag }}-${{ github.run_attempt }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    name: Seal and publish release
+    needs: [verify, stage]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Reject job reruns
+        run: |
+          if [[ "${{ github.run_attempt }}" != '1' ]]; then
+            echo 'Dispatch Release with Auto or Current instead of re-running publication jobs.' >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.verify.outputs.release_commit }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22.17.1'
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@11.18.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-assets-${{ needs.verify.outputs.tag }}-${{ github.run_attempt }}
+          path: release-assets
+      - id: npm
+        name: Preflight the immutable npm package
+        env:
+          NPM_TAG: ${{ needs.verify.outputs.npm_tag }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_PUBLIC: ${{ needs.verify.outputs.release_public }}
+        run: |
+          asset="release-assets/joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz"
+          local_integrity="sha512-$(openssl dgst -sha512 -binary "${asset}" | base64 -w0)"
+          manifest_integrity="$(jq -r '.npm.integrity // empty' release-assets/release-manifest.json)"
+          if [[ "${RELEASE_PUBLIC}" == 'true' ]]; then
+            test "${manifest_integrity}" = "${local_integrity}"
+          fi
+          registry_integrity="$(
+            npm view "@joomengine/joomla-mcp@${RELEASE_VERSION}" dist.integrity \
+              --registry=https://registry.npmjs.org 2>/dev/null || true
+          )"
+          if [[ -n "${registry_integrity}" && "${registry_integrity}" != "${local_integrity}" ]]; then
+            echo "npm ${RELEASE_VERSION} exists with different integrity." >&2
+            exit 1
+          fi
+
+          channel_version="$(
+            npm view "@joomengine/joomla-mcp@${NPM_TAG}" version \
+              --registry=https://registry.npmjs.org 2>/dev/null || true
+          )"
+          if [[ -n "${channel_version}" ]]; then
+            RELEASE_CHANNEL_VERSION="${channel_version}" \
+              RELEASE_TARGET_VERSION="${RELEASE_VERSION}" \
+              node --input-type=module <<'NODE'
+          import { compareVersions } from './scripts/release/versioning.mjs';
+          if (compareVersions(
+            process.env.RELEASE_TARGET_VERSION,
+            process.env.RELEASE_CHANNEL_VERSION,
+          ) < 0) {
+            throw new Error(
+              `Refusing to move the npm channel backwards from `
+              + `${process.env.RELEASE_CHANNEL_VERSION} to ${process.env.RELEASE_TARGET_VERSION}.`,
+            );
+          }
+          NODE
+          fi
+          {
+            echo "integrity=${local_integrity}"
+            if [[ -n "${registry_integrity}" ]]; then
+              echo 'published=true'
+            else
+              echo 'published=false'
+            fi
+          } >> "${GITHUB_OUTPUT}"
+      - uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - id: image-before
+        name: Inspect and verify an existing commit-addressed image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+          RELEASE_PUBLIC: ${{ needs.verify.outputs.release_public }}
+        run: |
+          image="${IMAGE_REPOSITORY}:sha-${RELEASE_COMMIT}"
+          if ! report="$(docker buildx imagetools inspect "${image}" 2>/dev/null)"; then
+            if [[ "${RELEASE_PUBLIC}" == 'true' ]]; then
+              expected_digest="$(
+                jq -r '.oci.digest // empty' release-assets/release-manifest.json
+              )"
+              image="${IMAGE_REPOSITORY}@${expected_digest}"
+              report="$(docker buildx imagetools inspect "${image}")"
+            else
+              echo 'exists=false' >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          fi
+
+          if [[ -n "${report}" ]]; then
+            digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+            [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+            config="$(docker buildx imagetools inspect --format '{{json .Image}}' "${image}")"
+            jq -e \
+              --arg revision "${RELEASE_COMMIT}" \
+              --arg source "https://github.com/${GITHUB_REPOSITORY}" \
+              --arg version "${RELEASE_VERSION}" \
+              '.config.Labels["org.opencontainers.image.revision"] == $revision
+                and .config.Labels["org.opencontainers.image.source"] == $source
+                and .config.Labels["org.opencontainers.image.version"] == $version' \
+              <<< "${config}" >/dev/null
+            if gh attestation verify \
+              "oci://${IMAGE_REPOSITORY}@${digest}" \
+              --repo "${GITHUB_REPOSITORY}"; then
+              attested='true'
+            elif [[ "${RELEASE_PUBLIC}" == 'true' ]]; then
+              echo 'A public release image must already have verifiable provenance.' >&2
+              exit 1
+            else
+              attested='false'
+            fi
+            echo 'exists=true' >> "${GITHUB_OUTPUT}"
+            echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+            echo "attested=${attested}" >> "${GITHUB_OUTPUT}"
+          fi
+      - id: build
+        name: Build and push the commit-addressed image
+        if: steps.image-before.outputs.exists != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          push: true
+          provenance: false
+          sbom: false
+          tags: ghcr.io/${{ github.repository }}:sha-${{ needs.verify.outputs.release_commit }}
+          build-args: |
+            SOURCE_DATE_EPOCH=0
+          labels: |
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.verify.outputs.release_commit }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      - id: image-source
+        name: Resolve the authoritative registry digest
+        env:
+          ACTION_DIGEST: ${{ steps.build.outputs.digest }}
+          EXISTING_DIGEST: ${{ steps.image-before.outputs.digest }}
+          EXISTING_IMAGE: ${{ steps.image-before.outputs.exists }}
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+        run: |
+          if [[ "${EXISTING_IMAGE}" == 'true' ]]; then
+            digest="${EXISTING_DIGEST}"
+          else
+            image="${IMAGE_REPOSITORY}:sha-${RELEASE_COMMIT}"
+            report="$(docker buildx imagetools inspect "${image}")"
+            digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+            [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+            config="$(docker buildx imagetools inspect --format '{{json .Image}}' "${image}")"
+            jq -e \
+              --arg revision "${RELEASE_COMMIT}" \
+              --arg source "https://github.com/${GITHUB_REPOSITORY}" \
+              --arg version "${RELEASE_VERSION}" \
+              '.config.Labels["org.opencontainers.image.revision"] == $revision
+                and .config.Labels["org.opencontainers.image.source"] == $source
+                and .config.Labels["org.opencontainers.image.version"] == $version' \
+              <<< "${config}" >/dev/null
+          fi
+          echo "Registry digest: ${digest}; build action reported: ${ACTION_DIGEST:-not-built}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        if: steps.image-before.outputs.attested != 'true'
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.image-source.outputs.digest }}
+          push-to-registry: true
+      - name: Verify commit-addressed image provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          SOURCE_DIGEST: ${{ steps.image-source.outputs.digest }}
+        run: |
+          gh attestation verify \
+            "oci://${IMAGE_REPOSITORY}@${SOURCE_DIGEST}" \
+            --repo "${GITHUB_REPOSITORY}"
+      - id: image
+        name: Publish or verify the versioned image coordinate
+        env:
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          SOURCE_DIGEST: ${{ steps.image-source.outputs.digest }}
+          RELEASE_PUBLIC: ${{ needs.verify.outputs.release_public }}
+        run: |
+          expected_digest="$(jq -r '.oci.digest // empty' release-assets/release-manifest.json)"
+          if [[ "${RELEASE_PUBLIC}" == 'true' ]]; then
+            test "${SOURCE_DIGEST}" = "${expected_digest}"
+          else
+            expected_digest="${SOURCE_DIGEST}"
+          fi
+
+          target="${IMAGE_REPOSITORY}:${RELEASE_TAG}"
+          if report="$(docker buildx imagetools inspect "${target}" 2>/dev/null)"; then
+            target_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+            test "${target_digest}" = "${expected_digest}"
+          else
+            docker buildx imagetools create \
+              --prefer-index=false \
+              --tag "${target}" \
+              "${IMAGE_REPOSITORY}@${SOURCE_DIGEST}"
+          fi
+          report="$(docker buildx imagetools inspect "${target}")"
+          published_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+          test "${published_digest}" = "${expected_digest}"
+          echo "digest=${published_digest}" >> "${GITHUB_OUTPUT}"
+      - name: Seal the final manifest and checksum contract
+        if: needs.verify.outputs.release_public != 'true'
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.release_commit }}
+          RELEASE_PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          RELEASE_NPM_INTEGRITY: ${{ steps.npm.outputs.integrity }}
+          RELEASE_OCI_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          node scripts/release/render-release-metadata.mjs release-assets
+          (
+            cd release-assets
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' \
+              | sort \
+              | xargs sha256sum > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        if: needs.verify.outputs.release_public != 'true'
+        with:
+          subject-path: release-assets/*
+      - name: Reconcile and byte-verify the final GitHub assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PUBLIC: ${{ needs.verify.outputs.release_public }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          if [[ "${RELEASE_PUBLIC}" != 'true' ]]; then
+            mapfile -t assets < <(find release-assets -maxdepth 1 -type f -print | sort)
+            gh release upload "${RELEASE_TAG}" "${assets[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          fi
+          expected="$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)"
+          mkdir -p /tmp/final-release-assets
+          gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir /tmp/final-release-assets
+          actual="$(find /tmp/final-release-assets -maxdepth 1 -type f -printf '%f\n' | sort)"
+          test "${actual}" = "${expected}"
+          (
+            cd /tmp/final-release-assets
+            sha256sum -c SHA256SUMS
+          )
+          while IFS= read -r file; do
+            cmp "release-assets/${file}" "/tmp/final-release-assets/${file}"
+          done <<< "${expected}"
+      - name: Publish or verify the exact npm package and channel
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TAG: ${{ needs.verify.outputs.npm_tag }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          EXPECTED_INTEGRITY: ${{ steps.npm.outputs.integrity }}
+          ALREADY_PUBLISHED: ${{ steps.npm.outputs.published }}
+        run: |
+          asset="release-assets/joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz"
+          if [[ "${ALREADY_PUBLISHED}" != 'true' ]]; then
+            npm publish "${asset}" \
+              --access public \
+              --tag "${NPM_TAG}" \
+              --provenance \
+              --registry=https://registry.npmjs.org
+          fi
+          test "$(
+            npm view "@joomengine/joomla-mcp@${RELEASE_VERSION}" dist.integrity \
+              --registry=https://registry.npmjs.org
+          )" = "${EXPECTED_INTEGRITY}"
+
+          channel_version="$(
+            npm view "@joomengine/joomla-mcp@${NPM_TAG}" version \
+              --registry=https://registry.npmjs.org 2>/dev/null || true
+          )"
+          if [[ "${channel_version}" != "${RELEASE_VERSION}" ]]; then
+            if [[ -z "${NODE_AUTH_TOKEN}" ]]; then
+              echo "npm ${RELEASE_VERSION} exists but ${NPM_TAG} points to ${channel_version:-nothing}." >&2
+              echo 'Trusted publishing cannot repair dist-tags; configure NPM_TOKEN temporarily and dispatch Current.' >&2
+              exit 1
+            fi
+            npm dist-tag add \
+              "@joomengine/joomla-mcp@${RELEASE_VERSION}" \
+              "${NPM_TAG}" \
+              --registry=https://registry.npmjs.org
+          fi
+          test "$(
+            npm view "@joomengine/joomla-mcp@${NPM_TAG}" version \
+              --registry=https://registry.npmjs.org
+          )" = "${RELEASE_VERSION}"
+      - name: Publish the verified GitHub draft last
+        if: needs.verify.outputs.release_public != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          gh release edit "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft=false \
+            --prerelease="${RELEASE_PRERELEASE}"
+          release_json="$(
+            gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft,isPrerelease
+          )"
+          test "$(jq -r .isDraft <<< "${release_json}")" = 'false'
+          test "$(jq -r .isPrerelease <<< "${release_json}")" = "${RELEASE_PRERELEASE}"
+      - name: Record final coordinates
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          NPM_TAG: ${{ needs.verify.outputs.npm_tag }}
+        run: |
+          {
+            echo '## Release completed'
+            echo
+            echo "- GitHub: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+            echo "- npm: \`@joomengine/joomla-mcp@${RELEASE_VERSION}\` (\`${NPM_TAG}\`)"
+            echo "- OCI: \`ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_TAG}\`"
+            echo "- Source: \`${{ needs.verify.outputs.release_commit }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -1,14 +1,43 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 
-import { runLiveTest } from '../src/live-test/runner.js';
+import { entityFromMutation, runLiveTest } from '../src/live-test/runner.js';
 
 describe('live-test runner', () => {
+  it('ignores companion correlation ids when extracting a created resource', () => {
+    const entity = entityFromMutation({
+      preview: { dryRun: true },
+      plan: { confirmationToken: 'redacted' },
+      applied: {
+        site: 'fixture',
+        action: 'content.categories.create',
+        idempotencyKey: 'dd93ca39-0b39-44d5-9798-03cc6e506de0',
+        mutation: {
+          protocol: 'joomla-mcp/1',
+          id: '0c3348c7-49aa-4b06-a232-2df6a7774901',
+          action: 'content.categories.create',
+          ok: true,
+          data: {
+            result: {
+              id: 41,
+              item: { id: 41, title: 'Live fixture category' },
+            },
+          },
+        },
+      },
+    }, { title: 'Live fixture category' });
+
+    expect(entity).toMatchObject({
+      id: 41,
+      label: 'Live fixture category',
+    });
+  });
+
   it('runs catalogue CRUD through the real HTTP MCP gateway and Joomla API adapter', async () => {
     const resources = new Map<string, Map<number, Record<string, unknown>>>([
       ['v1/content/categories', new Map()],
@@ -78,6 +107,58 @@ describe('live-test runner', () => {
       else process.env['LIVE_TEST_APPROVAL_SECRET'] = oldApproval;
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it('writes actionable evidence when the harness fails before a session is ready', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'joomla-mcp-live-fatal-'));
+    const joomlaRoot = join(directory, 'joomla');
+    await mkdir(join(joomlaRoot, 'cli'), { recursive: true });
+    await writeFile(join(joomlaRoot, 'cli', 'joomla.php'), '<?php\n');
+    const configurationFile = join(directory, 'sites.json');
+    await writeFile(configurationFile, `${JSON.stringify({
+      defaultSite: 'fixture',
+      sites: {
+        fixture: {
+          toolsets: ['discovery'],
+          cli: {
+            root: joomlaRoot,
+            phpBinary: process.execPath,
+          },
+        },
+      },
+    }, null, 2)}\n`);
+
+    const summary = await runLiveTest({
+      configurationFile,
+      site: 'fixture',
+      outputDirectory: join(directory, 'evidence'),
+      profile: 'read',
+      joomlaPaths: ['cli'],
+      mcpTransports: ['stdio'],
+      families: [],
+      nonInteractive: true,
+      confirmMutations: false,
+      disposable: false,
+      cleanup: false,
+      retainDemo: false,
+      failFast: false,
+      seed: 'fatal-evidence',
+      stdioCommand: join(directory, 'missing-mcp-command'),
+      stdioArguments: [],
+    });
+
+    expect(summary.exitCode).toBe(1);
+    expect(summary.counts.FAIL).toBe(1);
+    expect(summary.attempts[0]).toMatchObject({
+      scenarioId: 'live-test.harness',
+      phase: 'harness',
+      status: 'FAIL',
+      mcpTransport: 'stdio',
+      joomlaPath: 'cli',
+    });
+    const report = await readFile(join(directory, 'evidence', 'summary.md'), 'utf8');
+    expect(report).toContain('`live-test.harness`');
+    expect(report).toContain('--mcp-transport');
   });
 });
 

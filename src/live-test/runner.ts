@@ -82,11 +82,13 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
   const transportDiagnostics: Readonly<Record<string, unknown>>[] = [];
   const retained: LiveRetainedRecord[] = [];
   const retentionLane = `${options.mcpTransports[0]}-${options.joomlaPaths[0]}`;
+  let activeTransport = options.mcpTransports[0]!;
+  let activeJoomlaPath = options.joomlaPaths[0]!;
   let sequence = 0;
 
   const reproduction = (
     scenario: LiveScenario,
-    session: LiveMcpSession,
+    mcpTransport: LiveMcpSession['kind'],
     joomlaPath: LiveJoomlaPath,
   ): string => {
     const argumentsList = [
@@ -95,7 +97,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
       '--site', siteId,
       '--profile', options.profile,
       '--joomla-path', joomlaPath,
-      '--mcp-transport', session.kind,
+      '--mcp-transport', mcpTransport,
       '--families', scenario.domain,
       '--seed', options.seed,
       '--output', options.outputDirectory,
@@ -138,7 +140,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         ...(outcome.expected === undefined ? {} : { expected: outcome.expected }),
         ...(outcome.actual === undefined ? {} : { actual: outcome.actual }),
         ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
-        reproduction: reproduction(scenario, session, joomlaPath),
+        reproduction: reproduction(scenario, session.kind, joomlaPath),
         ...(scenario.source === undefined ? {} : { source: scenario.source }),
         ...(cleanup ? { cleanup: true } : {}),
       }));
@@ -176,7 +178,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         ...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
         ...(blocked && error.dependencyIds.length > 0 ? { dependencyIds: error.dependencyIds } : {}),
         ...(rootCauseId === undefined ? {} : { rootCauseId }),
-        reproduction: reproduction(scenario, session, joomlaPath),
+        reproduction: reproduction(scenario, session.kind, joomlaPath),
         ...(scenario.source === undefined ? {} : { source: scenario.source }),
         ...(cleanup ? { cleanup: true } : {}),
       }));
@@ -188,6 +190,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
 
   try {
     for (const kind of options.mcpTransports) {
+      activeTransport = kind;
       sessions.push(kind === 'stdio'
         ? await createStdioLiveSession({
             configurationFile: options.configurationFile,
@@ -198,11 +201,13 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
     }
 
     for (const session of sessions) {
+      activeTransport = session.kind;
       await verifyDiscovery(session, siteId);
       if (isMutatingProfile(options.profile)) {
         await grantPermissions(session, siteId, selected, options);
       }
       for (const joomlaPath of options.joomlaPaths) {
+        activeJoomlaPath = joomlaPath;
         const state: LaneState = {
           lane: `${session.kind}-${joomlaPath}`,
           records: new Map(),
@@ -249,10 +254,53 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
           durationMs: 0,
           reason: scenario.sourceOnlyReason!,
           expected: 'MCP rejects the source-catalogued action before transport dispatch.',
-          reproduction: reproduction(scenario, session, 'api'),
+          reproduction: reproduction(scenario, session.kind, 'api'),
           ...(scenario.source === undefined ? {} : { source: scenario.source }),
         }));
       }
+    }
+  } catch (error) {
+    const reason = errorMessage(error);
+    const lastAttempt = attempts.at(-1);
+    const alreadyRecorded =
+      (lastAttempt?.status === 'FAIL' || lastAttempt?.status === 'CLEANUP_FAILED') &&
+      lastAttempt.reason === reason;
+    if (!alreadyRecorded) {
+      const scenario: LiveScenario = {
+        id: 'live-test.harness',
+        title: 'Live-test harness execution',
+        domain: 'system',
+        risk: 'read',
+        toolset: 'discovery',
+        operation: 'execute',
+        joomlaPaths: [activeJoomlaPath],
+      };
+      const attemptStarted = Date.now();
+      attempts.push(Object.freeze({
+        id: `${String(++sequence).padStart(4, '0')}-${safeSegment(activeTransport)}-${safeSegment(activeJoomlaPath)}-live-test-harness-fatal`,
+        scenarioId: scenario.id,
+        title: scenario.title,
+        domain: scenario.domain,
+        risk: scenario.risk,
+        toolset: scenario.toolset,
+        operation: scenario.operation,
+        mcpTransport: activeTransport,
+        joomlaPath: activeJoomlaPath,
+        phase: 'harness',
+        status: 'FAIL',
+        startedAt: new Date(attemptStarted).toISOString(),
+        durationMs: Date.now() - attemptStarted,
+        request: {
+          profile: options.profile,
+          joomlaPath: activeJoomlaPath,
+          mcpTransport: activeTransport,
+        },
+        actual: errorResult(error),
+        reason,
+        failureCode: classifyError(error),
+        ...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
+        reproduction: reproduction(scenario, activeTransport, activeJoomlaPath),
+      }));
     }
   } finally {
     transportDiagnostics.push(...sessions.map((session) => session.diagnostics()));
@@ -378,11 +426,16 @@ async function runReadProfile(
       });
       continue;
     }
-    const input = readInput(scenario.id, state);
-    if (input instanceof BlockedError) {
-      await record(session, path, scenario, 'read', {}, async () => { throw input; });
-      continue;
-    }
+    const input = await prepareScenarioInput(
+      session,
+      path,
+      scenario,
+      'read',
+      { action: scenario.id },
+      record,
+      () => readInput(scenario.id, state),
+    );
+    if (input === undefined) continue;
     const request = { site, action: scenario.id, input, transport: path };
     const outcome = await record(session, path, scenario, 'read', request, async () => {
       const response = await callRead(session, site, scenario.id, input, path);
@@ -444,10 +497,22 @@ async function runCrudProfile(
     const createScenario = scenarioById.get(`${baseId}.create`);
     if (createScenario !== undefined && createScenario.joomlaPaths.includes(path)) {
       for (const purpose of ['showcase', 'deletion'] as const) {
-        const input = { data: definition.create(context, purpose) };
+        const input = await prepareScenarioInput(
+          session,
+          path,
+          createScenario,
+          `create-${purpose}`,
+          { purpose },
+          record,
+          () => ({ data: definition.create(context, purpose) }),
+        );
+        if (input === undefined) {
+          if (purpose === 'showcase') break;
+          continue;
+        }
         const outcome = await record(session, path, createScenario, `create-${purpose}`, input, async () => {
           const response = await callWrite(session, site, createScenario.id, input, path);
-          const entity = entityFromMutation(response, input.data);
+          const entity = entityFromMutation(response, asRecord(input['data']));
           if (entity === undefined) {
             throw new Error(`Create action ${createScenario.id} returned no positive resource identifier.`);
           }
@@ -472,38 +537,70 @@ async function runCrudProfile(
     if (showcase === undefined) continue;
     const getScenario = scenarioById.get(`${baseId}.get`);
     if (getScenario !== undefined && getScenario.joomlaPaths.includes(path)) {
-      const input = { id: numericId(showcase.id) };
-      await record(session, path, getScenario, 'read-back-created', input, async () => {
-        const response = await callRead(session, site, getScenario.id, input, path);
-        const actual = firstEntity(response);
-        assertEntityId(actual, showcase.id, getScenario.id);
-        return { response, expected: { id: showcase.id }, actual };
-      });
+      const input = await prepareScenarioInput(
+        session,
+        path,
+        getScenario,
+        'read-back-created',
+        { id: showcase.id },
+        record,
+        () => ({ id: numericId(showcase.id) }),
+      );
+      if (input !== undefined) {
+        await record(session, path, getScenario, 'read-back-created', input, async () => {
+          const response = await callRead(session, site, getScenario.id, input, path);
+          const actual = firstEntity(response);
+          assertEntityId(actual, showcase.id, getScenario.id);
+          return { response, expected: { id: showcase.id }, actual };
+        });
+      }
     }
 
     const updateScenario = scenarioById.get(`${baseId}.update`);
     if (updateScenario !== undefined && updateScenario.joomlaPaths.includes(path)) {
-      const changes = definition.update(context, showcase);
-      const input = { id: numericId(showcase.id), data: changes };
+      let changes: Readonly<Record<string, unknown>> = {};
+      const input = await prepareScenarioInput(
+        session,
+        path,
+        updateScenario,
+        'update-showcase',
+        { id: showcase.id },
+        record,
+        () => {
+          changes = definition.update(context, showcase);
+          return { id: numericId(showcase.id), data: changes };
+        },
+      );
+      if (input === undefined) continue;
       const outcome = await record(session, path, updateScenario, 'update-showcase', input, async () => {
         const response = await callWrite(session, site, updateScenario.id, input, path);
         return { response, expected: changes };
       });
       if (outcome !== undefined && getScenario !== undefined && getScenario.joomlaPaths.includes(path)) {
-        const readInputValue = { id: numericId(showcase.id) };
-        await record(session, path, getScenario, 'read-back-updated', readInputValue, async () => {
-          const response = await callRead(session, site, getScenario.id, readInputValue, path);
-          const entity = firstEntity(response);
-          assertEntityId(entity, showcase.id, getScenario.id);
-          const attributes = entity?.attributes ?? {};
-          const matched = Object.entries(changes).filter(([key]) => key !== 'password' && key !== 'password2')
-            .every(([key, value]) => looselyEqual(attributes[key], value));
-          if (!matched) {
-            throw new Error(`Updated ${baseId} did not return the expected changed fields.`);
-          }
-          state.records.set(baseId, entity!);
-          return { response, expected: changes, actual: attributes };
-        });
+        const readInputValue = await prepareScenarioInput(
+          session,
+          path,
+          getScenario,
+          'read-back-updated',
+          { id: showcase.id },
+          record,
+          () => ({ id: numericId(showcase.id) }),
+        );
+        if (readInputValue !== undefined) {
+          await record(session, path, getScenario, 'read-back-updated', readInputValue, async () => {
+            const response = await callRead(session, site, getScenario.id, readInputValue, path);
+            const entity = firstEntity(response);
+            assertEntityId(entity, showcase.id, getScenario.id);
+            const attributes = entity?.attributes ?? {};
+            const matched = Object.entries(changes).filter(([key]) => key !== 'password' && key !== 'password2')
+              .every(([key, value]) => looselyEqual(attributes[key], value));
+            if (!matched) {
+              throw new Error(`Updated ${baseId} did not return the expected changed fields.`);
+            }
+            state.records.set(baseId, entity!);
+            return { response, expected: changes, actual: attributes };
+          });
+        }
       }
     }
 
@@ -515,7 +612,16 @@ async function runCrudProfile(
       deleteScenario.joomlaPaths.includes(path) &&
       (options.disposable || deleteScenario.risk !== 'destructive')
     ) {
-      const input = { id: numericId(deletion.id) };
+      const input = await prepareScenarioInput(
+        session,
+        path,
+        deleteScenario,
+        'delete-candidate',
+        { id: deletion.id },
+        record,
+        () => ({ id: numericId(deletion.id) }),
+      );
+      if (input === undefined) continue;
       const outcome = await record(session, path, deleteScenario, 'delete-candidate', input, async () => {
         const response = await callWrite(session, site, deleteScenario.id, input, path);
         return { response, expected: { deletedOrTrashed: deletion.id } };
@@ -566,11 +672,16 @@ async function runSpecialProfile(
       });
       continue;
     }
-    const input = readInput(scenario.id, state);
-    if (input instanceof BlockedError) {
-      await record(session, path, scenario, 'read', {}, async () => { throw input; });
-      continue;
-    }
+    const input = await prepareScenarioInput(
+      session,
+      path,
+      scenario,
+      'read',
+      { action: scenario.id },
+      record,
+      () => readInput(scenario.id, state),
+    );
+    if (input === undefined) continue;
     await record(session, path, scenario, 'read', input, async () => {
       const response = await callRead(session, siteId, scenario.id, input, path);
       state.reads.set(scenario.id, response);
@@ -602,11 +713,16 @@ async function runSpecialProfile(
       );
       continue;
     }
-    const input = specialWriteInput(scenario.id, state, options.seed);
-    if (input instanceof BlockedError) {
-      await record(session, path, scenario, 'write', {}, async () => { throw input; });
-      continue;
-    }
+    const input = await prepareScenarioInput(
+      session,
+      path,
+      scenario,
+      'write',
+      { action: scenario.id },
+      record,
+      () => specialWriteInput(scenario.id, state, options.seed),
+    );
+    if (input === undefined) continue;
     await record(session, path, scenario, 'write', input, async () => {
       const response = await executeSpecialWrite(
         session,
@@ -635,7 +751,17 @@ async function cleanupRecords(
     if (entity === undefined) continue;
     const scenario = liveScenarioCatalog().find((candidate) => candidate.id === `${baseId}.delete`);
     if (scenario === undefined || !scenario.joomlaPaths.includes(path)) continue;
-    const input = { id: numericId(entity.id) };
+    const input = await prepareScenarioInput(
+      session,
+      path,
+      scenario,
+      'cleanup-showcase',
+      { id: entity.id },
+      record,
+      () => ({ id: numericId(entity.id) }),
+      true,
+    );
+    if (input === undefined) continue;
     const outcome = await record(session, path, scenario, 'cleanup-showcase', input, async () => ({
       response: await callWrite(session, site, scenario.id, input, path),
       expected: { removed: entity.id },
@@ -659,8 +785,9 @@ async function verifyDeletion(
   record: AttemptRecorder,
   cleanup = false,
 ): Promise<boolean> {
-  const input = { id: numericId(entity.id) };
-  const outcome = await record(session, path, getScenario, 'verify-deleted', input, async () => {
+  const request = { id: entity.id };
+  const outcome = await record(session, path, getScenario, 'verify-deleted', request, async () => {
+    const input = { id: numericId(entity.id) };
     try {
       const response = await callRead(session, site, getScenario.id, input, path);
       const found = firstEntity(response);
@@ -681,6 +808,29 @@ async function verifyDeletion(
     }
   }, cleanup);
   return outcome !== undefined;
+}
+
+async function prepareScenarioInput(
+  session: LiveMcpSession,
+  path: LiveJoomlaPath,
+  scenario: LiveScenario,
+  phase: string,
+  requestHint: unknown,
+  record: AttemptRecorder,
+  prepare: () => Readonly<Record<string, unknown>> | BlockedError,
+  cleanup = false,
+): Promise<Readonly<Record<string, unknown>> | undefined> {
+  try {
+    const input = prepare();
+    if (input instanceof BlockedError) {
+      await record(session, path, scenario, phase, requestHint, async () => { throw input; }, cleanup);
+      return undefined;
+    }
+    return input;
+  } catch (error) {
+    await record(session, path, scenario, phase, requestHint, async () => { throw error; }, cleanup);
+    return undefined;
+  }
 }
 
 async function callRead(
@@ -1205,7 +1355,7 @@ function collectEntities(value: unknown): readonly LiveFixtureRecord[] {
     }
     const record = asRecord(candidate);
     const id = record['id'] ?? record['lang_id'] ?? record['message_id'] ?? record['extension_id'];
-    if ((typeof id === 'string' || typeof id === 'number') && !('idempotencyKey' in record)) {
+    if ((typeof id === 'string' || typeof id === 'number') && isResourceEntityRecord(record)) {
       const attributesValue = asRecord(record['attributes']);
       const attributes = Object.keys(attributesValue).length > 0
         ? attributesValue
@@ -1235,12 +1385,11 @@ function findEntity(value: unknown, depth = 0): Readonly<Record<string, unknown>
     return undefined;
   }
   const record = asRecord(value);
-  const keys = Object.keys(record);
   if (
     (typeof record['id'] === 'string' || typeof record['id'] === 'number' ||
       typeof record['lang_id'] === 'number' || typeof record['message_id'] === 'number' ||
       typeof record['extension_id'] === 'number') &&
-    !keys.includes('idempotencyKey')
+    isResourceEntityRecord(record)
   ) {
     return record;
   }
@@ -1253,7 +1402,7 @@ function findEntity(value: unknown, depth = 0): Readonly<Record<string, unknown>
   return undefined;
 }
 
-function entityFromMutation(
+export function entityFromMutation(
   response: unknown,
   submitted: Readonly<Record<string, unknown>>,
 ): LiveFixtureRecord | undefined {
@@ -1272,6 +1421,12 @@ function entityFromMutation(
       entity.id,
     ),
   });
+}
+
+function isResourceEntityRecord(record: Readonly<Record<string, unknown>>): boolean {
+  return !('idempotencyKey' in record) &&
+    record['protocol'] !== 'joomla-mcp/1' &&
+    record['schema'] !== 'joomengine.joomla-mcp.live-test/v1';
 }
 
 function assertEntityId(

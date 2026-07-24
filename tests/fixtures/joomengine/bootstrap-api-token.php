@@ -30,7 +30,9 @@ if (!preg_match('/^[A-Za-z0-9_]+$/', $prefix)) {
 }
 
 $databaseHost = (string) $configuration->host;
-$databasePort = (int) ($configuration->port ?: 3306);
+$databasePort = property_exists($configuration, 'port') && (int) $configuration->port > 0
+    ? (int) $configuration->port
+    : 3306;
 
 if (preg_match('/^([^:]+):([0-9]+)$/', $databaseHost, $hostParts) === 1) {
     $databaseHost = $hostParts[1];
@@ -86,13 +88,13 @@ $insert = $database->prepare(
 $insert->execute([
     'user_id' => $userId,
     'profile_key' => 'joomlatoken.token',
-    'profile_value' => json_encode($encodedSeed, JSON_THROW_ON_ERROR),
+    'profile_value' => $encodedSeed,
     'ordering' => 1,
 ]);
 $insert->execute([
     'user_id' => $userId,
     'profile_key' => 'joomlatoken.enabled',
-    'profile_value' => json_encode(true, JSON_THROW_ON_ERROR),
+    'profile_value' => '1',
     'ordering' => 2,
 ]);
 

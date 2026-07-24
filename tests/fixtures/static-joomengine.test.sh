@@ -75,12 +75,26 @@ assert_contains "$RUNNER" '--disposable'
 assert_contains "$RUNNER" '--mcp-transport all'
 assert_contains "$RUNNER" '--joomla-path all'
 assert_contains "$RUNNER" 'smtphost=mailpit'
+assert_contains "$RUNNER" "updateTokenEnv: 'JOOMLA_MCP_LIVE_UPDATE_TOKEN'"
+assert_contains "$RUNNER" 'JOOMLA_MCP_LIVE_UPDATE_TOKEN'
 assert_contains "$RUNNER" '--cleanup'
 assert_not_contains "$RUNNER" 'eval '
 assert_contains "$API_BOOTSTRAP" "'profile_value' => \$encodedSeed"
 assert_contains "$API_BOOTSTRAP" "'profile_value' => '1'"
+assert_contains "$API_BOOTSTRAP" 'joomla-mcp-live-prerequisite.png'
+assert_contains "$API_BOOTSTRAP" 'JOOMLA_MCP_LIVE_PREREQUISITE_ADMINISTRATOR'
+assert_contains "$API_BOOTSTRAP" 'JOOMLA_MCP_LIVE_PREREQUISITE_SITE'
+assert_contains "$API_BOOTSTRAP" 'Joomla MCP live prerequisite consent'
+assert_contains "$API_BOOTSTRAP" "status, request_type"
+assert_contains "$API_BOOTSTRAP" "type = 'extension'"
+assert_contains "$API_BOOTSTRAP" 'core-update.xml'
+assert_contains "$API_BOOTSTRAP" "'updateToken' => \$updateToken"
 assert_not_contains "$API_BOOTSTRAP" "json_encode(\$encodedSeed"
 assert_not_contains "$API_BOOTSTRAP" 'json_encode(true'
+
+if command -v php >/dev/null 2>&1; then
+  php -l "$API_BOOTSTRAP"
+fi
 
 [[ "$(sed '/^$/d' "$CORE_CLI_COMMANDS_FILE" | wc -l | tr -d '[:space:]')" == '38' ]] \
   || fail "$CORE_CLI_COMMANDS_FILE must contain exactly 38 command names"

@@ -38,11 +38,14 @@ const directFailureRules: readonly KnownLimitationRule[] = Object.freeze([
   }),
   Object.freeze({
     code: 'joomla-6.1.2-language-override-item-id-filter',
-    scenarioIds: Object.freeze(['languages.overrides.administrator.get']),
-    phases: Object.freeze(['read-back-created']),
+    scenarioIds: Object.freeze([
+      'languages.overrides.site.get',
+      'languages.overrides.administrator.get',
+    ]),
+    phases: Object.freeze(['read', 'read-back-created']),
     error: /did not return language override .* with the submitted value\./u,
     explanation:
-      'Joomla 6.1.2 filters the string route identifier as an integer in the generic API item display path, so the override item response is empty.',
+      'Joomla 6.1.2 filters the string route identifier as an integer in the generic API item display path, so site and administrator override item responses are empty.',
     reference:
       'https://github.com/joomla/joomla-cms/blob/6.1.2/libraries/src/MVC/Controller/ApiController.php#L148-L152',
   }),

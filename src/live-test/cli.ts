@@ -10,6 +10,7 @@ import type {
   LiveTestOptions,
   LiveTestProfile,
 } from './types.js';
+import { renderLiveTestConsoleDiagnostics } from './console-report.js';
 import { runLiveTest } from './runner.js';
 
 export async function runLiveTestCli(argv = process.argv.slice(2)): Promise<number> {
@@ -32,6 +33,7 @@ export async function runLiveTestCli(argv = process.argv.slice(2)): Promise<numb
     );
   }
   const summary = await runLiveTest(options);
+  output.write(renderLiveTestConsoleDiagnostics(summary));
   output.write(
     `Joomla MCP live validation ${summary.exitCode === 0 ? 'passed' : 'failed'}: ` +
     `${summary.counts.PASS} passed, ${summary.counts.FAIL} failed, ` +

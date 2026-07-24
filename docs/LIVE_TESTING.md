@@ -68,7 +68,8 @@ Use the normal Joomla MCP site configuration. A dual-path run requires both
       ],
       "api": {
         "baseUrl": "https://demo.example",
-        "tokenEnv": "JOOMLA_MCP_LIVE_API_TOKEN"
+        "tokenEnv": "JOOMLA_MCP_LIVE_API_TOKEN",
+        "updateTokenEnv": "JOOMLA_MCP_LIVE_UPDATE_TOKEN"
       },
       "cli": {
         "root": "/srv/www/demo",
@@ -146,15 +147,15 @@ npm run test:live -- \
   --cleanup
 ```
 
-`--fail-fast` stops at the first unexpected failure. The default continues
-all independent scenarios, links dependent failures to their root cause, and
-exits nonzero only after the complete report is written. Before exiting, the
-command prints every direct `FAIL` and `CLEANUP_FAILED` result to standard
-output with its action, phase, MCP/Joomla lane, failure code, reason,
-expected/actual values when available, and exact reproduction command. It then
-groups blocked descendants under their originating attempt so GitHub Actions
-logs expose the complete actionable failure set without counting one root cause
-as dozens of separate defects.
+`--fail-fast` stops at the first unexpected failure. The default continues all
+independent scenarios and links dependent failures to their root cause. A
+complete, all-family, disposable `full` run exits nonzero for any `FAIL`,
+`CLEANUP_FAILED`, or `BLOCKED_BY_PREREQUISITE`; it cannot certify an
+unexercised operation. Narrow read, CRUD, or family-selected diagnostic runs
+may still report prerequisite blocks without failing. Before exiting, the
+command prints every direct failure to standard output with its action, phase,
+MCP/Joomla lane, failure code, reason, expected/actual values when available,
+and exact reproduction command.
 
 ## Operation flow
 
@@ -169,6 +170,15 @@ For each selected lane, the runner:
 7. exercises deletion against a separately generated candidate;
 8. removes retained records with supported delete actions in reverse dependency
    order when `--cleanup` is selected.
+
+The authoritative JoomEngine fixture additionally provisions visible,
+deterministic prerequisites before starting the MCP client: one media file, one
+confirmed privacy export request, one consent record, site and administrator
+language overrides, a separate Joomla Update token, and a locally served
+checksum-verified update package. Joomla 6.1.2 cannot create module instances
+through its API; after that exact pinned defect is recorded, the fixture creates
+the same `mod_custom` instances through the companion CLI and then exercises
+the API get, update, read-back, delete, and deletion verification operations.
 
 Generated titles, aliases, users, addresses, paths, and constants contain the
 run seed and lane. Existing records may be read as prerequisites, but they are
@@ -204,7 +214,7 @@ Statuses have precise meanings:
 | `EXPECTED_DENIAL` | Safety policy intentionally prevented dispatch | pass, reported |
 | `KNOWN_UPSTREAM_LIMITATION` | The exact pinned fixture, action, phase, and error matched a reviewed Joomla defect after dispatch | pass, reported with source reference |
 | `SOURCE_ONLY_GATED` | Known source route is deliberately non-executable | pass, reported |
-| `BLOCKED_BY_PREREQUISITE` | Named prerequisite was absent or failed | pass, reported with root cause |
+| `BLOCKED_BY_PREREQUISITE` | Named prerequisite was absent or failed | fail for complete disposable certification; reported-only for narrower diagnostic runs |
 | `CLEANUP_FAILED` | Generated data/state could not be removed/restored | fail |
 
 ## Debug a failure

@@ -112,6 +112,32 @@ stdio/Streamable HTTP before removing the site and database. Failures upload
 redacted Markdown, JSON, JUnit, per-action evidence, and runtime logs before
 teardown. See [live validation](docs/LIVE_TESTING.md).
 
+The packaged declarative scenario is `config/live-test.default.json`. It
+creates and independently verifies several categories, articles, user groups,
+users, banner categories, banners, menus, article menu items, and custom HTML
+modules. Relationships use named references in JSON; Joomla IDs are resolved
+only after the referenced record has been created and independently observed.
+Pass `--scenario /path/to/override.json` to replace the packaged scenario, or
+omit a resource family from the override to skip that family.
+
+To retain every created record for inspection in Joomla without issuing any
+delete or trash operation:
+
+```bash
+npm run test:live -- \
+  --scenario ./config/live-test.default.json \
+  --config /absolute/path/to/config/sites.json \
+  --site demo \
+  --profile crud \
+  --non-interactive \
+  --confirm-mutations \
+  --cleanup never
+```
+
+The runner writes `START`, `WAIT`, and terminal status lines to standard output
+as each phase runs, while preserving the full Markdown, JSON, JUnit, per-action,
+and fixture-log artifacts.
+
 To select a live demo site interactively:
 
 ```bash

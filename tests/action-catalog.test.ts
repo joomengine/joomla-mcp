@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  completeJoomlaApiPatchBody,
   findJoomlaReadActions,
   getJoomlaReadAction,
   getJoomlaWriteAction,
@@ -199,6 +200,34 @@ describe('Joomla source-backed action catalogue', () => {
       client_id: 0,
       assigned: [41, 42],
       assignment: 1,
+    });
+
+    expect(completeJoomlaApiPatchBody(
+      'menus.site-items.update',
+      {
+        menutype: 'jmcp-site',
+        type: 'component',
+        parent_id: 1,
+        link: 'index.php?option=com_content&view=article&id=42',
+        params: { option: 'com_content', view: 'article', id: '42' },
+      },
+      { title: 'Updated title' },
+    )).toMatchObject({
+      title: 'Updated title',
+      client_id: 0,
+      request: { option: 'com_content', view: 'article', id: '42' },
+    });
+
+    expect(completeJoomlaApiPatchBody(
+      'modules.site.update',
+      { params: { layout: '_:default' }, assigned: [41, 42] },
+      { published: 0 },
+    )).toMatchObject({
+      published: 0,
+      params: { layout: '_:default' },
+      assigned: [41, 42],
+      assignment: 1,
+      client_id: 0,
     });
   });
 

@@ -349,6 +349,47 @@ export function resolveJoomlaWriteRequest(actionId: string, input: unknown): Res
   });
 }
 
+/**
+ * Completes the non-table form state that Joomla 6.1 cannot reconstruct for a
+ * partial API PATCH. Only fields that must survive unchanged are copied from
+ * the item read; the caller's requested changes always win.
+ */
+export function completeJoomlaApiPatchBody(
+  actionId: string,
+  current: Readonly<Record<string, unknown>>,
+  changes: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const action = getJoomlaWriteAction(actionId);
+  if (action?.operation !== 'update') return changes;
+  const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
+  if (base === undefined) return changes;
+
+  const preservedKeys = base.id === 'menus.site-items' || base.id === 'menus.administrator-items'
+    ? ['menutype', 'type', 'parent_id', 'link', 'params']
+    : base.id === 'modules.site' || base.id === 'modules.administrator'
+      ? ['params', 'assigned']
+      : [];
+  if (preservedKeys.length === 0) return changes;
+
+  const derivedOrFixed = new Set([
+    'request',
+    'assignment',
+    ...Object.keys(base.controllerDefaults).filter((key) => key !== 'component'),
+  ]);
+  const requested = Object.fromEntries(
+    Object.entries(changes).filter(([key]) => !derivedOrFixed.has(key)),
+  );
+  const preserved = Object.fromEntries(
+    preservedKeys
+      .filter((key) => !Object.hasOwn(requested, key) && Object.hasOwn(current, key))
+      .map((key) => [key, current[key]]),
+  );
+  return withFixedMutationDefaults(
+    actionId,
+    normalizeMutationBody({ ...preserved, ...requested }, action),
+  );
+}
+
 function withFixedMutationDefaults(
   actionId: string,
   body: Readonly<Record<string, unknown>>,

@@ -6,6 +6,7 @@ import {
   type LiveFixtureRecord,
 } from '../src/live-test/fixtures.js';
 import {
+  knownUpstreamLimitation,
   verifiedDeletionLimitation,
   verifiedPartialMutationLimitation,
 } from '../src/live-test/known-limitations.js';
@@ -57,6 +58,34 @@ describe('live fixture Joomla regressions', () => {
     expect(field['name']).toMatch(/^jmcp-[a-z0-9-]+$/u);
     expect(String(field['name'])).not.toContain('_');
     expect(message['user_id_to']).toBe(61);
+  });
+
+  it('keeps generated language titles within Joomla limits and generated message recipients authorized', () => {
+    const context = fixtureContext();
+    const language = crudFixtureDefinitions.get('languages.content')!;
+    const user = crudFixtureDefinitions.get('users.users')!;
+    const record: LiveFixtureRecord = {
+      id: 71,
+      label: 'Content language',
+      attributes: { id: 71 },
+    };
+
+    expect(String(language.update(context, record, 'configured-primary-updated')['title']).length)
+      .toBeLessThanOrEqual(20);
+    expect(user.create(context, 'primary')['groups']).toEqual([7]);
+  });
+
+  it('pins the Joomla administrator-menu collection state-key mismatch', () => {
+    const limitation = knownUpstreamLimitation({
+      options: liveOptions(),
+      joomlaPath: 'api',
+      scenarioId: 'menus.administrator.list',
+      phase: 'verify-created-visible-primary',
+      error:
+        'menus.administrator.primary (4) is readable by item ID but is absent from menus.administrator.list; it is not certified as visible in Joomla collection/GUI models.',
+    });
+
+    expect(limitation?.code).toBe('joomla-6.1.2-administrator-menu-list-state-key');
   });
 
   it('accepts pinned Joomla deletion errors only after strict collection absence', () => {

@@ -3,7 +3,12 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod/v4';
 
 import type { AuditSink } from '../audit/audit-sink.js';
-import { getJoomlaWriteAction, joomlaCrudWriteActions, resolveJoomlaWriteRequest } from '../catalog/action-catalog.js';
+import {
+  completeJoomlaApiPatchBody,
+  getJoomlaWriteAction,
+  joomlaCrudWriteActions,
+  resolveJoomlaWriteRequest,
+} from '../catalog/action-catalog.js';
 import { sourceOnlyGateReason } from '../catalog/action-gates.js';
 import {
   getCompanionWriteAction,
@@ -569,10 +574,20 @@ export class JoomlaWriteService {
       throw new Error(`Planned Joomla API action ${operation.action} is no longer allowlisted.`);
     }
 
+    let body = operation.body;
+    if (operation.method === 'PATCH' && body !== undefined && crudWriteActionIds.has(operation.action)) {
+      const current = await this.api.get(site.api, operation.path);
+      body = completeJoomlaApiPatchBody(
+        operation.action,
+        joomlaItemAttributes(current.data),
+        body,
+      );
+    }
+
     return this.api.request(site.api, {
       method: operation.method,
       path: operation.path,
-      ...(operation.body === undefined ? {} : { body: operation.body }),
+      ...(body === undefined ? {} : { body }),
       ...(operation.etag === undefined ? {} : { etag: operation.etag }),
       idempotencyKey: operation.idempotencyKey,
       authentication: action.driver.authentication,
@@ -809,6 +824,15 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function joomlaItemAttributes(value: unknown): Readonly<Record<string, unknown>> {
+  const resource = asRecord(asRecord(value)['data']);
+  const attributes = asRecord(resource['attributes']);
+  if (Object.keys(attributes).length === 0) {
+    throw new Error('Joomla API item read returned no attributes for partial PATCH preservation.');
+  }
+  return attributes;
 }
 
 function legacyCliInput(operation: PlannedOperation): Record<string, unknown> {

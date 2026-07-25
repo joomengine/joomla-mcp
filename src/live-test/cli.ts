@@ -11,7 +11,12 @@ import type {
   LiveTestProfile,
 } from './types.js';
 import { renderLiveTestConsoleDiagnostics } from './console-report.js';
+import { createConsoleProgressReporter } from './progress.js';
 import { runLiveTest } from './runner.js';
+import {
+  defaultLiveScenarioFile,
+  loadLiveScenarioConfiguration,
+} from './scenario-config.js';
 
 export async function runLiveTestCli(argv = process.argv.slice(2)): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
@@ -29,10 +34,14 @@ export async function runLiveTestCli(argv = process.argv.slice(2)): Promise<numb
     const target = site?.api === undefined ? site?.cli?.root ?? 'unknown' : new URL(site.api.baseUrl).hostname;
     output.write(
       `WARNING: approved unattended ${options.profile} validation will mutate Joomla site ${siteId} at ${target}. ` +
-      `Cleanup: ${options.cleanup ? 'enabled' : 'retaining one labelled showcase per CRUD family'}.\n`,
+      `Cleanup: ${options.cleanup
+        ? 'always (scenario-created records are removed)'
+        : 'never (no delete or trash action will run; every created record is retained)'}.\n`,
     );
   }
-  const summary = await runLiveTest(options);
+  const summary = await runLiveTest(options, {
+    progress: createConsoleProgressReporter((value) => output.write(value)),
+  });
   output.write(renderLiveTestConsoleDiagnostics(summary));
   output.write(
     `Joomla MCP live validation ${summary.exitCode === 0 ? 'passed' : 'failed'}: ` +
@@ -47,6 +56,7 @@ export async function runLiveTestCli(argv = process.argv.slice(2)): Promise<numb
 
 interface PartialOptions {
   configurationFile?: string;
+  scenarioFile?: string;
   site?: string;
   outputDirectory?: string;
   profile?: LiveTestProfile;
@@ -75,6 +85,15 @@ function parseArguments(argv: readonly string[]): PartialOptions {
     };
     switch (argument) {
       case '--config': result.configurationFile = value(); break;
+      case '--scenario':
+      case '--test-config': {
+        const scenarioFile = value();
+        if (result.scenarioFile !== undefined && resolve(result.scenarioFile) !== resolve(scenarioFile)) {
+          throw new Error('--scenario and --test-config cannot select different files.');
+        }
+        result.scenarioFile = scenarioFile;
+        break;
+      }
       case '--site': result.site = value(); break;
       case '--output': result.outputDirectory = value(); break;
       case '--profile': result.profile = enumValue(value(), ['read', 'crud', 'full'], '--profile'); break;
@@ -102,7 +121,18 @@ function parseArguments(argv: readonly string[]): PartialOptions {
       case '--non-interactive': result.nonInteractive = true; break;
       case '--confirm-mutations': result.confirmMutations = true; break;
       case '--disposable': result.disposable = true; break;
-      case '--cleanup': result.cleanup = true; result.retainDemo = false; break;
+      case '--cleanup': {
+        const possiblePolicy = argv[index + 1];
+        if (possiblePolicy === 'always' || possiblePolicy === 'never') {
+          index += 1;
+          result.cleanup = possiblePolicy === 'always';
+          result.retainDemo = possiblePolicy === 'never';
+        } else {
+          result.cleanup = true;
+          result.retainDemo = false;
+        }
+        break;
+      }
       case '--retain-demo': result.retainDemo = true; result.cleanup = false; break;
       case '--fail-fast': result.failFast = true; break;
       default: throw new Error(`Unknown live-test option: ${argument}`);
@@ -172,7 +202,9 @@ async function interactiveOptions(initial: PartialOptions): Promise<PartialOptio
         '\nWARNING: This live test will create, update, publish/unpublish, and delete Joomla data.\n' +
         `Target site: ${site}\nTarget host: ${hostname}\nProfile: ${profile}\n` +
         `Joomla paths: ${resolved.joomlaPaths!.join(', ')}\nMCP transports: ${resolved.mcpTransports!.join(', ')}\n` +
-        `Retention: ${resolved.cleanup ? 'remove generated showcase records' : 'retain one labelled showcase record per CRUD family'}\n`,
+        `Retention: ${resolved.cleanup
+          ? 'remove scenario-created records'
+          : 'retain every scenario-created record; issue no delete or trash action'}\n`,
       );
       const acknowledgement = await prompt.question(`Type "${phrase}" to continue: `);
       if (acknowledgement !== phrase) throw new Error('Mutation acknowledgement did not match; no test was started.');
@@ -194,29 +226,38 @@ async function interactiveOptions(initial: PartialOptions): Promise<PartialOptio
 }
 
 async function finalizeOptions(value: PartialOptions): Promise<LiveTestOptions> {
-  const configurationFile = resolve(value.configurationFile ?? 'config/sites.json');
+  const scenarioFile = resolve(value.scenarioFile ?? defaultLiveScenarioFile());
+  await access(scenarioFile);
+  const scenario = await loadLiveScenarioConfiguration(scenarioFile);
+  const configurationFile = resolve(
+    value.configurationFile ?? scenario.target.configurationFile,
+  );
   await access(configurationFile);
-  const profile = value.profile ?? 'read';
+  const profile = value.profile ?? scenario.selection.profile;
   const nonInteractive = value.nonInteractive ?? false;
-  if (nonInteractive && profile !== 'read' && value.confirmMutations !== true) {
+  const confirmMutations = value.confirmMutations ?? scenario.safety.confirmMutations;
+  const disposable = value.disposable ?? scenario.safety.disposable;
+  if (nonInteractive && profile !== 'read' && !confirmMutations) {
     throw new Error('Non-interactive mutation profiles require --confirm-mutations.');
   }
-  if (nonInteractive && profile === 'full' && value.disposable !== true) {
+  if (nonInteractive && profile === 'full' && !disposable) {
     throw new Error('Non-interactive --profile full requires --disposable.');
   }
   const seed = value.seed ?? defaultSeed();
-  const cleanup = value.cleanup ?? (nonInteractive && profile !== 'read');
+  const cleanup = value.cleanup ?? scenario.safety.cleanup === 'always';
+  const site = value.site ?? scenario.target.site;
   return Object.freeze({
     configurationFile,
-    ...(value.site === undefined ? {} : { site: value.site }),
+    scenarioFile,
+    ...(site === undefined ? {} : { site }),
     outputDirectory: resolve(value.outputDirectory ?? 'artifacts', value.outputDirectory === undefined ? `live-test-${seed}` : ''),
     profile,
-    joomlaPaths: Object.freeze([...(value.joomlaPaths ?? ['api'])]),
-    mcpTransports: Object.freeze([...(value.mcpTransports ?? ['stdio'])]),
-    families: Object.freeze([...(value.families ?? [])]),
+    joomlaPaths: Object.freeze([...(value.joomlaPaths ?? scenario.selection.joomlaPaths)]),
+    mcpTransports: Object.freeze([...(value.mcpTransports ?? scenario.selection.mcpTransports)]),
+    families: Object.freeze([...(value.families ?? scenario.selection.families)]),
     nonInteractive,
-    confirmMutations: value.confirmMutations ?? false,
-    disposable: value.disposable ?? false,
+    confirmMutations,
+    disposable,
     cleanup,
     retainDemo: value.retainDemo ?? !cleanup,
     failFast: value.failFast ?? false,
@@ -278,6 +319,8 @@ Usage:
 
 Selection:
   --config <file>              Joomla MCP sites configuration (default: config/sites.json)
+  --scenario <file>            Declarative live scenario JSON (packaged default when omitted)
+  --test-config <file>         Alias for --scenario
   --site <alias>               Configured site alias
   --profile <read|crud|full>   Read-only, catalogue CRUD, or complete validation
   --joomla-path <api|cli|all>  Joomla execution path
@@ -288,8 +331,8 @@ Safety:
   --non-interactive            Disable prompts
   --confirm-mutations          Required for unattended CRUD/full runs
   --disposable                 Required for unattended full/high-risk runs
-  --cleanup                    Remove generated showcase records
-  --retain-demo                Retain one labelled showcase record per CRUD family
+  --cleanup [always|never]     Override scenario cleanup; bare --cleanup means always
+  --retain-demo                Deprecated alias for --cleanup never
 
 Evidence:
   --output <directory>         summary.md, summary.json, junit.xml, and per-action JSON

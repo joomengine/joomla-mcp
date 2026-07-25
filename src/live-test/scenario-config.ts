@@ -91,6 +91,10 @@ const rawScenarioSchema = z.object({
   target: z.object({
     configurationFile: z.string().min(1).default('config/sites.json'),
     site: z.string().min(1).optional(),
+    actorUsernames: z.object({
+      api: z.string().min(1).max(150).optional(),
+      cli: z.string().min(1).max(150).optional(),
+    }).strict().optional(),
   }).strict().default({ configurationFile: 'config/sites.json' }),
   selection: selectionSchema,
   safety: safetySchema,
@@ -138,6 +142,10 @@ export interface LiveScenarioConfiguration {
   readonly target: {
     readonly configurationFile: string;
     readonly site?: string;
+    readonly actorUsernames?: {
+      readonly api?: string;
+      readonly cli?: string;
+    };
   };
   readonly selection: {
     readonly profile: 'read' | 'crud' | 'full';
@@ -210,6 +218,16 @@ export function validateScenarioConfiguration(
   const resourceEntries = Object.entries(scenario.resources);
   if (resourceEntries.length === 0 && scenario.specialActions === undefined) {
     throw new Error('A live scenario must configure at least one resource family or special action.');
+  }
+  if (scenario.resources['messages.messages'] !== undefined) {
+    for (const path of scenario.selection.joomlaPaths) {
+      if (scenario.target.actorUsernames?.[path] === undefined) {
+        throw new Error(
+          `Live scenarios that test private messages must set target.actorUsernames.${path} ` +
+          'to the account authenticated on that Joomla path.',
+        );
+      }
+    }
   }
 
   const knownBases = new Set(crudFixtureDefinitions.keys());
@@ -308,6 +326,12 @@ export function scenarioActionSelected(
   actionId: string,
   configuration: LiveScenarioConfiguration,
 ): boolean {
+  if (
+    actionId === 'users.users.list' &&
+    configuration.resources['messages.messages'] !== undefined
+  ) {
+    return true;
+  }
   const crudMatch = /^(.*)\.(list|get|create|update|delete)$/u.exec(actionId);
   if (crudMatch !== null) return configuration.resources[crudMatch[1]!] !== undefined;
   const actions = configuration.specialActions;

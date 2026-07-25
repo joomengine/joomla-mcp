@@ -11,6 +11,7 @@ export interface LiveFixtureContext {
   readonly seed: string;
   get(baseId: string): LiveFixtureRecord | undefined;
   reference(baseId: string): LiveFixtureRecord | undefined;
+  actor(): LiveFixtureRecord | undefined;
 }
 
 export interface CrudFixtureDefinition {
@@ -202,11 +203,11 @@ fixture('users.users', [], (_context, value) => ({
   // com_messages access. Group 7 is Joomla's built-in Administrator group.
   groups: [7],
 }));
-fixture('messages.messages', ['users.users'], (context, value) => ({
+fixture('messages.messages', [], (context, value) => ({
   // Joomla private-message item and list models expose messages only to their
-  // recipient. Target the authenticated fixture user discovered before writes
-  // so both API and companion postcondition reads can prove persistence.
-  user_id_to: requiredReferenceId(context, 'users.users'),
+  // recipient. Target the explicitly resolved authenticated actor so both API
+  // and companion postcondition reads can prove persistence.
+  user_id_to: requiredActorId(context),
   folder_id: 0,
   state: 0,
   priority: 0,
@@ -412,12 +413,12 @@ function requiredId(context: LiveFixtureContext, baseId: string): string | numbe
   return record.id;
 }
 
-function requiredReferenceId(context: LiveFixtureContext, baseId: string): string | number {
-  const record = context.reference(baseId);
-  if (record === undefined) {
-    throw new Error(`Fixture prerequisite ${baseId} has no existing reference record.`);
+function requiredActorId(context: LiveFixtureContext): string | number {
+  const actor = context.actor();
+  if (actor === undefined) {
+    throw new Error('Fixture prerequisite authenticated actor has not been resolved.');
   }
-  return record.id;
+  return actor.id;
 }
 
 function requiredAttribute(context: LiveFixtureContext, baseId: string, name: string): unknown {

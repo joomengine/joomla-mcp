@@ -15,7 +15,7 @@ site whose owner has explicitly authorized the selected mutations. Never run
 | Profile | Joomla activity | Intended use |
 |---|---|---|
 | `read` | Catalogue discovery and every selected executable read | Existing non-production site; no write grant |
-| `crud` | Create two labelled records per selected CRUD family, list/get, update and read back the showcase, delete and verify the deletion candidate | Demo or disposable site |
+| `crud` | Execute every configured resource lifecycle, including several named creates/updates, relationship resolution, collection visibility, item read-back, and optional deletion | Demo or disposable site |
 | `full` | `crud` plus media, configuration, plugin, privacy, language-override, history, cache, scheduler, session, extension, state, and other fixed administrative actions | Explicitly disposable site only |
 
 Every run can select:
@@ -24,7 +24,73 @@ Every run can select:
 - MCP transport: stdio, authenticated Streamable HTTP, or both;
 - all domains or a comma-separated family subset;
 - continue-and-report or fail-fast behavior;
-- removal or retention of generated showcase data.
+- strict removal or retention of every generated record.
+
+## Declarative scenario file
+
+The packaged default is `config/live-test.default.json`. It is a versioned,
+strict JSON contract and is included in the npm package. Override it without
+changing code:
+
+```bash
+npm run test:live -- \
+  --scenario /absolute/path/to/my-live-scenario.json \
+  --config /absolute/path/to/sites.json \
+  --non-interactive
+```
+
+`--test-config` is an exact alias for `--scenario`. The scenario controls the
+profile, Joomla and MCP lanes, mutation/disposable acknowledgement, cleanup
+policy, selected CRUD families, special actions, fixture values, updates, and
+relationships. Command-line selection and safety flags override the scenario.
+
+Omitting a resource family from `resources` skips all CRUD actions for that
+family. Omitting `specialActions` skips non-CRUD actions. The packaged default
+explicitly contains all 36 CRUD families and all special actions. Its visible
+site graph contains three content categories, five articles, three user groups,
+five users, two banner clients, three banner categories, five banners, two site
+menus, five article menu items, and five custom HTML modules.
+
+Relationships are named and never use database IDs. A single reference uses:
+
+```json
+{ "$ref": "content.categories.news" }
+```
+
+Several references use:
+
+```json
+{
+  "$refs": [
+    "users.groups.authors",
+    "users.groups.reviewers"
+  ]
+}
+```
+
+Menu links can interpolate a verified record field:
+
+```json
+{
+  "$template": "index.php?option=com_content&view=article&id={{content.articles.welcome.id}}"
+}
+```
+
+Ordinary string values can use `{{seed}}`, `{{lane}}`, or `{{token}}`.
+`{{token}}` is a stable 12-character value derived from the scenario name,
+run seed, and MCP/Joomla lane. The packaged scenario uses it in aliases,
+usernames, addresses, menu types, and other unique fields so retained runs and
+parallel lanes cannot silently reuse one another's records.
+
+The runner validates every reference and dependency cycle before it attempts
+the dependent write. Numeric category, client, or user-group associations in a
+scenario fail validation.
+
+The scenario cleanup setting accepts only `always` or `never`. Override it
+with `--cleanup always` or `--cleanup never`; bare `--cleanup` remains a
+compatibility alias for `always`. `never` is literal: the runner creates no
+deletion candidates, issues no delete calls, performs no trash transition, and
+retains every record it created so it can be inspected in Joomla.
 
 The scenario inventory is generated from the authoritative API and companion
 catalogues. Unit validation fails when an action is added without a live
@@ -108,9 +174,9 @@ requires:
 MUTATE <target-hostname> <run-seed>
 ```
 
-The default interactive mutation run retains one clearly labelled showcase
-record in each tested CRUD family and still creates/deletes a separate deletion
-candidate. Use `--cleanup` to remove the showcase records as well.
+The default scenario is sufficient for unattended execution, so interaction is
+optional. Interactive mode remains available as a safety-oriented compatibility
+front end.
 
 ## Unattended run
 
@@ -118,6 +184,7 @@ A read-only run requires no mutation flag:
 
 ```bash
 npm run test:live -- \
+  --scenario ./config/live-test.default.json \
   --config /etc/joomla-mcp/demo-sites.json \
   --site demo \
   --profile read \
@@ -144,7 +211,7 @@ npm run test:live -- \
   --non-interactive \
   --confirm-mutations \
   --disposable \
-  --cleanup
+  --cleanup always
 ```
 
 `--fail-fast` stops at the first unexpected failure. The default continues all
@@ -166,10 +233,45 @@ For each selected lane, the runner:
 3. requests and approves a time-bounded grant for the selected write toolsets;
 4. submits every write as a dry run;
 5. creates a fresh executable plan and consumes its signed one-time token;
-6. performs verification reads and compares identifiers and changed fields;
-7. exercises deletion against a separately generated candidate;
-8. removes retained records with supported delete actions in reverse dependency
-   order when `--cleanup` is selected.
+6. treats the mutation response only as a candidate identifier;
+7. independently reads the candidate item and compares persisted non-secret
+   fields, publication state, and resolved relationships;
+8. pages the matching MCP list action until the exact created resource is
+   found, proving collection/administrator-list visibility;
+9. repeats list/get verification after every configured update and through the
+   other Joomla path when it is available;
+10. removes every run-owned record in reverse dependency order only when the
+   effective cleanup policy is `always`.
+
+An article create therefore cannot pass merely because Joomla returned an ID.
+It must appear in `content.articles.list`, be readable by
+`content.articles.get`, retain its configured category and publication state,
+and—on dual-path fixtures—be visible through both API and the Joomla-native
+companion model. Menu items must target the verified article IDs, and custom
+modules must retain their configured HTML, positions, publication state, and
+created menu-item assignments.
+
+## Real-time standard output
+
+The CLI writes one complete progress line immediately before and after each
+transport, lane, scenario phase, verification, cleanup operation, and report
+write. A heartbeat is written every 30 seconds by default while an individual
+MCP operation is still running. Set
+`JOOMLA_MCP_LIVE_HEARTBEAT_MS` between 5000 and 300000 milliseconds to change
+that interval.
+
+Typical output:
+
+```text
+[live-test 2026-07-25T10:00:00.000Z] START 0042-http-api-content.articles.create-create-welcome http/api content.articles.create phase=create-welcome
+[live-test 2026-07-25T10:00:01.240Z] PASS ... duration=1.2s
+```
+
+Requests, responses, passwords, authorization values, approval
+acknowledgements, confirmation tokens, and cookies are never printed. The
+disposable fixture retains this redacted stream in `live-test/console.log`
+while continuing to upload all existing JSON, Markdown, JUnit, action, Joomla,
+and container evidence.
 
 The authoritative JoomEngine fixture additionally provisions visible,
 deterministic prerequisites before starting the MCP client: one media file, one

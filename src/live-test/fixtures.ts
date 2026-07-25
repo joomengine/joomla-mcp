@@ -17,7 +17,11 @@ export interface CrudFixtureDefinition {
   readonly baseId: string;
   readonly dependencies: readonly string[];
   create(context: LiveFixtureContext, purpose: string): Readonly<Record<string, unknown>>;
-  update(context: LiveFixtureContext, record: LiveFixtureRecord): Readonly<Record<string, unknown>>;
+  update(
+    context: LiveFixtureContext,
+    record: LiveFixtureRecord,
+    purpose?: string,
+  ): Readonly<Record<string, unknown>>;
 }
 
 interface FixtureNames {
@@ -49,10 +53,11 @@ function fixture(
     dependencies: Object.freeze([...dependencies]),
     create: (context: LiveFixtureContext, purpose: string) =>
       create(context, names(context, baseId, purpose)),
-    update: (context: LiveFixtureContext) => (update ?? ((_inner, value) => defaultUpdate(baseId, value)))(
-      context,
-      names(context, baseId, 'updated'),
-    ),
+    update: (context: LiveFixtureContext, _record: LiveFixtureRecord, purpose = 'updated') =>
+      (update ?? ((_inner, value) => defaultUpdate(baseId, value)))(
+        context,
+        names(context, baseId, purpose),
+      ),
   };
   definitions.set(baseId, Object.freeze(definition));
 }
@@ -196,7 +201,7 @@ fixture('users.users', [], (_context, value) => ({
   groups: [2],
 }));
 fixture('messages.messages', ['users.users'], (context, value) => ({
-  user_id_to: requiredReferenceId(context, 'users.users'),
+  user_id_to: requiredId(context, 'users.users'),
   folder_id: 0,
   state: 0,
   priority: 0,
@@ -258,7 +263,7 @@ for (const baseId of [
   fixture(baseId, [groupId], (context, value) => ({
     group_id: requiredId(context, groupId),
     title: value.title,
-    name: value.alias.replaceAll('-', '_'),
+    name: value.alias,
     label: value.title,
     default_value: '',
     type: 'text',

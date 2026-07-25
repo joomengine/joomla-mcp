@@ -8,6 +8,7 @@ import {
   joomlaCrudWriteActions,
   joomlaReadActions,
   joomlaWriteActions,
+  resolveJoomlaReadRequest,
   resolveJoomlaWriteRequest,
 } from '../src/catalog/action-catalog.js';
 import { apiCrudBases } from '../src/catalog/core.js';
@@ -152,6 +153,53 @@ describe('Joomla source-backed action catalogue', () => {
       body: {
         context: 'com_contact.mail',
       },
+    });
+  });
+
+  it('carries fixed Joomla controller context into reads and derives native form fields', () => {
+    expect(resolveJoomlaReadRequest('menus.site.list', { offset: 0, limit: 10 }).query).toEqual({
+      'page[offset]': 0,
+      'page[limit]': 10,
+      client_id: 0,
+    });
+    expect(resolveJoomlaReadRequest('menus.administrator.list', { offset: 0, limit: 10 }).query).toEqual({
+      'page[offset]': 0,
+      'page[limit]': 10,
+      client_id: 1,
+    });
+    expect(() => resolveJoomlaReadRequest('menus.administrator.list', {
+      offset: 0,
+      limit: 10,
+      client_id: 0,
+    })).toThrow('Unsupported action input properties');
+
+    expect(resolveJoomlaWriteRequest('menus.site-items.create', {
+      data: {
+        menutype: 'jmcp-site',
+        title: 'Joomla MCP article',
+        alias: 'jmcp-article',
+        type: 'component',
+        link: 'index.php?option=com_content&view=article&id=42',
+      },
+    }).body).toMatchObject({
+      client_id: 0,
+      request: {
+        option: 'com_content',
+        view: 'article',
+        id: '42',
+      },
+    });
+
+    expect(resolveJoomlaWriteRequest('modules.site.create', {
+      data: {
+        title: 'Joomla MCP module',
+        module: 'mod_custom',
+        assigned: [41, 42],
+      },
+    }).body).toMatchObject({
+      client_id: 0,
+      assigned: [41, 42],
+      assignment: 1,
     });
   });
 

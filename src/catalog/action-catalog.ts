@@ -292,9 +292,15 @@ export function resolveJoomlaReadRequest(
   }
 
   const path = resolveReadActionRoute(action, routeInput);
-  const query = action.paginated
-    ? normalizeBoundedListQuery({ offset: values['offset'], limit: values['limit'] }, configuredMaximumPageSize)
-    : Object.freeze({});
+  const query = withFixedReadDefaults(
+    action.id,
+    action.paginated
+      ? normalizeBoundedListQuery(
+          { offset: values['offset'], limit: values['limit'] },
+          configuredMaximumPageSize,
+        )
+      : Object.freeze({}),
+  );
 
   return Object.freeze({ method: 'GET', path, query });
 }
@@ -349,6 +355,7 @@ function withFixedMutationDefaults(
 ): Readonly<Record<string, unknown>> {
   const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
   if (base === undefined) return body;
+  const normalized = withJoomlaDerivedMutationFields(base.id, body);
   const fixed = Object.fromEntries(
     Object.entries(base.controllerDefaults).filter(([key]) => key !== 'component'),
   );
@@ -358,8 +365,66 @@ function withFixedMutationDefaults(
   // models still require it in form data. Fixed catalogue values deliberately
   // win over the normalized caller body.
   return Object.keys(fixed).length === 0
-    ? body
-    : Object.freeze({ ...body, ...fixed });
+    ? normalized
+    : Object.freeze({ ...normalized, ...fixed });
+}
+
+function withFixedReadDefaults(
+  actionId: string,
+  query: Readonly<Record<string, string | number>>,
+): Readonly<Record<string, string | number>> {
+  const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
+  if (base === undefined) return query;
+  const fixed = Object.fromEntries(
+    Object.entries(base.controllerDefaults).filter(([key]) => key !== 'component'),
+  );
+
+  // Joomla's API menu controllers read client_id directly from request input
+  // before the list model runs. The route path alone does not populate that
+  // value for every Joomla release. The same rule applies to other fixed
+  // controller context such as category extension and custom-field context.
+  return Object.keys(fixed).length === 0
+    ? query
+    : Object.freeze({ ...query, ...fixed });
+}
+
+function withJoomlaDerivedMutationFields(
+  baseId: string,
+  body: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  if (
+    (baseId === 'menus.site-items' || baseId === 'menus.administrator-items') &&
+    body['type'] === 'component' &&
+    typeof body['link'] === 'string'
+  ) {
+    const link = new URL(body['link'], 'https://joomla.invalid/');
+    const request = Object.fromEntries(link.searchParams.entries());
+
+    // Joomla loads the selected component layout from link, but validates its
+    // required menu fields from the nested request object. Supplying only the
+    // canonical link therefore fails for article menu items with "Select
+    // Article". Derive the form request so callers do not have to duplicate it.
+    if (Object.keys(request).length > 0) {
+      return Object.freeze({ ...body, request: Object.freeze(request) });
+    }
+  }
+
+  if (
+    (baseId === 'modules.site' || baseId === 'modules.administrator') &&
+    Array.isArray(body['assigned'])
+  ) {
+    const assigned = body['assigned'].map((value) => Number(value));
+    const assignment = assigned.includes(0)
+      ? 0
+      : assigned.some((value) => value < 0)
+        ? -1
+        : assigned.length > 0
+          ? 1
+          : '-';
+    return Object.freeze({ ...body, assignment });
+  }
+
+  return body;
 }
 
 function assertPlainInput(input: unknown): Readonly<Record<string, unknown>> {

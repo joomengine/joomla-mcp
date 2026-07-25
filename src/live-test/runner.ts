@@ -1367,7 +1367,7 @@ async function runConfiguredCrudProfile(
       : configuredRecord.generate
         ? [{
             name: 'generated-update',
-            data: fixture.update(context, verified),
+            data: fixture.update(context, verified, `configured-${configuredRecord.key}-updated`),
           }]
         : [];
     let current = verified;
@@ -1692,16 +1692,46 @@ async function deleteConfiguredResource(
       candidate.id === `${baseId}.update`);
     if (updateScenario !== undefined && updateScenario.joomlaPaths.includes(path)) {
       const trashInput = { id: numericId(entity.id), data: trash };
+      const phase = `${cleanup ? 'cleanup' : 'delete'}-trash-${safeSegment(reference)}`;
       const trashed = await record(
         session,
         path,
         updateScenario,
-        `${cleanup ? 'cleanup' : 'delete'}-trash-${safeSegment(reference)}`,
+        phase,
         trashInput,
-        async () => ({
-          response: await callWrite(session, site, updateScenario.id, trashInput, path),
-          expected: trash,
-        }),
+        async () => {
+          try {
+            return {
+              response: await callWrite(session, site, updateScenario.id, trashInput, path),
+              expected: trash,
+            };
+          } catch (error) {
+            const knownLimitation = verifiedPartialMutationLimitation({
+              options,
+              joomlaPath: path,
+              scenarioId: updateScenario.id,
+              phase,
+              error: errorMessage(error),
+            });
+            if (knownLimitation === undefined) throw error;
+            const verification = await callRead(
+              session,
+              site,
+              getScenario.id,
+              { id: numericId(entity.id) },
+              path,
+            );
+            const attributes = assertChangedFields(verification, trash, baseId);
+            return {
+              status: 'KNOWN_UPSTREAM_LIMITATION' as const,
+              response: { upstreamError: errorResult(error), verification },
+              expected: trash,
+              actual: attributes,
+              reason: knownLimitation.explanation,
+              knownLimitation,
+            };
+          }
+        },
         cleanup,
       );
       if (trashed === undefined) return false;

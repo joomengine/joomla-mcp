@@ -461,6 +461,64 @@ test('generic writes preview by default and require the signed edge marker to ap
     expect($model->saveCalls === 1 && $model->saved['title'] === 'Safe article', 'Joomla model did not receive validated data.');
 });
 
+test('module writes derive Joomla assignment mode from assigned menu ids', static function (): void {
+    $entity = array_values(array_filter(
+        CoreEntityCatalogue::all(),
+        static fn ($candidate): bool => $candidate->id === 'modules.site',
+    ))[0];
+    $model = new class {
+        public array $saved = [];
+
+        public function save(array $data): bool
+        {
+            $this->saved = $data;
+
+            return true;
+        }
+
+        public function getState(string $key, int $default = 0): int
+        {
+            return 91;
+        }
+
+        public function getItem(int $id): object
+        {
+            return (object) (['id' => $id] + $this->saved);
+        }
+    };
+    $provider = new class ($model) implements ModelProviderInterface {
+        public function __construct(private object $model)
+        {
+        }
+
+        public function administrator(string $component, string $modelName): object
+        {
+            return $this->model;
+        }
+    };
+    $action = new CoreEntityAction($entity, 'create', $provider);
+    $cases = [
+        [[0], 0],
+        [[41, 42], 1],
+        [[-41, -42], -1],
+        [[], '-'],
+    ];
+
+    foreach ($cases as [$assigned, $assignment]) {
+        $action->execute([
+            'data' => [
+                'title' => 'Assigned module',
+                'module' => 'mod_custom',
+                'assigned' => $assigned,
+            ],
+            'dryRun' => false,
+            '_edgeConfirmed' => true,
+        ]);
+        expect($model->saved['assigned'] === $assigned, 'Assigned menu ids were changed.');
+        expect($model->saved['assignment'] === $assignment, 'Joomla module assignment mode was not derived.');
+    }
+});
+
 test('generic updates merge existing writable fields without replaying sensitive values', static function (): void {
     $entity = array_values(array_filter(
         CoreEntityCatalogue::all(),

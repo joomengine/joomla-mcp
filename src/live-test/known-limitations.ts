@@ -18,7 +18,7 @@ interface KnownLimitationContext {
 interface KnownLimitationRule {
   readonly code: string;
   readonly scenarioIds: readonly string[];
-  readonly phases: readonly string[];
+  readonly phases: readonly (string | RegExp)[];
   readonly joomlaPaths?: readonly LiveJoomlaPath[];
   readonly error: RegExp;
   readonly explanation: string;
@@ -136,6 +136,21 @@ const verifiedDeletionRules: readonly KnownLimitationRule[] = Object.freeze([
     reference:
       'https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_newsfeeds/src/Controller/FeedsController.php',
   }),
+  Object.freeze({
+    code: 'joomla-6.1.2-category-get-after-delete-500',
+    scenarioIds: Object.freeze([
+      'content.categories.get',
+      'banners.categories.get',
+      'contacts.categories.get',
+      'newsfeeds.categories.get',
+    ]),
+    phases: Object.freeze(['verify-deleted']),
+    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    explanation:
+      'Joomla 6.1.2 returns HTTP 500 when a category item route reads a deleted category; the live test accepted this only after the category disappeared from the active collection.',
+    reference:
+      'https://github.com/joomla/joomla-cms/blob/6.1.2/api/components/com_categories/src/Controller/CategoriesController.php',
+  }),
 ]);
 
 const verifiedPartialRules: readonly KnownLimitationRule[] = Object.freeze([
@@ -163,6 +178,7 @@ const verifiedPartialRules: readonly KnownLimitationRule[] = Object.freeze([
       'update-primary-generated-update',
       'update-secondary-generated-update',
       'update-deletion-generated-update',
+      /^(?:delete|cleanup)-trash-languages\.content\.[A-Za-z0-9._-]+$/u,
     ]),
     error: /Joomla API returned HTTP 400: .*Check-in failed with the following error:/u,
     explanation:
@@ -209,7 +225,8 @@ function matchRule(
   const rule = rules.find((candidate) =>
     (candidate.joomlaPaths ?? ['api']).includes(context.joomlaPath) &&
     candidate.scenarioIds.includes(context.scenarioId) &&
-    candidate.phases.includes(context.phase) &&
+    candidate.phases.some((phase) =>
+      typeof phase === 'string' ? phase === context.phase : phase.test(context.phase)) &&
     candidate.error.test(context.error));
   if (rule === undefined) return undefined;
   return Object.freeze({

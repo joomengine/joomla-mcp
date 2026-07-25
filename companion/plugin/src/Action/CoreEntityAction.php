@@ -199,7 +199,7 @@ final readonly class CoreEntityAction implements ActionInterface
         $this->requireEdgeConfirmation($input);
         $model = $this->model($this->entity->itemModel, ['save']);
         $this->setModelState($model);
-        $payload = array_merge($data, $this->entity->defaults);
+        $payload = $this->withDerivedModelFields(array_merge($data, $this->entity->defaults));
         $this->save($model, $payload);
         $id = $this->savedId($model, null);
 
@@ -226,7 +226,9 @@ final readonly class CoreEntityAction implements ActionInterface
         $this->requireEdgeConfirmation($input);
         $model = $this->model($this->entity->itemModel, ['getItem', 'save']);
         $this->setModelState($model);
-        $payload = array_merge($this->existingWriteData($model, $id), $data, $this->entity->defaults);
+        $payload = $this->withDerivedModelFields(
+            array_merge($this->existingWriteData($model, $id), $data, $this->entity->defaults),
+        );
         $payload[$this->entity->primaryKey] = $id;
         $this->save($model, $payload);
 
@@ -341,6 +343,27 @@ final readonly class CoreEntityAction implements ActionInterface
         }
 
         return $result;
+    }
+
+    /** @param array<string, mixed> $payload @return array<string, mixed> */
+    private function withDerivedModelFields(array $payload): array
+    {
+        if (!in_array($this->entity->id, ['modules.site', 'modules.administrator'], true)
+            || !is_array($payload['assigned'] ?? null)) {
+            return $payload;
+        }
+
+        $assigned = array_map(static fn (mixed $value): int => (int) $value, $payload['assigned']);
+
+        if (in_array(0, $assigned, true)) {
+            $payload['assignment'] = 0;
+        } elseif (array_filter($assigned, static fn (int $value): bool => $value < 0) !== []) {
+            $payload['assignment'] = -1;
+        } else {
+            $payload['assignment'] = $assigned === [] ? '-' : 1;
+        }
+
+        return $payload;
     }
 
     /** @param list<string> $methods */

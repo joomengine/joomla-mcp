@@ -7,6 +7,7 @@ import {
   completeJoomlaApiPatchBody,
   getJoomlaWriteAction,
   joomlaCrudWriteActions,
+  requiresJoomlaApiPatchCompletion,
   resolveJoomlaWriteRequest,
 } from '../catalog/action-catalog.js';
 import { sourceOnlyGateReason } from '../catalog/action-gates.js';
@@ -575,7 +576,11 @@ export class JoomlaWriteService {
     }
 
     let body = operation.body;
-    if (operation.method === 'PATCH' && body !== undefined && crudWriteActionIds.has(operation.action)) {
+    if (
+      operation.method === 'PATCH' &&
+      body !== undefined &&
+      requiresJoomlaApiPatchCompletion(operation.action)
+    ) {
       const current = await this.api.get(site.api, operation.path);
       body = completeJoomlaApiPatchBody(
         operation.action,

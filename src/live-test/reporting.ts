@@ -52,9 +52,10 @@ export function statusCounts(attempts: readonly LiveTestAttempt[]): Readonly<Rec
 export function redact(value: unknown, depth = 0): unknown {
   if (depth > 16) return '[REDACTED: maximum nesting depth]';
   if (typeof value === 'string') {
-    return value.length <= maximumStringLength
-      ? value
-      : `${value.slice(0, maximumStringLength)}…[truncated ${value.length - maximumStringLength} characters]`;
+    const safe = redactText(value);
+    return safe.length <= maximumStringLength
+      ? safe
+      : `${safe.slice(0, maximumStringLength)}…[truncated ${safe.length - maximumStringLength} characters]`;
   }
   if (Array.isArray(value)) return value.slice(0, maximumArrayLength).map((entry) => redact(entry, depth + 1));
   if (typeof value !== 'object' || value === null) return value;
@@ -64,6 +65,20 @@ export function redact(value: unknown, depth = 0): unknown {
     output[key] = sensitiveKey.test(key) ? '[REDACTED]' : redact(entry, depth + 1);
   }
   return output;
+}
+
+export function redactText(value: string): string {
+  return value
+    .replace(/\b(authorization\s*:\s*)(?:bearer|basic)\s+[^\s,;"'}]+/giu, '$1[REDACTED]')
+    .replace(/\b(bearer|basic)\s+[A-Za-z0-9._~+\/=-]{8,}/giu, '$1 [REDACTED]')
+    .replace(
+      /(["']?(?:password2?|secret|token|api[_-]?key|acknowledgement|confirmation(?:Token)?|cookie)["']?\s*[:=]\s*)(["']?)[^"'\s,;&}]+(\2)/giu,
+      '$1[REDACTED]',
+    )
+    .replace(
+      /([?&](?:password|secret|token|api[_-]?key|acknowledgement|confirmation|key)=)[^&#\s]+/giu,
+      '$1[REDACTED]',
+    );
 }
 
 function renderMarkdown(summary: LiveTestSummary): string {
@@ -83,6 +98,14 @@ function renderMarkdown(summary: LiveTestSummary): string {
     `- Completed: ${summary.completedAt}`,
     `- Seed: \`${summary.environment.seed}\``,
     `- Commit: \`${summary.environment.repositoryCommit}\``,
+    ...(summary.scenario === undefined
+      ? []
+      : [
+          `- Scenario: \`${summary.scenario.name}\``,
+          `- Scenario file: \`${summary.scenario.file}\``,
+          `- Scenario fingerprint: \`${summary.scenario.fingerprint}\``,
+          `- Cleanup policy: \`${summary.scenario.cleanup}\``,
+        ]),
     `- Configuration fingerprint: \`${summary.environment.configurationFingerprint}\``,
     '',
     '## Counts',

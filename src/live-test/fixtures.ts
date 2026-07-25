@@ -209,7 +209,6 @@ fixture('messages.messages', [], (context, value) => ({
   // and companion postcondition reads can prove persistence.
   user_id_to: requiredActorId(context),
   folder_id: 0,
-  state: 0,
   priority: 0,
   subject: value.title,
   message: value.description,

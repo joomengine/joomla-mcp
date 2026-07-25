@@ -1035,50 +1035,29 @@ async function runCrudProfile(
                 error: errorMessage(error),
               });
               if (knownLimitation === undefined || baseId !== 'messages.messages') throw error;
-              const collection = await callRead(
+              const recovery = await inspectMessageReplacement(
                 session,
-                site,
-                'messages.messages.list',
-                { offset: 0, limit: 100 },
                 path,
-              );
-              const replacement = collectEntities(collection).find((candidate) =>
-                !looselyEqual(candidate.id, showcase.id) &&
-                entityMatchesFields(candidate, changes));
-              if (replacement === undefined) throw error;
-              const replacementCleanup = await callWrite(
-                session,
                 site,
-                'messages.messages.delete',
-                { id: numericId(replacement.id) },
-                path,
+                showcase.id,
+                changes,
+                options.cleanup,
               );
-              const cleanupVerification = await callRead(
-                session,
-                site,
-                'messages.messages.list',
-                { offset: 0, limit: 100 },
-                path,
-              );
-              if (collectEntities(cleanupVerification).some((candidate) =>
-                looselyEqual(candidate.id, replacement.id))) {
-                throw new Error(
-                  `Joomla created replacement message ${replacement.id} during PATCH and its cleanup did not remove it.`,
-                );
+              if (recovery === undefined) throw error;
+              if (!recovery.replacementRemoved) {
+                rememberUnexpectedReplacement(state, baseId, recovery.replacement);
               }
               return {
                 status: 'KNOWN_UPSTREAM_LIMITATION',
                 response: {
                   originalReadBack: response,
-                  replacementVerification: collection,
-                  replacementCleanup,
-                  cleanupVerification,
+                  ...recovery,
                 },
                 expected: changes,
                 actual: {
                   original: entity?.attributes,
-                  replacement,
-                  replacementRemoved: true,
+                  replacement: recovery.replacement,
+                  replacementRemoved: recovery.replacementRemoved,
                 },
                 reason: knownLimitation.explanation,
                 knownLimitation,
@@ -1359,6 +1338,7 @@ async function runConfiguredCrudProfile(
       configuredRecord.key,
       provisional.id,
       createExpectation,
+      state,
       getScenario,
       listScenario,
       record,
@@ -1443,6 +1423,7 @@ async function runConfiguredCrudProfile(
         configuredRecord.key,
         current.id,
         changes,
+        state,
         getScenario,
         listScenario,
         record,
@@ -1558,6 +1539,87 @@ async function resolveAuthenticatedActor(
   );
 }
 
+export interface MessageReplacementEvidence {
+  readonly replacement: LiveFixtureRecord;
+  readonly replacementVerification: unknown;
+  readonly replacementRemoved: boolean;
+  readonly replacementCleanup?: unknown;
+  readonly cleanupVerification?: unknown;
+}
+
+export async function inspectMessageReplacement(
+  session: LiveMcpSession,
+  path: LiveJoomlaPath,
+  site: string,
+  originalId: string | number,
+  changes: Readonly<Record<string, unknown>>,
+  cleanup: boolean,
+): Promise<MessageReplacementEvidence | undefined> {
+  const collection = await callRead(
+    session,
+    site,
+    'messages.messages.list',
+    { offset: 0, limit: 100 },
+    path,
+  );
+  const replacement = collectEntities(collection).find((candidate) =>
+    !looselyEqual(candidate.id, originalId) &&
+    entityMatchesFields(candidate, changes));
+  if (replacement === undefined) return undefined;
+  if (!cleanup) {
+    return {
+      replacement,
+      replacementVerification: collection,
+      replacementRemoved: false,
+    };
+  }
+
+  const replacementCleanup = await callWrite(
+    session,
+    site,
+    'messages.messages.delete',
+    { id: numericId(replacement.id) },
+    path,
+  );
+  const cleanupVerification = await callRead(
+    session,
+    site,
+    'messages.messages.list',
+    { offset: 0, limit: 100 },
+    path,
+  );
+  if (collectEntities(cleanupVerification).some((candidate) =>
+    looselyEqual(candidate.id, replacement.id))) {
+    throw new Error(
+      `Joomla created replacement message ${replacement.id} during PATCH and its cleanup did not remove it.`,
+    );
+  }
+  return {
+    replacement,
+    replacementVerification: collection,
+    replacementRemoved: true,
+    replacementCleanup,
+    cleanupVerification,
+  };
+}
+
+function rememberUnexpectedReplacement(
+  state: LaneState,
+  family: string,
+  replacement: LiveFixtureRecord,
+): void {
+  if (state.created.some((candidate) =>
+    candidate.family === family && looselyEqual(candidate.id, replacement.id))) {
+    return;
+  }
+  state.created.push({
+    lane: state.lane,
+    family,
+    id: replacement.id,
+    label: `Joomla PATCH replacement: ${replacement.label}`,
+  });
+}
+
 async function verifyConfiguredResource(
   session: LiveMcpSession,
   creatingPath: LiveJoomlaPath,
@@ -1567,6 +1629,7 @@ async function verifyConfiguredResource(
   key: string,
   id: string | number,
   expected: Readonly<Record<string, unknown>>,
+  state: LaneState,
   getScenario: LiveScenario,
   listScenario: LiveScenario,
   record: AttemptRecorder,
@@ -1590,6 +1653,7 @@ async function verifyConfiguredResource(
     }
     const getInput = { id: numericId(id) };
     let readBack: LiveFixtureRecord | undefined;
+    let messageReplacementHandled = false;
     const getOutcome = await record(
       session,
       verificationPath,
@@ -1600,14 +1664,51 @@ async function verifyConfiguredResource(
         const response = await callRead(session, site, getScenario.id, getInput, verificationPath);
         readBack = firstEntity(response);
         assertEntityId(readBack, id, getScenario.id);
-        const attributes = assertChangedFields(response, expected, baseId);
-        return {
-          response,
-          expected: visibleExpectation(expected),
-          actual: attributes,
-        };
+        try {
+          const attributes = assertChangedFields(response, expected, baseId);
+          return {
+            response,
+            expected: visibleExpectation(expected),
+            actual: attributes,
+          };
+        } catch (error) {
+          const knownLimitation = verifiedPartialMutationLimitation({
+            options,
+            joomlaPath: verificationPath,
+            scenarioId: getScenario.id,
+            phase: `verify-${phasePrefix}-get-${key}`,
+            error: errorMessage(error),
+          });
+          if (knownLimitation === undefined || baseId !== 'messages.messages') throw error;
+          const recovery = await inspectMessageReplacement(
+            session,
+            verificationPath,
+            site,
+            id,
+            expected,
+            options.cleanup,
+          );
+          if (recovery === undefined) throw error;
+          if (!recovery.replacementRemoved) {
+            rememberUnexpectedReplacement(state, baseId, recovery.replacement);
+          }
+          messageReplacementHandled = true;
+          return {
+            status: 'KNOWN_UPSTREAM_LIMITATION' as const,
+            response: { originalReadBack: response, ...recovery },
+            expected: visibleExpectation(expected),
+            actual: {
+              original: readBack?.attributes,
+              replacement: recovery.replacement,
+              replacementRemoved: recovery.replacementRemoved,
+            },
+            reason: knownLimitation.explanation,
+            knownLimitation,
+          };
+        }
       },
     );
+    if (messageReplacementHandled) return undefined;
     if (getOutcome === undefined || readBack === undefined) continue;
     if (verificationPath === creatingPath) creatingPathReadBack = readBack;
 

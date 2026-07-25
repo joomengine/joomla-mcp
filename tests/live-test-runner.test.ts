@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   entityFromMutation,
+  inspectMessageReplacement,
   liveTestExitCode,
   mediaAdapterSelector,
   mediaDirectoryPath,
@@ -16,8 +17,43 @@ import {
   runLiveTest,
   specialWritePriority,
 } from '../src/live-test/runner.js';
+import type { LiveMcpCall, LiveMcpSession } from '../src/live-test/types.js';
 
 describe('live-test runner', () => {
+  it('retains a Joomla message PATCH replacement without issuing cleanup writes', async () => {
+    const calls: LiveMcpCall[] = [];
+    const session: LiveMcpSession = {
+      kind: 'stdio',
+      call: async (call) => {
+        calls.push(call);
+        return {
+          data: [{
+            type: 'messages',
+            id: 17,
+            attributes: { subject: 'Updated subject' },
+          }],
+        };
+      },
+      close: async () => undefined,
+      diagnostics: () => ({}),
+    };
+
+    const evidence = await inspectMessageReplacement(
+      session,
+      'api',
+      'fixture',
+      16,
+      { subject: 'Updated subject' },
+      false,
+    );
+
+    expect(evidence).toMatchObject({
+      replacement: { id: 17 },
+      replacementRemoved: false,
+    });
+    expect(calls.map((call) => call.name)).toEqual(['joomla_action_read']);
+  });
+
   it('ignores companion correlation ids when extracting a created resource', () => {
     const entity = entityFromMutation({
       preview: { dryRun: true },

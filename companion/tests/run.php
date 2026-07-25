@@ -524,7 +524,7 @@ test('module writes derive Joomla assignment mode from assigned menu ids', stati
         expect($model->saved['assignment'] === $assignment, 'Joomla module assignment mode was not derived.');
     }
 
-    expect($model->state['filter.client_id'] === 0, 'The site module model did not receive its fixed client context.');
+    expect($model->state['client_id'] === 0, 'The site module model did not receive its fixed client context.');
 });
 
 test('generic updates merge existing writable fields without replaying sensitive values', static function (): void {

@@ -201,7 +201,7 @@ fixture('users.users', [], (_context, value) => ({
   groups: [2],
 }));
 fixture('messages.messages', ['users.users'], (context, value) => ({
-  user_id_to: requiredId(context, 'users.users'),
+  user_id_to: requiredCreatedOrReferenceId(context, 'users.users'),
   folder_id: 0,
   state: 0,
   priority: 0,
@@ -403,6 +403,14 @@ function defaultUpdate(
 function requiredId(context: LiveFixtureContext, baseId: string): string | number {
   const record = context.get(baseId);
   if (record === undefined) throw new Error(`Fixture prerequisite ${baseId} has no created record.`);
+  return record.id;
+}
+
+function requiredCreatedOrReferenceId(context: LiveFixtureContext, baseId: string): string | number {
+  const record = context.get(baseId) ?? context.reference(baseId);
+  if (record === undefined) {
+    throw new Error(`Fixture prerequisite ${baseId} has no created or existing reference record.`);
+  }
   return record.id;
 }
 

@@ -1,4 +1,5 @@
 import type { Toolset } from '../config/schema.js';
+import type { LiveProgressReporter } from './progress.js';
 
 export const liveTestStatuses = [
   'PASS',
@@ -43,6 +44,7 @@ export interface LiveTestSelection {
 
 export interface LiveTestOptions extends LiveTestSelection {
   readonly configurationFile: string;
+  readonly scenarioFile?: string;
   readonly site?: string;
   readonly outputDirectory: string;
   readonly nonInteractive: boolean;
@@ -56,6 +58,11 @@ export interface LiveTestOptions extends LiveTestSelection {
   readonly fixtureDigests?: Readonly<Record<string, string>>;
   readonly stdioCommand?: string;
   readonly stdioArguments?: readonly string[];
+}
+
+export interface LiveTestRunnerDependencies {
+  readonly progress?: LiveProgressReporter;
+  readonly heartbeatSeconds?: number;
 }
 
 export interface LiveTestAttempt {
@@ -116,6 +123,12 @@ export interface LiveTestSummary {
   readonly completedAt: string;
   readonly durationMs: number;
   readonly selection: LiveTestSelection;
+  readonly scenario?: {
+    readonly name: string;
+    readonly file: string;
+    readonly fingerprint: string;
+    readonly cleanup: 'always' | 'never';
+  };
   readonly environment: LiveTestEnvironment;
   readonly catalogue: {
     readonly total: number;

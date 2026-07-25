@@ -199,6 +199,144 @@ describe('live-test runner', () => {
     }
   });
 
+  it('creates several related records, proves collection visibility, and performs no deletion in retain mode', async () => {
+    const resources = new Map<string, Map<number, Record<string, unknown>>>([
+      ['v1/content/categories', new Map()],
+      ['v1/content/articles', new Map()],
+    ]);
+    const requests: { method: string; body?: Record<string, unknown> }[] = [];
+    let nextId = 100;
+    const server = createServer((request, response) => {
+      const originalMethod = request.method ?? 'UNKNOWN';
+      void handle(request, response, resources, () => ++nextId, {
+        onBody: (body) => requests.push({ method: originalMethod, body }),
+        onRequest: () => {
+          if (originalMethod === 'GET' || originalMethod === 'DELETE') {
+            requests.push({ method: originalMethod });
+          }
+        },
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const port = (server.address() as AddressInfo).port;
+    const directory = await mkdtemp(join(tmpdir(), 'joomla-mcp-live-scenario-'));
+    const configurationFile = await writeSiteConfiguration(directory, port);
+    const scenarioFile = join(directory, 'scenario.json');
+    await writeFile(scenarioFile, `${JSON.stringify(contentScenario('never'), null, 2)}\n`);
+    const oldToken = process.env['LIVE_TEST_API_TOKEN'];
+    const oldApproval = process.env['LIVE_TEST_APPROVAL_SECRET'];
+    process.env['LIVE_TEST_API_TOKEN'] = 'fixture-token';
+    process.env['LIVE_TEST_APPROVAL_SECRET'] = 'fixture-approval-secret-with-at-least-32-characters';
+    const progressEvents: unknown[] = [];
+
+    try {
+      const summary = await runLiveTest({
+        configurationFile,
+        scenarioFile,
+        site: 'fixture',
+        outputDirectory: join(directory, 'evidence'),
+        profile: 'crud',
+        joomlaPaths: ['api'],
+        mcpTransports: ['http'],
+        families: ['content'],
+        nonInteractive: true,
+        confirmMutations: true,
+        disposable: true,
+        cleanup: false,
+        retainDemo: true,
+        failFast: false,
+        seed: 'multi-record',
+      }, {
+        progress: (event) => progressEvents.push(event),
+      });
+
+      expect(summary.exitCode).toBe(0);
+      expect(summary.counts.FAIL).toBe(0);
+      expect(resources.get('v1/content/categories')?.size).toBe(3);
+      expect(resources.get('v1/content/articles')?.size).toBe(5);
+      expect(summary.retainedRecords).toHaveLength(8);
+      expect(summary.attempts.filter((attempt) =>
+        attempt.phase.includes('verify-created-visible'))).toHaveLength(8);
+      expect(requests.some((request) => request.method === 'DELETE')).toBe(false);
+      expect(requests.some((request) =>
+        request.body?.['state'] === -2 || request.body?.['published'] === -2)).toBe(false);
+      expect(progressEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'attempt-start' }),
+        expect.objectContaining({ kind: 'attempt-result', status: 'PASS' }),
+        expect.objectContaining({ kind: 'report-complete' }),
+      ]));
+    } finally {
+      if (oldToken === undefined) delete process.env['LIVE_TEST_API_TOKEN'];
+      else process.env['LIVE_TEST_API_TOKEN'] = oldToken;
+      if (oldApproval === undefined) delete process.env['LIVE_TEST_APPROVAL_SECRET'];
+      else process.env['LIVE_TEST_APPROVAL_SECRET'] = oldApproval;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('fails when Joomla returns a create ID and item read but omits it from the GUI collection', async () => {
+    const resources = new Map<string, Map<number, Record<string, unknown>>>([
+      ['v1/content/categories', new Map()],
+      ['v1/content/articles', new Map()],
+    ]);
+    let nextId = 200;
+    const server = createServer((request, response) =>
+      void handle(request, response, resources, () => ++nextId, { hideCollections: true }));
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const port = (server.address() as AddressInfo).port;
+    const directory = await mkdtemp(join(tmpdir(), 'joomla-mcp-live-phantom-'));
+    const configurationFile = await writeSiteConfiguration(directory, port);
+    const scenarioFile = join(directory, 'scenario.json');
+    await writeFile(scenarioFile, `${JSON.stringify(contentScenario('never'), null, 2)}\n`);
+    const oldToken = process.env['LIVE_TEST_API_TOKEN'];
+    const oldApproval = process.env['LIVE_TEST_APPROVAL_SECRET'];
+    process.env['LIVE_TEST_API_TOKEN'] = 'fixture-token';
+    process.env['LIVE_TEST_APPROVAL_SECRET'] = 'fixture-approval-secret-with-at-least-32-characters';
+
+    try {
+      const summary = await runLiveTest({
+        configurationFile,
+        scenarioFile,
+        site: 'fixture',
+        outputDirectory: join(directory, 'evidence'),
+        profile: 'crud',
+        joomlaPaths: ['api'],
+        mcpTransports: ['http'],
+        families: ['content'],
+        nonInteractive: true,
+        confirmMutations: true,
+        disposable: true,
+        cleanup: false,
+        retainDemo: true,
+        failFast: false,
+        seed: 'phantom-create',
+      });
+
+      expect(summary.exitCode).toBe(1);
+      expect(summary.counts.FAIL).toBeGreaterThan(0);
+      expect(summary.attempts).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          scenarioId: 'content.categories.list',
+          phase: 'verify-created-visible-news',
+          status: 'FAIL',
+        }),
+      ]));
+      expect(summary.retainedRecords).toHaveLength(0);
+    } finally {
+      if (oldToken === undefined) delete process.env['LIVE_TEST_API_TOKEN'];
+      else process.env['LIVE_TEST_API_TOKEN'] = oldToken;
+      if (oldApproval === undefined) delete process.env['LIVE_TEST_APPROVAL_SECRET'];
+      else process.env['LIVE_TEST_APPROVAL_SECRET'] = oldApproval;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('writes actionable evidence when the harness fails before a session is ready', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'joomla-mcp-live-fatal-'));
     const joomlaRoot = join(directory, 'joomla');
@@ -257,7 +395,14 @@ async function handle(
   response: ServerResponse,
   resources: Map<string, Map<number, Record<string, unknown>>>,
   nextId: () => number,
+  options: {
+    readonly persistCreates?: boolean;
+    readonly hideCollections?: boolean;
+    readonly onRequest?: () => void;
+    readonly onBody?: (body: Record<string, unknown>) => void;
+  } = {},
 ): Promise<void> {
+  options.onRequest?.();
   if (request.headers.authorization !== 'Bearer fixture-token') {
     json(response, 401, { errors: [{ detail: 'unauthorized' }] });
     return;
@@ -276,7 +421,9 @@ async function handle(
 
   if (request.method === 'GET' && id === undefined) {
     json(response, 200, {
-      data: [...records.entries()].map(([recordId, attributes]) => ({ id: String(recordId), attributes })),
+      data: options.hideCollections
+        ? []
+        : [...records.entries()].map(([recordId, attributes]) => ({ id: String(recordId), attributes })),
     });
     return;
   }
@@ -291,8 +438,9 @@ async function handle(
   }
   if (request.method === 'POST') {
     const body = await bodyRecord(request);
+    options.onBody?.(body);
     const recordId = nextId();
-    records.set(recordId, body);
+    if (options.persistCreates !== false) records.set(recordId, body);
     json(response, 201, { data: { id: String(recordId), attributes: body } });
     return;
   }
@@ -303,6 +451,7 @@ async function handle(
       return;
     }
     const body = await bodyRecord(request);
+    options.onBody?.(body);
     const updated = { ...current, ...body };
     records.set(id!, updated);
     json(response, 200, { data: { id: String(id), attributes: updated } });
@@ -315,6 +464,92 @@ async function handle(
     return;
   }
   json(response, 405, { errors: [{ detail: 'method not allowed' }] });
+}
+
+async function writeSiteConfiguration(directory: string, port: number): Promise<string> {
+  const configurationFile = join(directory, 'sites.json');
+  await writeFile(configurationFile, `${JSON.stringify({
+    defaultSite: 'fixture',
+    approval: {
+      secretEnv: 'LIVE_TEST_APPROVAL_SECRET',
+      ttlMs: 300000,
+      requestTtlMs: 300000,
+    },
+    sites: {
+      fixture: {
+        toolsets: ['discovery', 'content.read', 'content.write', 'structure.read', 'structure.write'],
+        api: {
+          baseUrl: `http://127.0.0.1:${port}`,
+          tokenEnv: 'LIVE_TEST_API_TOKEN',
+          allowInsecureLoopback: true,
+        },
+      },
+    },
+  }, null, 2)}\n`);
+  return configurationFile;
+}
+
+function contentScenario(cleanup: 'always' | 'never'): unknown {
+  return {
+    schema: 'joomengine.joomla-mcp.live-scenario/v1',
+    name: 'Content relationship scenario',
+    target: { configurationFile: 'config/sites.json' },
+    selection: {
+      profile: 'crud',
+      joomlaPaths: ['api'],
+      mcpTransports: ['http'],
+      families: ['content'],
+    },
+    safety: { confirmMutations: true, disposable: true, cleanup },
+    progress: { enabled: true, heartbeatSeconds: 30 },
+    resources: {
+      'content.categories': {
+        records: ['news', 'guides', 'community'].map((key, index) => ({
+          key,
+          data: {
+            parent_id: 1,
+            title: `Scenario ${key}`,
+            alias: `scenario-${key}`,
+            description: `Scenario category ${key}`,
+            published: 1,
+            access: 1,
+            language: '*',
+          },
+          updates: [{
+            name: 'update-description',
+            data: { description: `Updated scenario category ${key}` },
+          }],
+          deleteAfterVerify: index === 2,
+        })),
+      },
+      'content.articles': {
+        records: [
+          ['welcome', 'news'],
+          ['release', 'news'],
+          ['install', 'guides'],
+          ['automate', 'guides'],
+          ['story', 'community'],
+        ].map(([key, category], index) => ({
+          key,
+          data: {
+            title: `Scenario article ${key}`,
+            alias: `scenario-article-${key}`,
+            introtext: `<p>Scenario article ${key}</p>`,
+            fulltext: '',
+            state: 1,
+            catid: { $ref: `content.categories.${category}` },
+            access: 1,
+            language: '*',
+          },
+          updates: [{
+            name: 'update-title',
+            data: { title: `Updated scenario article ${key}` },
+          }],
+          deleteAfterVerify: index === 4,
+        })),
+      },
+    },
+  };
 }
 
 async function bodyRecord(request: IncomingMessage): Promise<Record<string, unknown>> {

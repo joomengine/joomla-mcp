@@ -29,7 +29,17 @@ const directFailureRules: readonly KnownLimitationRule[] = Object.freeze([
   Object.freeze({
     code: 'joomla-6.1.2-module-api-create-model-state',
     scenarioIds: Object.freeze(['modules.site.create', 'modules.administrator.create']),
-    phases: Object.freeze(['create-showcase', 'create-deletion']),
+    phases: Object.freeze([
+      'create-showcase',
+      'create-deletion',
+      'create-primary',
+      'create-secondary',
+      'create-welcome-sidebar',
+      'create-release-top',
+      'create-guides-bottom',
+      'create-multi-page-sidebar',
+      'create-community-footer',
+    ]),
     error: /Joomla API returned HTTP 400: .*Field 'params' doesn't have a default value/u,
     explanation:
       'Joomla 6.1.2 does not seed the module edit-model state before its generic API create path validates and saves the module form.',
@@ -132,7 +142,12 @@ const verifiedPartialRules: readonly KnownLimitationRule[] = Object.freeze([
   Object.freeze({
     code: 'joomla-6.1.2-message-create-response-404',
     scenarioIds: Object.freeze(['messages.messages.create']),
-    phases: Object.freeze(['create-showcase', 'create-deletion']),
+    phases: Object.freeze([
+      'create-showcase',
+      'create-deletion',
+      'create-primary',
+      'create-secondary',
+    ]),
     error: /Joomla API returned HTTP 404: \{"errors":\[\{"title":"Resource not found","code":404\}\]\}/u,
     explanation:
       'Joomla 6.1.2 persists the private message but its generic API add path returns HTTP 404 while rendering the newly created record; the live test accepted this only after listing the exact submitted subject.',
@@ -142,7 +157,13 @@ const verifiedPartialRules: readonly KnownLimitationRule[] = Object.freeze([
   Object.freeze({
     code: 'joomla-6.1.2-content-language-update-response-400',
     scenarioIds: Object.freeze(['languages.content.update']),
-    phases: Object.freeze(['update-showcase', 'cleanup-trash-showcase']),
+    phases: Object.freeze([
+      'update-showcase',
+      'cleanup-trash-showcase',
+      'update-primary-generated-update',
+      'update-secondary-generated-update',
+      'update-deletion-generated-update',
+    ]),
     error: /Joomla API returned HTTP 400: .*Check-in failed with the following error:/u,
     explanation:
       'Joomla 6.1.2 persists the content-language PATCH but its generic API save path reports an empty check-in failure; the live test accepted this only after reading back every submitted field.',

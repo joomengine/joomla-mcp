@@ -31,7 +31,7 @@ describe('live fixture Joomla regressions', () => {
     expect(new Set(updates.map((update) => update['title'])).size).toBe(3);
   });
 
-  it('uses Joomla-canonical field names and created user ids', () => {
+  it('uses Joomla-canonical field names and the authenticated message recipient', () => {
     const records = new Map<string, LiveFixtureRecord>([
       ['field-groups.content-articles', {
         id: 51,
@@ -57,7 +57,7 @@ describe('live fixture Joomla regressions', () => {
 
     expect(field['name']).toMatch(/^jmcp-[a-z0-9-]+$/u);
     expect(String(field['name'])).not.toContain('_');
-    expect(message['user_id_to']).toBe(61);
+    expect(message['user_id_to']).toBe(6);
   });
 
   it('keeps generated language titles within Joomla limits and generated message recipients authorized', () => {

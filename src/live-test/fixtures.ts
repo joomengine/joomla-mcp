@@ -203,7 +203,10 @@ fixture('users.users', [], (_context, value) => ({
   groups: [7],
 }));
 fixture('messages.messages', ['users.users'], (context, value) => ({
-  user_id_to: requiredCreatedOrReferenceId(context, 'users.users'),
+  // Joomla private-message item and list models expose messages only to their
+  // recipient. Target the authenticated fixture user discovered before writes
+  // so both API and companion postcondition reads can prove persistence.
+  user_id_to: requiredReferenceId(context, 'users.users'),
   folder_id: 0,
   state: 0,
   priority: 0,
@@ -409,10 +412,10 @@ function requiredId(context: LiveFixtureContext, baseId: string): string | numbe
   return record.id;
 }
 
-function requiredCreatedOrReferenceId(context: LiveFixtureContext, baseId: string): string | number {
-  const record = context.get(baseId) ?? context.reference(baseId);
+function requiredReferenceId(context: LiveFixtureContext, baseId: string): string | number {
+  const record = context.reference(baseId);
   if (record === undefined) {
-    throw new Error(`Fixture prerequisite ${baseId} has no created or existing reference record.`);
+    throw new Error(`Fixture prerequisite ${baseId} has no existing reference record.`);
   }
   return record.id;
 }

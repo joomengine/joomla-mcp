@@ -9,6 +9,7 @@ import {
   joomlaCrudWriteActions,
   joomlaReadActions,
   joomlaWriteActions,
+  requiresJoomlaApiPatchCompletion,
   resolveJoomlaReadRequest,
   resolveJoomlaWriteRequest,
 } from '../src/catalog/action-catalog.js';
@@ -229,6 +230,8 @@ describe('Joomla source-backed action catalogue', () => {
       assignment: 1,
       client_id: 0,
     });
+    expect(requiresJoomlaApiPatchCompletion('modules.site.update')).toBe(true);
+    expect(requiresJoomlaApiPatchCompletion('banners.banners.update')).toBe(false);
   });
 
   it('catalogues the special read surfaces that cannot be generated as ordinary CRUD', () => {

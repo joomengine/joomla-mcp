@@ -390,6 +390,13 @@ export function completeJoomlaApiPatchBody(
   );
 }
 
+export function requiresJoomlaApiPatchCompletion(actionId: string): boolean {
+  return actionId === 'menus.site-items.update' ||
+    actionId === 'menus.administrator-items.update' ||
+    actionId === 'modules.site.update' ||
+    actionId === 'modules.administrator.update';
+}
+
 function withFixedMutationDefaults(
   actionId: string,
   body: Readonly<Record<string, unknown>>,

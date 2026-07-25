@@ -265,6 +265,21 @@
             }
           ],
           "deleteAfterVerify": true
+        },
+        {
+          "key": "message-recipients",
+          "data": {
+            "parent_id": 7,
+            "title": "MCP Live Message Recipients {{token}}"
+          },
+          "updates": [
+            {
+              "name": "update-title",
+              "data": {
+                "title": "MCP Live Message Recipients Updated {{token}}"
+              }
+            }
+          ]
         }
       ]
     },
@@ -281,7 +296,7 @@
             "block": 0,
             "sendEmail": 0,
             "groups": {
-              "$refs": ["users.groups.authors"]
+              "$refs": ["users.groups.authors", "users.groups.message-recipients"]
             }
           },
           "updates": [

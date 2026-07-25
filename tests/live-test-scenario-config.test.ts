@@ -41,13 +41,13 @@ describe('live scenario configuration', () => {
     expect(Object.keys(scenario.resources)).toHaveLength(36);
     expect(scenario.resources['content.categories']?.records).toHaveLength(3);
     expect(scenario.resources['content.articles']?.records).toHaveLength(5);
-    expect(scenario.resources['users.groups']?.records).toHaveLength(3);
+    expect(scenario.resources['users.groups']?.records).toHaveLength(4);
     expect(scenario.resources['users.users']?.records).toHaveLength(5);
     expect(scenario.resources['banners.categories']?.records).toHaveLength(3);
     expect(scenario.resources['banners.banners']?.records).toHaveLength(5);
     expect(scenario.resources['menus.site-items']?.records).toHaveLength(5);
     expect(scenario.resources['modules.site']?.records).toHaveLength(5);
-    expect(orderedLiveScenarioRecords(scenario)).toHaveLength(116);
+    expect(orderedLiveScenarioRecords(scenario)).toHaveLength(117);
   });
 
   it('orders named dependencies and resolves their runtime Joomla identifiers', () => {

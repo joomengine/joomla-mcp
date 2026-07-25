@@ -1497,6 +1497,9 @@ async function verifyConfiguredResource(
   phasePrefix = 'created',
 ): Promise<LiveFixtureRecord | undefined> {
   let primary: LiveFixtureRecord | undefined;
+  let creatingPathReadBack: LiveFixtureRecord | undefined;
+  let creatingPathCollectionKnownLimitation = false;
+  let verifiedByAlternateCollection = false;
   const paths = [
     creatingPath,
     ...options.joomlaPaths.filter((candidate) => candidate !== creatingPath),
@@ -1529,6 +1532,7 @@ async function verifyConfiguredResource(
       },
     );
     if (getOutcome === undefined || readBack === undefined) continue;
+    if (verificationPath === creatingPath) creatingPathReadBack = readBack;
 
     const identity = scenarioIdentity({ ...expected, ...readBack.attributes });
     let listed: LiveFixtureRecord | undefined;
@@ -1561,16 +1565,38 @@ async function verifyConfiguredResource(
         };
       },
     );
-    if (listOutcome === undefined || listed === undefined) continue;
+    if (listOutcome === undefined) continue;
+    if (listed === undefined) {
+      if (
+        verificationPath === creatingPath &&
+        listOutcome.status === 'KNOWN_UPSTREAM_LIMITATION'
+      ) {
+        creatingPathCollectionKnownLimitation = true;
+      }
+      continue;
+    }
     if (verificationPath === creatingPath) {
       primary = Object.freeze({
         id: readBack.id,
         attributes: Object.freeze({ ...readBack.attributes }),
         label: readBack.label,
       });
+    } else if (
+      creatingPathReadBack !== undefined &&
+      creatingPathCollectionKnownLimitation
+    ) {
+      verifiedByAlternateCollection = true;
     }
   }
-  return primary;
+  return primary ?? (
+    verifiedByAlternateCollection && creatingPathReadBack !== undefined
+      ? Object.freeze({
+          id: creatingPathReadBack.id,
+          attributes: Object.freeze({ ...creatingPathReadBack.attributes }),
+          label: creatingPathReadBack.label,
+        })
+      : undefined
+  );
 }
 
 async function findConfiguredEntityInCollection(

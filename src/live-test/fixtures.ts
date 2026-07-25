@@ -198,7 +198,9 @@ fixture('users.users', [], (_context, value) => ({
   password2: value.password,
   block: 0,
   sendEmail: 0,
-  groups: [2],
+  // Joomla private-message recipients require administrator login and
+  // com_messages access. Group 7 is Joomla's built-in Administrator group.
+  groups: [7],
 }));
 fixture('messages.messages', ['users.users'], (context, value) => ({
   user_id_to: requiredCreatedOrReferenceId(context, 'users.users'),
@@ -397,6 +399,7 @@ function defaultUpdate(
   if (baseId === 'messages.messages') return { subject: value.title };
   if (baseId === 'redirects.redirects') return { comment: value.description };
   if (baseId === 'menus.administrator') return { title: value.short };
+  if (baseId === 'languages.content') return { title: value.short };
   return { title: value.title };
 }
 

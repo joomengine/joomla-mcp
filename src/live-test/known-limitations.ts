@@ -27,6 +27,18 @@ interface KnownLimitationRule {
 
 const directFailureRules: readonly KnownLimitationRule[] = Object.freeze([
   Object.freeze({
+    code: 'joomla-6.1.2-administrator-menu-list-state-key',
+    scenarioIds: Object.freeze(['menus.administrator.list']),
+    phases: Object.freeze([
+      /^verify-(?:created|updated-[A-Za-z0-9._-]+)-visible-[A-Za-z0-9._-]+$/u,
+    ]),
+    error: /menus\.administrator\.[A-Za-z0-9._-]+ \(\d+\) is readable by item ID but is absent from menus\.administrator\.list/u,
+    explanation:
+      'Joomla 6.1.2 writes the administrator client into filter.client_id in its API controller, but MenusModel reads client_id, so the API collection is forced to site menus. The live test accepts this only when the same record is visible through the companion collection backed by Joomla’s administrator model.',
+    reference:
+      'https://github.com/joomla/joomla-cms/blob/6.1.2/administrator/components/com_menus/src/Model/MenusModel.php#L220-L224',
+  }),
+  Object.freeze({
     code: 'joomla-6.1.2-module-api-create-model-state',
     scenarioIds: Object.freeze(['modules.site.create', 'modules.administrator.create']),
     phases: Object.freeze([

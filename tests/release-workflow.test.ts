@@ -338,6 +338,12 @@ describe('release workflow contract', () => {
 
   it('stages, seals, and verifies every coordinate before final publication', () => {
     const workflow = readFileSync('.github/workflows/publish-release.yml', 'utf8');
+    const npmPublishStepStart = workflow.indexOf(
+      '- name: Publish or verify the exact npm package and channel',
+    );
+    const githubPublishStepStart = workflow.indexOf(
+      '- name: Publish the verified GitHub draft last',
+    );
 
     expect(workflow).toContain('release-manifest.json');
     expect(workflow).toContain('SHA256SUMS');
@@ -356,8 +362,16 @@ describe('release workflow contract', () => {
     expect(workflow).toContain("steps.image-before.outputs.attested != 'true'");
     expect(workflow).toContain('--prefer-index=false');
     expect(workflow).toContain("release_public == 'true'");
+    expect(npmPublishStepStart).toBeGreaterThan(-1);
+    expect(githubPublishStepStart).toBeGreaterThan(npmPublishStepStart);
     expect(workflow.indexOf('npm publish "${asset}"'))
-      .toBeLessThan(workflow.indexOf('Publish the verified GitHub draft last'));
+      .toBeLessThan(githubPublishStepStart);
+    const npmPublishStep = workflow.slice(npmPublishStepStart, githubPublishStepStart);
+    expect(npmPublishStep).toContain(
+      'asset="${GITHUB_WORKSPACE}/release-assets/joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz"',
+    );
+    expect(npmPublishStep).toContain('test -f "${asset}"');
+    expect(npmPublishStep).not.toContain('asset="release-assets/');
     expect(workflow.indexOf('Verify commit-addressed image provenance'))
       .toBeLessThan(workflow.indexOf('Publish or verify the versioned image coordinate'));
   });

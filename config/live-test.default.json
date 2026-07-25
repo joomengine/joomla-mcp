@@ -668,7 +668,7 @@
         {
           "key": "main",
           "data": {
-            "menutype": "mcp-live-main-{{token}}",
+            "menutype": "jmcp-main-{{token}}",
             "title": "MCP Live Main Menu",
             "description": "Primary menu created through the Joomla MCP."
           },
@@ -684,7 +684,7 @@
         {
           "key": "resources",
           "data": {
-            "menutype": "mcp-live-resources-{{token}}",
+            "menutype": "jmcp-res-{{token}}",
             "title": "MCP Live Resources Menu",
             "description": "Resource menu created through the Joomla MCP."
           },

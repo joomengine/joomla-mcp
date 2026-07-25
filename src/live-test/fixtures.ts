@@ -16,7 +16,7 @@ export interface LiveFixtureContext {
 export interface CrudFixtureDefinition {
   readonly baseId: string;
   readonly dependencies: readonly string[];
-  create(context: LiveFixtureContext, purpose: 'showcase' | 'deletion'): Readonly<Record<string, unknown>>;
+  create(context: LiveFixtureContext, purpose: string): Readonly<Record<string, unknown>>;
   update(context: LiveFixtureContext, record: LiveFixtureRecord): Readonly<Record<string, unknown>>;
 }
 
@@ -47,7 +47,7 @@ function fixture(
   const definition: CrudFixtureDefinition = {
     baseId,
     dependencies: Object.freeze([...dependencies]),
-    create: (context: LiveFixtureContext, purpose: 'showcase' | 'deletion') =>
+    create: (context: LiveFixtureContext, purpose: string) =>
       create(context, names(context, baseId, purpose)),
     update: (context: LiveFixtureContext) => (update ?? ((_inner, value) => defaultUpdate(baseId, value)))(
       context,
@@ -308,7 +308,7 @@ function topologicalOrder(): string[] {
 function names(
   context: LiveFixtureContext,
   baseId: string,
-  purpose: 'showcase' | 'deletion' | 'updated',
+  purpose: string,
 ): FixtureNames {
   const raw = `${context.seed}-${context.lane}-${baseId}-${purpose}`
     .toLowerCase()

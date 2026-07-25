@@ -18,6 +18,19 @@ import {
   writeLiveTestReports,
 } from './reporting.js';
 import {
+  expandLiveScenarioValue,
+  loadLiveScenarioConfiguration,
+  orderedLiveScenarioRecords,
+  resolveLiveScenarioValue,
+  scenarioActionSelected,
+  type LiveScenarioConfiguration,
+} from './scenario-config.js';
+import {
+  progressHeartbeat,
+  safeProgressReport,
+  withProgressOperation,
+} from './progress.js';
+import {
   knownUpstreamLimitation,
   verifiedDeletionLimitation,
   verifiedPartialMutationLimitation,
@@ -35,6 +48,7 @@ import type {
   LiveKnownUpstreamLimitation,
   LiveTestAttempt,
   LiveTestOptions,
+  LiveTestRunnerDependencies,
   LiveTestStatus,
   LiveTestSummary,
 } from './types.js';
@@ -45,6 +59,7 @@ interface LaneState {
   readonly references: Map<string, LiveFixtureRecord>;
   readonly reads: Map<string, unknown>;
   readonly created: LiveRetainedRecord[];
+  readonly namedRecords: Map<string, LiveFixtureRecord>;
 }
 
 const fixtureMediaPath = 'local-images:/joomla-mcp-live-prerequisite.png';
@@ -85,10 +100,27 @@ class BlockedError extends Error {
   }
 }
 
-export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSummary> {
+export async function runLiveTest(
+  options: LiveTestOptions,
+  dependencies: LiveTestRunnerDependencies = {},
+): Promise<LiveTestSummary> {
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   const runId = `jmcp-${startedAt.replace(/[-:.TZ]/gu, '').slice(0, 14)}-${safeSegment(options.seed).slice(0, 12)}`;
+  const scenarioConfiguration = options.scenarioFile === undefined
+    ? undefined
+    : await loadLiveScenarioConfiguration(options.scenarioFile);
+  const progress = scenarioConfiguration?.progress.enabled === false
+    ? undefined
+    : dependencies.progress;
+  const heartbeatSeconds = dependencies.heartbeatSeconds ??
+    heartbeatSecondsFromEnvironment(scenarioConfiguration?.progress.heartbeatSeconds ?? 30);
+  safeProgressReport(progress, {
+    kind: 'run-start',
+    timestamp: startedAt,
+    runId,
+    message: `Starting ${scenarioConfiguration?.name ?? 'legacy catalogue'} live validation.`,
+  });
   const configuration = await loadConfiguration(options.configurationFile);
   const siteId = options.site ?? configuration.defaultSite;
   const site = configuration.sites.get(siteId);
@@ -97,9 +129,12 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
   const hostname = targetHostname(site);
   const catalogue = liveScenarioCatalog();
   const selected = catalogue.filter((scenario) =>
-    options.families.length === 0 ||
-    options.families.includes(scenario.domain) ||
-    options.families.some((family) => scenario.id.startsWith(`${family}.`)));
+    (scenarioConfiguration === undefined || scenarioActionSelected(scenario.id, scenarioConfiguration)) &&
+    (
+      options.families.length === 0 ||
+      options.families.includes(scenario.domain) ||
+      options.families.some((family) => scenario.id.startsWith(`${family}.`))
+    ));
   const attempts: LiveTestAttempt[] = [];
   const latestAttemptByScenario = new Map<string, string>();
   const sessions: LiveMcpSession[] = [];
@@ -128,6 +163,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
       '--non-interactive',
       ...(isMutatingProfile(options.profile) ? ['--confirm-mutations'] : []),
       ...(options.disposable ? ['--disposable'] : []),
+      ...(options.scenarioFile === undefined ? [] : ['--scenario', options.scenarioFile]),
     ];
     return argumentsList.map(shellArgument).join(' ');
   };
@@ -143,9 +179,27 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
   ): Promise<AttemptOutcome | undefined> => {
     const attemptStarted = Date.now();
     const id = `${String(++sequence).padStart(4, '0')}-${safeSegment(session.kind)}-${safeSegment(joomlaPath)}-${safeSegment(scenario.id)}-${safeSegment(phase)}`;
+    safeProgressReport(progress, {
+      kind: 'attempt-start',
+      timestamp: new Date(attemptStarted).toISOString(),
+      attemptId: id,
+      scenarioId: scenario.id,
+      phase,
+      transport: session.kind,
+      joomlaPath,
+      elapsedMs: 0,
+    });
+    const heartbeat = progressHeartbeat(progress, {
+      attemptId: id,
+      scenarioId: scenario.id,
+      phase,
+      transport: session.kind,
+      joomlaPath,
+    }, attemptStarted, heartbeatSeconds);
     try {
       const outcome = await execute();
-      attempts.push(Object.freeze({
+      const durationMs = Date.now() - attemptStarted;
+      const attempt = Object.freeze({
         id,
         scenarioId: scenario.id,
         title: scenario.title,
@@ -158,7 +212,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         phase,
         status: outcome.status ?? 'PASS',
         startedAt: new Date(attemptStarted).toISOString(),
-        durationMs: Date.now() - attemptStarted,
+        durationMs,
         request,
         ...(outcome.response === undefined ? {} : { response: outcome.response }),
         ...(outcome.expected === undefined ? {} : { expected: outcome.expected }),
@@ -173,8 +227,21 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         reproduction: reproduction(scenario, session.kind, joomlaPath),
         ...(scenario.source === undefined ? {} : { source: scenario.source }),
         ...(cleanup ? { cleanup: true } : {}),
-      }));
+      });
+      attempts.push(attempt);
       latestAttemptByScenario.set(scenario.id, id);
+      safeProgressReport(progress, {
+        kind: 'attempt-result',
+        timestamp: new Date().toISOString(),
+        attemptId: id,
+        scenarioId: scenario.id,
+        phase,
+        transport: session.kind,
+        joomlaPath,
+        elapsedMs: durationMs,
+        status: attempt.status,
+        ...(attempt.reason === undefined ? {} : { reason: attempt.reason }),
+      });
       return outcome;
     } catch (error) {
       const blocked = error instanceof BlockedError;
@@ -198,7 +265,8 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         ? error.rootCauseId ??
           error.dependencyIds.map((dependency) => latestAttemptByScenario.get(dependency)).find((value) => value !== undefined)
         : undefined;
-      attempts.push(Object.freeze({
+      const durationMs = Date.now() - attemptStarted;
+      const attempt = Object.freeze({
         id,
         scenarioId: scenario.id,
         title: scenario.title,
@@ -211,7 +279,7 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         phase,
         status,
         startedAt: new Date(attemptStarted).toISOString(),
-        durationMs: Date.now() - attemptStarted,
+        durationMs,
         request,
         actual: errorResult(error),
         reason: errorMessage(error),
@@ -224,8 +292,21 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
         reproduction: reproduction(scenario, session.kind, joomlaPath),
         ...(scenario.source === undefined ? {} : { source: scenario.source }),
         ...(cleanup ? { cleanup: true } : {}),
-      }));
+      });
+      attempts.push(attempt);
       latestAttemptByScenario.set(scenario.id, id);
+      safeProgressReport(progress, {
+        kind: 'attempt-result',
+        timestamp: new Date().toISOString(),
+        attemptId: id,
+        scenarioId: scenario.id,
+        phase,
+        transport: session.kind,
+        joomlaPath,
+        elapsedMs: durationMs,
+        status,
+        reason: attempt.reason,
+      });
       if (
         options.failFast &&
         status !== 'BLOCKED_BY_PREREQUISITE' &&
@@ -240,52 +321,136 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
             reason: knownLimitation.explanation,
             knownLimitation,
           };
+    } finally {
+      if (heartbeat !== undefined) clearInterval(heartbeat);
     }
   };
 
   try {
     for (const kind of options.mcpTransports) {
       activeTransport = kind;
-      sessions.push(kind === 'stdio'
-        ? await createStdioLiveSession({
-            configurationFile: options.configurationFile,
-            ...(options.stdioCommand === undefined ? {} : { command: options.stdioCommand }),
-            ...(options.stdioArguments === undefined ? {} : { arguments: options.stdioArguments }),
-          })
-        : await createHttpLiveSession(configuration));
+      safeProgressReport(progress, {
+        kind: 'session-start',
+        timestamp: new Date().toISOString(),
+        transport: kind,
+        message: 'Connecting MCP transport.',
+      });
+      const session = await withProgressOperation(
+        progress,
+        {
+          operationId: `connect-${kind}`,
+          operation: 'Connect and initialize MCP transport',
+          transport: kind,
+        },
+        heartbeatSeconds,
+        async () => kind === 'stdio'
+          ? await createStdioLiveSession({
+              configurationFile: options.configurationFile,
+              ...(options.stdioCommand === undefined ? {} : { command: options.stdioCommand }),
+              ...(options.stdioArguments === undefined ? {} : { arguments: options.stdioArguments }),
+            })
+          : await createHttpLiveSession(configuration),
+      );
+      sessions.push(session);
+      safeProgressReport(progress, {
+        kind: 'session-ready',
+        timestamp: new Date().toISOString(),
+        transport: kind,
+        message: 'MCP transport is ready.',
+      });
     }
 
     for (const session of sessions) {
       activeTransport = session.kind;
-      await verifyDiscovery(session, siteId);
+      await withProgressOperation(
+        progress,
+        {
+          operationId: `discovery-${session.kind}`,
+          operation: 'Verify sites, capabilities, and action discovery through MCP',
+          transport: session.kind,
+        },
+        heartbeatSeconds,
+        async () => verifyDiscovery(session, siteId),
+      );
       if (isMutatingProfile(options.profile)) {
-        await grantPermissions(session, siteId, selected, options);
+        await withProgressOperation(
+          progress,
+          {
+            operationId: `permissions-${session.kind}`,
+            operation: 'Request and approve the live-test write permission grant',
+            transport: session.kind,
+          },
+          heartbeatSeconds,
+          async () => grantPermissions(session, siteId, selected, options),
+        );
       }
       for (const joomlaPath of options.joomlaPaths) {
         activeJoomlaPath = joomlaPath;
+        safeProgressReport(progress, {
+          kind: 'lane-start',
+          timestamp: new Date().toISOString(),
+          transport: session.kind,
+          joomlaPath,
+          message: 'Starting Joomla execution lane.',
+        });
         const state: LaneState = {
           lane: `${session.kind}-${joomlaPath}`,
           records: new Map(),
           references: new Map(),
           reads: new Map(),
           created: [],
+          namedRecords: new Map(),
         };
 
         if (options.profile === 'read') {
           await runReadProfile(session, joomlaPath, siteId, site, selected, state, recordAttempt);
         } else {
-          await runCrudProfile(session, joomlaPath, siteId, site, selected, state, recordAttempt, options);
+          if (scenarioConfiguration === undefined) {
+            await runCrudProfile(session, joomlaPath, siteId, site, selected, state, recordAttempt, options);
+          } else {
+            await runConfiguredCrudProfile(
+              session,
+              joomlaPath,
+              siteId,
+              site,
+              selected,
+              state,
+              recordAttempt,
+              options,
+              scenarioConfiguration,
+            );
+          }
           if (options.profile === 'full') {
             await runSpecialProfile(session, joomlaPath, siteId, site, selected, state, recordAttempt, options);
           }
         }
 
-        if (options.cleanup || (options.retainDemo && state.lane !== retentionLane)) {
+        if (scenarioConfiguration !== undefined) {
+          if (options.cleanup) {
+            await cleanupConfiguredRecords(
+              session,
+              joomlaPath,
+              siteId,
+              state,
+              recordAttempt,
+              options,
+              scenarioConfiguration,
+            );
+          }
+          retained.push(...state.created);
+        } else if (options.cleanup || (options.retainDemo && state.lane !== retentionLane)) {
           await cleanupRecords(session, joomlaPath, siteId, state, recordAttempt, options);
           retained.push(...state.created);
         } else {
           retained.push(...state.created);
         }
+        safeProgressReport(progress, {
+          kind: 'lane-complete',
+          timestamp: new Date().toISOString(),
+          transport: session.kind,
+          joomlaPath,
+          message: `Completed lane with ${state.created.length} retained records.`,
+        });
       }
     }
 
@@ -293,6 +458,16 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
       if (!options.joomlaPaths.includes('api')) continue;
       for (const scenario of selected.filter((candidate) => candidate.sourceOnlyReason !== undefined)) {
         const id = `${String(++sequence).padStart(4, '0')}-${session.kind}-api-${safeSegment(scenario.id)}-source-gate`;
+        safeProgressReport(progress, {
+          kind: 'attempt-start',
+          timestamp: new Date().toISOString(),
+          attemptId: id,
+          scenarioId: scenario.id,
+          phase: 'source-gate',
+          transport: session.kind,
+          joomlaPath: 'api',
+          elapsedMs: 0,
+        });
         attempts.push(Object.freeze({
           id,
           scenarioId: scenario.id,
@@ -312,6 +487,18 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
           reproduction: reproduction(scenario, session.kind, 'api'),
           ...(scenario.source === undefined ? {} : { source: scenario.source }),
         }));
+        safeProgressReport(progress, {
+          kind: 'attempt-result',
+          timestamp: new Date().toISOString(),
+          attemptId: id,
+          scenarioId: scenario.id,
+          phase: 'source-gate',
+          transport: session.kind,
+          joomlaPath: 'api',
+          elapsedMs: 0,
+          status: 'SOURCE_ONLY_GATED',
+          reason: scenario.sourceOnlyReason!,
+        });
       }
     }
   } catch (error) {
@@ -359,7 +546,24 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
     }
   } finally {
     transportDiagnostics.push(...sessions.map((session) => session.diagnostics()));
-    await Promise.allSettled(sessions.map(async (session) => session.close()));
+    await Promise.allSettled(sessions.map(async (session) => {
+      await withProgressOperation(
+        progress,
+        {
+          operationId: `close-${session.kind}`,
+          operation: 'Close MCP transport',
+          transport: session.kind,
+        },
+        heartbeatSeconds,
+        async () => session.close(),
+      );
+      safeProgressReport(progress, {
+        kind: 'session-close',
+        timestamp: new Date().toISOString(),
+        transport: session.kind,
+        message: 'MCP transport closed.',
+      });
+    }));
   }
 
   const completedAtMs = Date.now();
@@ -379,6 +583,16 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
       mcpTransports: Object.freeze([...options.mcpTransports]),
       families: Object.freeze([...options.families]),
     }),
+    ...(scenarioConfiguration === undefined || options.scenarioFile === undefined
+      ? {}
+      : {
+          scenario: Object.freeze({
+            name: scenarioConfiguration.name,
+            file: options.scenarioFile,
+            fingerprint: configurationFingerprint(scenarioConfiguration),
+            cleanup: options.cleanup ? 'always' as const : 'never' as const,
+          }),
+        }),
     environment: Object.freeze({
       packageVersion: JOOMLA_MCP_VERSION,
       nodeVersion: process.version,
@@ -400,7 +614,31 @@ export async function runLiveTest(options: LiveTestOptions): Promise<LiveTestSum
     retainedRecords: Object.freeze(retained),
     exitCode,
   });
-  await writeLiveTestReports(options.outputDirectory, summary);
+  safeProgressReport(progress, {
+    kind: 'report-start',
+    timestamp: new Date().toISOString(),
+    message: `Writing evidence to ${options.outputDirectory}.`,
+  });
+  await withProgressOperation(
+    progress,
+    {
+      operationId: 'write-evidence',
+      operation: `Write live-test evidence to ${options.outputDirectory}`,
+    },
+    heartbeatSeconds,
+    async () => writeLiveTestReports(options.outputDirectory, summary),
+  );
+  safeProgressReport(progress, {
+    kind: 'report-complete',
+    timestamp: new Date().toISOString(),
+    message: `Evidence written to ${options.outputDirectory}.`,
+  });
+  safeProgressReport(progress, {
+    kind: 'run-complete',
+    timestamp: new Date().toISOString(),
+    runId,
+    message: `Live validation ${exitCode === 0 ? 'passed' : 'failed'} with ${attempts.length} attempts.`,
+  });
   return summary;
 }
 
@@ -887,6 +1125,587 @@ async function runCrudProfile(
       );
     }
   }
+}
+
+async function runConfiguredCrudProfile(
+  session: LiveMcpSession,
+  path: LiveJoomlaPath,
+  site: string,
+  siteConfiguration: SiteConfig,
+  selected: readonly LiveScenario[],
+  state: LaneState,
+  record: AttemptRecorder,
+  options: LiveTestOptions,
+  configuration: LiveScenarioConfiguration,
+): Promise<void> {
+  const scenarioById = new Map(selected.map((scenario) => [scenario.id, scenario]));
+  const context: LiveFixtureContext = {
+    lane: state.lane,
+    seed: options.seed,
+    get: (baseId) => state.records.get(baseId),
+    reference: (baseId) => state.references.get(baseId),
+  };
+
+  for (const configured of orderedLiveScenarioRecords(configuration)) {
+    const { baseId, reference, definition: configuredRecord } = configured;
+    const fixture = crudFixtureDefinitions.get(baseId);
+    if (fixture === undefined) continue;
+    const createScenario = scenarioById.get(`${baseId}.create`);
+    const getScenario = scenarioById.get(`${baseId}.get`);
+    const listScenario = scenarioById.get(`${baseId}.list`);
+    const updateScenario = scenarioById.get(`${baseId}.update`);
+    if (createScenario === undefined || !createScenario.joomlaPaths.includes(path)) continue;
+
+    const missingDependency = configured.dependencyReferences.find((dependency) =>
+      !state.namedRecords.has(dependency));
+    if (missingDependency !== undefined) {
+      await record(session, path, createScenario, `create-${configuredRecord.key}`, {
+        resource: reference,
+      }, async () => {
+        throw new BlockedError(
+          `Configured resource ${reference} requires successfully verified ${missingDependency}.`,
+          [missingDependency],
+        );
+      });
+      continue;
+    }
+
+    let submitted: Readonly<Record<string, unknown>>;
+    try {
+      const generated = configuredRecord.generate
+        ? fixture.create(context, `configured-${configuredRecord.key}`)
+        : {};
+      const configuredData = configuredRecord.data === undefined
+        ? {}
+        : asRecord(resolveLiveScenarioValue(
+            expandLiveScenarioValue(configuredRecord.data, {
+              scenario: configuration.name,
+              seed: options.seed,
+              lane: state.lane,
+            }),
+            state.namedRecords,
+          ));
+      submitted = Object.freeze({ ...generated, ...configuredData });
+    } catch (error) {
+      await record(session, path, createScenario, `prepare-${configuredRecord.key}`, {
+        resource: reference,
+      }, async () => { throw error; });
+      continue;
+    }
+
+    if (listScenario !== undefined && listScenario.joomlaPaths.includes(path)) {
+      await record(
+        session,
+        path,
+        listScenario,
+        `collision-check-${configuredRecord.key}`,
+        { resource: reference, selector: scenarioIdentity(submitted) },
+        async () => {
+          const existing = await findConfiguredEntityInCollection(
+            session,
+            site,
+            listScenario.id,
+            path,
+            scenarioIdentity(submitted),
+          );
+          if (existing.entity !== undefined) {
+            throw new Error(
+              `Configured resource ${reference} collides with existing Joomla resource ${existing.entity.id}.`,
+            );
+          }
+          return {
+            response: existing.pages,
+            expected: { collision: false },
+            actual: { collision: false },
+          };
+        },
+      );
+    }
+
+    const input = { data: submitted };
+    let provisional: LiveFixtureRecord | undefined;
+    let createResponse: unknown;
+    const outcome = await record(
+      session,
+      path,
+      createScenario,
+      `create-${configuredRecord.key}`,
+      input,
+      async () => {
+        let response: unknown;
+        let knownLimitation: LiveKnownUpstreamLimitation | undefined;
+        try {
+          response = await callWrite(session, site, createScenario.id, input, path);
+        } catch (error) {
+          knownLimitation = verifiedPartialMutationLimitation({
+            options,
+            joomlaPath: path,
+            scenarioId: createScenario.id,
+            phase: `create-${configuredRecord.key}`,
+            error: errorMessage(error),
+          });
+          if (knownLimitation === undefined || createScenario.id !== 'messages.messages.create') {
+            throw error;
+          }
+          const verification = await callRead(
+            session,
+            site,
+            'messages.messages.list',
+            { offset: 0, limit: 100 },
+            path,
+          );
+          const subject = submitted['subject'];
+          const recovered = collectEntities(verification).find((entity) =>
+            looselyEqual(entity.attributes['subject'], subject));
+          if (recovered === undefined) throw error;
+          response = {
+            upstreamError: errorResult(error),
+            recoveryVerification: verification,
+            result: recovered,
+          };
+        }
+        createResponse = response;
+        provisional = entityFromMutation(response, submitted);
+        if (provisional === undefined) {
+          throw new Error(
+            `Create action ${createScenario.id} returned no candidate ID for ${reference}; ` +
+            'the mutation response is not accepted as persistence proof.',
+          );
+        }
+        return {
+          response,
+          expected: { candidateId: 'positive', resource: reference },
+          actual: { candidateId: provisional.id },
+          ...(knownLimitation === undefined
+            ? {}
+            : {
+                status: 'KNOWN_UPSTREAM_LIMITATION' as const,
+                reason: knownLimitation.explanation,
+                knownLimitation,
+              }),
+        };
+      },
+    );
+
+    if (
+      outcome?.status === 'KNOWN_UPSTREAM_LIMITATION' &&
+      path === 'api' &&
+      (baseId === 'modules.site' || baseId === 'modules.administrator')
+    ) {
+      await record(
+        session,
+        'cli',
+        createScenario,
+        `create-${configuredRecord.key}-api-prerequisite`,
+        input,
+        async () => {
+          if (siteConfiguration.cli === undefined) {
+            throw new BlockedError(
+              `${createScenario.id} needs the companion CLI to provision an API-readable fixture ` +
+              'after Joomla API module creation fails.',
+              ['site.cli'],
+            );
+          }
+          createResponse = await callWrite(session, site, createScenario.id, input, 'cli');
+          provisional = entityFromMutation(createResponse, submitted);
+          if (provisional === undefined) {
+            throw new Error(
+              `Companion prerequisite creation for ${reference} returned no candidate ID.`,
+            );
+          }
+          return {
+            response: createResponse,
+            expected: { candidateId: 'positive', resource: reference },
+            actual: { candidateId: provisional.id },
+          };
+        },
+      );
+    }
+
+    if (provisional === undefined || getScenario === undefined || listScenario === undefined) {
+      continue;
+    }
+    const createExpectation = Object.freeze({
+      ...submitted,
+      ...(configuredRecord.verify === undefined
+        ? {}
+        : asRecord(resolveLiveScenarioValue(
+            expandLiveScenarioValue(configuredRecord.verify, {
+              scenario: configuration.name,
+              seed: options.seed,
+              lane: state.lane,
+            }),
+            state.namedRecords,
+          ))),
+    });
+    const verified = await verifyConfiguredResource(
+      session,
+      path,
+      site,
+      baseId,
+      reference,
+      configuredRecord.key,
+      provisional.id,
+      createExpectation,
+      getScenario,
+      listScenario,
+      record,
+      options,
+    );
+    if (verified === undefined) continue;
+    state.namedRecords.set(reference, verified);
+    if (!state.records.has(baseId)) state.records.set(baseId, verified);
+    state.created.push({
+      lane: state.lane,
+      family: baseId,
+      id: verified.id,
+      label: `${reference}: ${verified.label}`,
+    });
+
+    const updates = configuredRecord.updates.length > 0
+      ? configuredRecord.updates
+      : configuredRecord.generate
+        ? [{
+            name: 'generated-update',
+            data: fixture.update(context, verified),
+          }]
+        : [];
+    let current = verified;
+    for (const configuredUpdate of updates) {
+      if (updateScenario === undefined || !updateScenario.joomlaPaths.includes(path)) break;
+      let changes: Readonly<Record<string, unknown>>;
+      try {
+        changes = asRecord(resolveLiveScenarioValue(
+          expandLiveScenarioValue(configuredUpdate.data, {
+            scenario: configuration.name,
+            seed: options.seed,
+            lane: state.lane,
+          }),
+          state.namedRecords,
+        ));
+      } catch (error) {
+        await record(session, path, updateScenario, `prepare-${configuredRecord.key}-${configuredUpdate.name}`, {
+          resource: reference,
+        }, async () => { throw error; });
+        continue;
+      }
+      const updateInput = { id: numericId(current.id), data: changes };
+      const updated = await record(
+        session,
+        path,
+        updateScenario,
+        `update-${configuredRecord.key}-${safeSegment(configuredUpdate.name)}`,
+        updateInput,
+        async () => ({
+          response: await callWrite(session, site, updateScenario.id, updateInput, path),
+          expected: changes,
+        }),
+      );
+      if (updated === undefined) continue;
+      const verifiedUpdate = await verifyConfiguredResource(
+        session,
+        path,
+        site,
+        baseId,
+        reference,
+        configuredRecord.key,
+        current.id,
+        changes,
+        getScenario,
+        listScenario,
+        record,
+        options,
+        `updated-${safeSegment(configuredUpdate.name)}`,
+      );
+      if (verifiedUpdate !== undefined) {
+        current = verifiedUpdate;
+        state.namedRecords.set(reference, current);
+        if (state.records.get(baseId)?.id === current.id) state.records.set(baseId, current);
+      }
+    }
+
+  }
+
+  if (!options.cleanup) return;
+  for (const configured of [...orderedLiveScenarioRecords(configuration)].reverse()) {
+    if (!configured.definition.deleteAfterVerify) continue;
+    const entity = state.namedRecords.get(configured.reference);
+    if (entity === undefined) continue;
+    const deleteScenario = scenarioById.get(`${configured.baseId}.delete`);
+    const getScenario = scenarioById.get(`${configured.baseId}.get`);
+    if (
+      deleteScenario === undefined ||
+      getScenario === undefined ||
+      !deleteScenario.joomlaPaths.includes(path) ||
+      !getScenario.joomlaPaths.includes(path)
+    ) {
+      continue;
+    }
+    const deleted = await deleteConfiguredResource(
+      session,
+      path,
+      site,
+      configured.baseId,
+      configured.reference,
+      entity,
+      deleteScenario,
+      getScenario,
+      record,
+      options,
+      false,
+    );
+    if (deleted) {
+      state.namedRecords.delete(configured.reference);
+      removeRetainedRecord(state, configured.baseId, entity.id);
+    }
+  }
+}
+
+async function verifyConfiguredResource(
+  session: LiveMcpSession,
+  creatingPath: LiveJoomlaPath,
+  site: string,
+  baseId: string,
+  reference: string,
+  key: string,
+  id: string | number,
+  expected: Readonly<Record<string, unknown>>,
+  getScenario: LiveScenario,
+  listScenario: LiveScenario,
+  record: AttemptRecorder,
+  options: LiveTestOptions,
+  phasePrefix = 'created',
+): Promise<LiveFixtureRecord | undefined> {
+  let primary: LiveFixtureRecord | undefined;
+  const paths = [
+    creatingPath,
+    ...options.joomlaPaths.filter((candidate) => candidate !== creatingPath),
+  ];
+  for (const verificationPath of paths) {
+    if (
+      !getScenario.joomlaPaths.includes(verificationPath) ||
+      !listScenario.joomlaPaths.includes(verificationPath)
+    ) {
+      continue;
+    }
+    const getInput = { id: numericId(id) };
+    let readBack: LiveFixtureRecord | undefined;
+    const getOutcome = await record(
+      session,
+      verificationPath,
+      getScenario,
+      `verify-${phasePrefix}-get-${key}`,
+      getInput,
+      async () => {
+        const response = await callRead(session, site, getScenario.id, getInput, verificationPath);
+        readBack = firstEntity(response);
+        assertEntityId(readBack, id, getScenario.id);
+        const attributes = assertChangedFields(response, expected, baseId);
+        return {
+          response,
+          expected: visibleExpectation(expected),
+          actual: attributes,
+        };
+      },
+    );
+    if (getOutcome === undefined || readBack === undefined) continue;
+
+    const identity = scenarioIdentity({ ...expected, ...readBack.attributes });
+    let listed: LiveFixtureRecord | undefined;
+    const listOutcome = await record(
+      session,
+      verificationPath,
+      listScenario,
+      `verify-${phasePrefix}-visible-${key}`,
+      { id, selector: identity },
+      async () => {
+        const collection = await findConfiguredEntityInCollection(
+          session,
+          site,
+          listScenario.id,
+          verificationPath,
+          identity,
+          id,
+        );
+        listed = collection.entity;
+        if (listed === undefined) {
+          throw new Error(
+            `${reference} (${id}) is readable by item ID but is absent from ${listScenario.id}; ` +
+            'it is not certified as visible in Joomla collection/GUI models.',
+          );
+        }
+        assertChangedFields({ data: {
+          id: listed.id,
+          attributes: listed.attributes,
+        } }, expected, baseId);
+        return {
+          response: collection.pages,
+          expected: { id, visible: true, fields: visibleExpectation(expected) },
+          actual: { id: listed.id, visible: true, fields: listed.attributes },
+        };
+      },
+    );
+    if (listOutcome === undefined || listed === undefined) continue;
+    if (verificationPath === creatingPath) {
+      primary = Object.freeze({
+        id: readBack.id,
+        attributes: Object.freeze({ ...readBack.attributes }),
+        label: readBack.label,
+      });
+    }
+  }
+  return primary;
+}
+
+async function findConfiguredEntityInCollection(
+  session: LiveMcpSession,
+  site: string,
+  action: string,
+  path: LiveJoomlaPath,
+  identity: Readonly<Record<string, unknown>>,
+  requiredId?: string | number,
+): Promise<{
+  readonly entity?: LiveFixtureRecord;
+  readonly pages: readonly unknown[];
+}> {
+  const pages: unknown[] = [];
+  const limit = 100;
+  for (let offset = 0; offset < 2_000; offset += limit) {
+    const response = await callRead(session, site, action, { offset, limit }, path);
+    pages.push(response);
+    const entities = collectEntities(response);
+    const matches = entities.filter((entity) =>
+      (requiredId === undefined || looselyEqual(entity.id, requiredId)) &&
+      entityMatchesFields(entity, identity));
+    if (matches.length > 1) {
+      throw new Error(
+        `${action} returned multiple records for selector ${JSON.stringify(visibleExpectation(identity))}.`,
+      );
+    }
+    if (matches.length === 1) return { entity: matches[0]!, pages };
+    if (entities.length < limit) break;
+  }
+  return { pages };
+}
+
+function scenarioIdentity(
+  attributes: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  for (const key of ['alias', 'username', 'email', 'menutype'] as const) {
+    if (attributes[key] !== undefined) return Object.freeze({ [key]: attributes[key] });
+  }
+  for (const key of ['title', 'name', 'subject', 'lang_code'] as const) {
+    if (attributes[key] !== undefined) return Object.freeze({ [key]: attributes[key] });
+  }
+  throw new Error(
+    'Configured resource has no stable alias, username, email, menutype, title, name, subject, or language code.',
+  );
+}
+
+function visibleExpectation(
+  value: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) =>
+      !/password|password2|secret|token|acknowledgement|confirmation/iu.test(key)),
+  );
+}
+
+async function cleanupConfiguredRecords(
+  session: LiveMcpSession,
+  path: LiveJoomlaPath,
+  site: string,
+  state: LaneState,
+  record: AttemptRecorder,
+  options: LiveTestOptions,
+  configuration: LiveScenarioConfiguration,
+): Promise<void> {
+  for (const configured of [...orderedLiveScenarioRecords(configuration)].reverse()) {
+    const entity = state.namedRecords.get(configured.reference);
+    if (entity === undefined) continue;
+    const deleteScenario = liveScenarioCatalog().find((candidate) =>
+      candidate.id === `${configured.baseId}.delete`);
+    const getScenario = liveScenarioCatalog().find((candidate) =>
+      candidate.id === `${configured.baseId}.get`);
+    if (
+      deleteScenario === undefined ||
+      getScenario === undefined ||
+      !deleteScenario.joomlaPaths.includes(path) ||
+      !getScenario.joomlaPaths.includes(path)
+    ) {
+      continue;
+    }
+    const deleted = await deleteConfiguredResource(
+      session,
+      path,
+      site,
+      configured.baseId,
+      configured.reference,
+      entity,
+      deleteScenario,
+      getScenario,
+      record,
+      options,
+      true,
+    );
+    if (deleted) {
+      state.namedRecords.delete(configured.reference);
+      removeRetainedRecord(state, configured.baseId, entity.id);
+    }
+  }
+}
+
+async function deleteConfiguredResource(
+  session: LiveMcpSession,
+  path: LiveJoomlaPath,
+  site: string,
+  baseId: string,
+  reference: string,
+  entity: LiveFixtureRecord,
+  deleteScenario: LiveScenario,
+  getScenario: LiveScenario,
+  record: AttemptRecorder,
+  options: LiveTestOptions,
+  cleanup: boolean,
+): Promise<boolean> {
+  const trash = deleteSemantics(baseId) === 'permanent'
+    ? undefined
+    : trashData(baseId, entity.attributes);
+  if (trash !== undefined) {
+    const updateScenario = liveScenarioCatalog().find((candidate) =>
+      candidate.id === `${baseId}.update`);
+    if (updateScenario !== undefined && updateScenario.joomlaPaths.includes(path)) {
+      const trashInput = { id: numericId(entity.id), data: trash };
+      const trashed = await record(
+        session,
+        path,
+        updateScenario,
+        `${cleanup ? 'cleanup' : 'delete'}-trash-${safeSegment(reference)}`,
+        trashInput,
+        async () => ({
+          response: await callWrite(session, site, updateScenario.id, trashInput, path),
+          expected: trash,
+        }),
+        cleanup,
+      );
+      if (trashed === undefined) return false;
+    }
+  }
+  const input = { id: numericId(entity.id) };
+  const outcome = await record(
+    session,
+    path,
+    deleteScenario,
+    `${cleanup ? 'cleanup' : 'delete'}-${safeSegment(reference)}`,
+    input,
+    async () => ({
+      response: await callWrite(session, site, deleteScenario.id, input, path),
+      expected: { removed: entity.id, resource: reference },
+    }),
+    cleanup,
+  );
+  return outcome !== undefined &&
+    await verifyDeletion(session, path, site, getScenario, entity, record, options, cleanup);
 }
 
 function createFixtureData(
@@ -2395,6 +3214,16 @@ function findDeepValue(value: unknown, key: string, depth = 0): unknown {
 
 function safeSegment(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]+/gu, '-').replace(/^-|-$/gu, '') || 'value';
+}
+
+function heartbeatSecondsFromEnvironment(fallbackSeconds: number): number {
+  const configured = process.env['JOOMLA_MCP_LIVE_HEARTBEAT_MS'];
+  if (configured === undefined) return fallbackSeconds;
+  const milliseconds = Number(configured);
+  if (!Number.isFinite(milliseconds) || milliseconds < 5_000 || milliseconds > 300_000) {
+    return fallbackSeconds;
+  }
+  return milliseconds / 1_000;
 }
 
 function readPriority(actionId: string): number {

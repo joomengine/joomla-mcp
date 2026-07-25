@@ -78,6 +78,10 @@ assert_contains "$RUNNER" 'smtphost=mailpit'
 assert_contains "$RUNNER" "updateTokenEnv: 'JOOMLA_MCP_LIVE_UPDATE_TOKEN'"
 assert_contains "$RUNNER" 'JOOMLA_MCP_LIVE_UPDATE_TOKEN'
 assert_contains "$RUNNER" '--cleanup'
+assert_contains "$RUNNER" '--cleanup always'
+assert_contains "$RUNNER" 'JOOMLA_MCP_LIVE_HEARTBEAT_MS'
+assert_contains "$RUNNER" '| tee "${live_test_directory}/console.log"'
+assert_contains "$RUNNER" 'JMCP-FIXTURE state=START phase=live-test'
 assert_not_contains "$RUNNER" 'eval '
 assert_contains "$API_BOOTSTRAP" "'profile_value' => \$encodedSeed"
 assert_contains "$API_BOOTSTRAP" "'profile_value' => '1'"

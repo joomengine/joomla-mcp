@@ -1,4 +1,5 @@
 import type { LiveTestAttempt, LiveTestSummary } from './types.js';
+import { redact, redactText } from './reporting.js';
 
 const directStatuses = new Set(['FAIL', 'CLEANUP_FAILED']);
 
@@ -29,7 +30,7 @@ export function renderLiveTestConsoleDiagnostics(summary: LiveTestSummary): stri
     lines.push(
       '',
       `ROOT CAUSE ${groupNumber}/${groups.size}: ${first.failureCode ?? 'unclassified'} (${attempts.length} occurrence${attempts.length === 1 ? '' : 's'})`,
-      `Reason: ${oneLine(first.reason ?? 'No failure reason was captured.')}`,
+      `Reason: ${oneLine(redactText(first.reason ?? 'No failure reason was captured.'))}`,
     );
     for (const attempt of attempts) lines.push(...renderAttempt(attempt));
   }
@@ -59,7 +60,7 @@ function renderAttempt(attempt: LiveTestAttempt): string[] {
   const lines = [
     `  [${attempt.status}] ${attempt.id}`,
     `    action=${attempt.scenarioId}; phase=${attempt.phase}; lane=${attempt.mcpTransport}/${attempt.joomlaPath}; durationMs=${attempt.durationMs}`,
-    `    reason=${oneLine(attempt.reason ?? 'No failure reason was captured.')}`,
+    `    reason=${oneLine(redactText(attempt.reason ?? 'No failure reason was captured.'))}`,
   ];
   if (attempt.expected !== undefined) lines.push(`    expected=${boundedJson(attempt.expected)}`);
   if (attempt.actual !== undefined) lines.push(`    actual=${boundedJson(attempt.actual)}`);
@@ -74,7 +75,7 @@ function normalizeReason(value: string | undefined): string {
 }
 
 function boundedJson(value: unknown): string {
-  const rendered = oneLine(JSON.stringify(value) ?? String(value));
+  const rendered = oneLine(JSON.stringify(redact(value)) ?? String(redact(value)));
   return rendered.length <= 2_000 ? rendered : `${rendered.slice(0, 2_000)}…[truncated]`;
 }
 

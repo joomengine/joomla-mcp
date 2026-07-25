@@ -21,6 +21,7 @@
     "dist",
     "config/sites.example.json",
     "config/sites.single-site-readonly.example.json",
+    "config/live-test.default.json",
     "docs",
     "examples/embedded-host",
     "CHANGELOG.md",

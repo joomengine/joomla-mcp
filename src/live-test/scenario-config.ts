@@ -333,7 +333,9 @@ export function scenarioActionSelected(
     return true;
   }
   const crudMatch = /^(.*)\.(list|get|create|update|delete)$/u.exec(actionId);
-  if (crudMatch !== null) return configuration.resources[crudMatch[1]!] !== undefined;
+  if (crudMatch !== null && crudFixtureDefinitions.has(crudMatch[1]!)) {
+    return configuration.resources[crudMatch[1]!] !== undefined;
+  }
   const actions = configuration.specialActions;
   if (actions === undefined || actions.exclude.includes(actionId)) return false;
   return actions.include.includes('*') || actions.include.some((entry) =>

@@ -260,6 +260,22 @@ describe('live scenario configuration', () => {
     expect(scenarioActionSelected('cache.clean', scenario)).toBe(false);
   });
 
+  it('does not misclassify special list and get actions as configured CRUD resources', () => {
+    const scenario: LiveScenarioConfiguration = {
+      ...configuration({}),
+      specialActions: {
+        include: ['*'],
+        exclude: [],
+      },
+    };
+
+    expect(scenarioActionSelected('privacy.requests.list', scenario)).toBe(true);
+    expect(scenarioActionSelected('content.article-history.list', scenario)).toBe(true);
+    expect(scenarioActionSelected('scheduler.tasks.list', scenario)).toBe(true);
+    expect(scenarioActionSelected('extensions.list', scenario)).toBe(true);
+    expect(scenarioActionSelected('users.users.list', scenario)).toBe(false);
+  });
+
   it('selects the user-list prerequisite when private messages need an authenticated actor', () => {
     const scenario: LiveScenarioConfiguration = {
       ...configuration({

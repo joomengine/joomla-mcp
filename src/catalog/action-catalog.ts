@@ -348,14 +348,18 @@ function withFixedMutationDefaults(
   body: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
   const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
-  const context = base?.controllerDefaults['context'];
+  if (base === undefined) return body;
+  const fixed = Object.fromEntries(
+    Object.entries(base.controllerDefaults).filter(([key]) => key !== 'component'),
+  );
 
-  // Joomla's com_fields API route supplies the fixed context for reads, but
-  // its create/update model also expects that context in the form data. Keep
-  // it internal so callers cannot select an arbitrary component context.
-  return typeof context === 'string'
-    ? Object.freeze({ ...body, context })
-    : body;
+  // Route-specific controller state (for example client_id, extension, and
+  // com_fields context) is not caller-selectable, but Joomla's generic write
+  // models still require it in form data. Fixed catalogue values deliberately
+  // win over the normalized caller body.
+  return Object.keys(fixed).length === 0
+    ? body
+    : Object.freeze({ ...body, ...fixed });
 }
 
 function assertPlainInput(input: unknown): Readonly<Record<string, unknown>> {

@@ -692,7 +692,8 @@ jobs:
           EXPECTED_INTEGRITY: ${{ steps.npm.outputs.integrity }}
           ALREADY_PUBLISHED: ${{ steps.npm.outputs.published }}
         run: |
-          asset="release-assets/joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz"
+          asset="${GITHUB_WORKSPACE}/release-assets/joomengine-mcp-for-joomla-${RELEASE_TAG}.tgz"
+          test -f "${asset}"
           if [[ "${ALREADY_PUBLISHED}" != 'true' ]]; then
             npm publish "${asset}" \
               --access public \

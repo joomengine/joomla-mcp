@@ -374,15 +374,15 @@ function withFixedReadDefaults(
   query: Readonly<Record<string, string | number>>,
 ): Readonly<Record<string, string | number>> {
   const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
-  if (base === undefined) return query;
+  if (base?.id !== 'menus.administrator' || !actionId.endsWith('.list')) return query;
   const fixed = Object.fromEntries(
     Object.entries(base.controllerDefaults).filter(([key]) => key !== 'component'),
   );
 
-  // Joomla's API menu controllers read client_id directly from request input
-  // before the list model runs. The route path alone does not populate that
-  // value for every Joomla release. The same rule applies to other fixed
-  // controller context such as category extension and custom-field context.
+  // Joomla's administrator MenusController reads client_id directly from
+  // request input before the list model runs. In Joomla 6.1 the route path
+  // alone does not populate it, while item controllers and site-menu routes
+  // already resolve their intended client correctly.
   return Object.keys(fixed).length === 0
     ? query
     : Object.freeze({ ...query, ...fixed });

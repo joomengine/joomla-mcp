@@ -160,7 +160,6 @@ describe('Joomla source-backed action catalogue', () => {
     expect(resolveJoomlaReadRequest('menus.site.list', { offset: 0, limit: 10 }).query).toEqual({
       'page[offset]': 0,
       'page[limit]': 10,
-      client_id: 0,
     });
     expect(resolveJoomlaReadRequest('menus.administrator.list', { offset: 0, limit: 10 }).query).toEqual({
       'page[offset]': 0,

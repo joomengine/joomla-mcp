@@ -468,6 +468,12 @@ test('module writes derive Joomla assignment mode from assigned menu ids', stati
     ))[0];
     $model = new class {
         public array $saved = [];
+        public array $state = [];
+
+        public function setState(string $key, mixed $value): void
+        {
+            $this->state[$key] = $value;
+        }
 
         public function save(array $data): bool
         {
@@ -517,6 +523,8 @@ test('module writes derive Joomla assignment mode from assigned menu ids', stati
         expect($model->saved['assigned'] === $assigned, 'Assigned menu ids were changed.');
         expect($model->saved['assignment'] === $assignment, 'Joomla module assignment mode was not derived.');
     }
+
+    expect($model->state['filter.client_id'] === 0, 'The site module model did not receive its fixed client context.');
 });
 
 test('generic updates merge existing writable fields without replaying sensitive values', static function (): void {

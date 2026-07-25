@@ -201,8 +201,12 @@ const verifiedPartialRules: readonly KnownLimitationRule[] = Object.freeze([
   Object.freeze({
     code: 'joomla-6.1.2-message-update-creates-replacement',
     scenarioIds: Object.freeze(['messages.messages.get']),
-    phases: Object.freeze(['read-back-updated']),
-    error: /Updated messages\.messages did not return the expected changed fields\./u,
+    phases: Object.freeze([
+      'read-back-updated',
+      /^verify-updated-[A-Za-z0-9._-]+-get-[A-Za-z0-9._-]+$/u,
+    ]),
+    error:
+      /(?:Updated messages\.messages did not return the expected changed fields|Persisted messages\.messages field mismatch: subject expected=)/u,
     explanation:
       'Joomla 6.1.2 validates message PATCH data with a form that omits message_id, so the request creates a replacement message while returning the unchanged original; the live test accepted this only after finding the exact replacement and deleting it.',
     reference:

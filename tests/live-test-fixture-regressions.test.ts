@@ -56,6 +56,7 @@ describe('live fixture Joomla regressions', () => {
     expect(field['name']).toMatch(/^jmcp-[a-z0-9-]+$/u);
     expect(String(field['name'])).not.toContain('_');
     expect(message['user_id_to']).toBe(6);
+    expect(message).not.toHaveProperty('state');
   });
 
   it('keeps generated language titles within Joomla limits and generated message recipients authorized', () => {
@@ -115,6 +116,19 @@ describe('live fixture Joomla regressions', () => {
     });
 
     expect(limitation?.code).toBe('joomla-6.1.2-content-language-update-response-400');
+  });
+
+  it('recognizes the configured private-message PATCH replacement only after read-back mismatch', () => {
+    const limitation = verifiedPartialMutationLimitation({
+      options: liveOptions(),
+      joomlaPath: 'api',
+      scenarioId: 'messages.messages.get',
+      phase: 'verify-updated-generated-update-get-primary',
+      error:
+        'Persisted messages.messages field mismatch: subject expected="Updated" actual="Original".',
+    });
+
+    expect(limitation?.code).toBe('joomla-6.1.2-message-update-creates-replacement');
   });
 });
 

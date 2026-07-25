@@ -406,12 +406,6 @@ function requiredId(context: LiveFixtureContext, baseId: string): string | numbe
   return record.id;
 }
 
-function requiredReferenceId(context: LiveFixtureContext, baseId: string): string | number {
-  const record = context.reference(baseId);
-  if (record === undefined) throw new Error(`Fixture prerequisite ${baseId} has no existing reference record.`);
-  return record.id;
-}
-
 function requiredAttribute(context: LiveFixtureContext, baseId: string, name: string): unknown {
   const value = context.get(baseId)?.attributes[name];
   if (value === undefined || value === null || value === '') {

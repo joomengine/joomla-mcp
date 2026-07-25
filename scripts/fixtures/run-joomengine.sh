@@ -411,6 +411,12 @@ NODE
 rm -f -- "$api_token_file"
 
 npm run build --silent
+live_test_directory="${artifact_directory}/live-test"
+mkdir -p -- "$live_test_directory"
+chmod 0700 -- "$live_test_directory"
+export JOOMLA_MCP_LIVE_HEARTBEAT_MS="${JOOMLA_MCP_LIVE_HEARTBEAT_MS:-15000}"
+printf 'JMCP-FIXTURE state=START phase=live-test message=%q\n' \
+  'running declarative MCP live validation with real-time progress'
 node "${REPOSITORY_ROOT}/dist/bin/joomla-mcp-live-test.js" \
   --config "$live_config" \
   --site fixture \
@@ -419,7 +425,7 @@ node "${REPOSITORY_ROOT}/dist/bin/joomla-mcp-live-test.js" \
   --mcp-transport all \
   --families all \
   --seed "fixture-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}" \
-  --output "${artifact_directory}/live-test" \
+  --output "$live_test_directory" \
   --repository-commit "${GITHUB_SHA:-local}" \
   --fixture-digest "companion-sha256=${package_sha256}" \
   --fixture-digest "joomla-image=${JOOMLA_FIXTURE_IMAGE}" \
@@ -428,7 +434,10 @@ node "${REPOSITORY_ROOT}/dist/bin/joomla-mcp-live-test.js" \
   --non-interactive \
   --confirm-mutations \
   --disposable \
-  --cleanup
+  --cleanup always \
+  | tee "${live_test_directory}/console.log"
+printf 'JMCP-FIXTURE state=PASS phase=live-test message=%q\n' \
+  'declarative MCP live validation completed'
 
 collect_diagnostics
 for command in \

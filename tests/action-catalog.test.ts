@@ -8,6 +8,7 @@ import {
   joomlaCrudWriteActions,
   joomlaReadActions,
   joomlaWriteActions,
+  resolveJoomlaWriteRequest,
 } from '../src/catalog/action-catalog.js';
 import { apiCrudBases } from '../src/catalog/core.js';
 import { joomlaCrudBases } from '../src/catalog/crud-bases.js';
@@ -120,6 +121,37 @@ describe('Joomla source-backed action catalogue', () => {
     expect(joomlaCrudBases.find((base) => base.id === 'fields.contact-mail')?.controllerDefaults).toEqual({
       component: 'com_fields',
       context: 'com_contact.mail',
+    });
+  });
+
+  it('injects fixed route defaults into write bodies without exposing them to callers', () => {
+    expect(resolveJoomlaWriteRequest('menus.administrator.create', {
+      data: {
+        menutype: 'jmcp-admin',
+        title: 'Joomla MCP administrator menu',
+        description: '',
+      },
+    })).toMatchObject({
+      method: 'POST',
+      path: 'v1/menus/administrator',
+      body: {
+        menutype: 'jmcp-admin',
+        title: 'Joomla MCP administrator menu',
+        client_id: 1,
+      },
+    });
+    expect(resolveJoomlaWriteRequest('fields.contact-mail.create', {
+      data: {
+        group_id: 1,
+        title: 'Mail field',
+        name: 'mail_field',
+        label: 'Mail field',
+        type: 'text',
+      },
+    })).toMatchObject({
+      body: {
+        context: 'com_contact.mail',
+      },
     });
   });
 

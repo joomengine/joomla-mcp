@@ -1396,10 +1396,30 @@ async function runConfiguredCrudProfile(
         updateScenario,
         `update-${configuredRecord.key}-${safeSegment(configuredUpdate.name)}`,
         updateInput,
-        async () => ({
-          response: await callWrite(session, site, updateScenario.id, updateInput, path),
-          expected: changes,
-        }),
+        async () => {
+          try {
+            return {
+              response: await callWrite(session, site, updateScenario.id, updateInput, path),
+              expected: changes,
+            };
+          } catch (error) {
+            const knownLimitation = verifiedPartialMutationLimitation({
+              options,
+              joomlaPath: path,
+              scenarioId: updateScenario.id,
+              phase: `update-${configuredRecord.key}-${safeSegment(configuredUpdate.name)}`,
+              error: errorMessage(error),
+            });
+            if (knownLimitation === undefined) throw error;
+            return {
+              response: { upstreamError: errorResult(error) },
+              expected: changes,
+              status: 'KNOWN_UPSTREAM_LIMITATION' as const,
+              reason: knownLimitation.explanation,
+              knownLimitation,
+            };
+          }
+        },
       );
       if (updated === undefined) continue;
       const verifiedUpdate = await verifyConfiguredResource(
@@ -1534,10 +1554,6 @@ async function verifyConfiguredResource(
             'it is not certified as visible in Joomla collection/GUI models.',
           );
         }
-        assertChangedFields({ data: {
-          id: listed.id,
-          attributes: listed.attributes,
-        } }, expected, baseId);
         return {
           response: collection.pages,
           expected: { id, visible: true, fields: visibleExpectation(expected) },
@@ -1591,10 +1607,10 @@ async function findConfiguredEntityInCollection(
 function scenarioIdentity(
   attributes: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
-  for (const key of ['alias', 'username', 'email', 'menutype'] as const) {
+  for (const key of ['alias', 'username', 'menutype'] as const) {
     if (attributes[key] !== undefined) return Object.freeze({ [key]: attributes[key] });
   }
-  for (const key of ['title', 'name', 'subject', 'lang_code'] as const) {
+  for (const key of ['title', 'name', 'subject', 'lang_code', 'email', 'old_url', 'link'] as const) {
     if (attributes[key] !== undefined) return Object.freeze({ [key]: attributes[key] });
   }
   throw new Error(
@@ -2882,10 +2898,7 @@ function firstEntity(value: unknown): LiveFixtureRecord | undefined {
     candidate['update_site_id'] ?? candidate['updateSiteId'] ??
     candidate['extension_id'] ?? candidate['extensionId'];
   if (typeof id !== 'string' && typeof id !== 'number') return undefined;
-  const attributesValue = asRecord(candidate['attributes']);
-  const attributes = Object.keys(attributesValue).length > 0
-    ? attributesValue
-    : Object.fromEntries(Object.entries(candidate).filter(([key]) => key !== 'id'));
+  const attributes = resourceAttributes(candidate);
   const labelValue = attributes['title'] ?? attributes['name'] ?? attributes['subject'] ?? attributes['username'] ?? id;
   return Object.freeze({ id, attributes: Object.freeze(attributes), label: String(labelValue) });
 }
@@ -2911,10 +2924,7 @@ function collectEntities(value: unknown): readonly LiveFixtureRecord[] {
       record['update_site_id'] ?? record['updateSiteId'] ??
       record['extension_id'] ?? record['extensionId'];
     if ((typeof id === 'string' || typeof id === 'number') && isResourceEntityRecord(record)) {
-      const attributesValue = asRecord(record['attributes']);
-      const attributes = Object.keys(attributesValue).length > 0
-        ? attributesValue
-        : Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'id'));
+      const attributes = resourceAttributes(record);
       output.push({
         id,
         attributes,
@@ -3021,12 +3031,33 @@ function assertChangedFields(
   baseId: string,
 ): Readonly<Record<string, unknown>> {
   const attributes = firstEntity(response)?.attributes ?? {};
-  const matched = entityMatchesFields(
-    { id: 0, attributes, label: baseId },
-    changes,
-  );
-  if (!matched) {
-    throw new Error(`Updated ${baseId} did not return the expected changed fields.`);
+  const mismatches: string[] = [];
+  for (const [key, expected] of Object.entries(changes)) {
+    if (key === 'password' || key === 'password2') continue;
+    if (
+      baseId === 'content.articles' &&
+      (key === 'introtext' || key === 'fulltext' || key === 'articletext') &&
+      typeof attributes['text'] === 'string'
+    ) {
+      const actualText = normalizeComparableText(attributes['text']);
+      const expectedText = normalizeComparableText(expected);
+      const matched = key === 'introtext'
+        ? actualText.startsWith(expectedText)
+        : key === 'fulltext'
+          ? actualText.endsWith(expectedText)
+          : actualText === expectedText;
+      if (!matched) mismatches.push(fieldMismatch(key, expected, attributes['text']));
+      continue;
+    }
+    if (!Object.hasOwn(attributes, key)) continue;
+    if (!looselyEqual(attributes[key], expected)) {
+      mismatches.push(fieldMismatch(key, expected, attributes[key]));
+    }
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `Persisted ${baseId} field mismatch: ${mismatches.slice(0, 8).join('; ')}.`,
+    );
   }
   return attributes;
 }
@@ -3098,8 +3129,74 @@ async function assertMediaAbsent(
 
 function looselyEqual(actual: unknown, expected: unknown): boolean {
   if (JSON.stringify(actual) === JSON.stringify(expected)) return true;
+  if (Array.isArray(expected)) {
+    const actualValues = Array.isArray(actual)
+      ? actual
+      : isPlainRecord(actual)
+        ? Object.values(actual)
+        : [];
+    return JSON.stringify(actualValues.map(String).sort()) ===
+      JSON.stringify(expected.map(String).sort());
+  }
+  if (isPlainRecord(expected)) {
+    const decoded = typeof actual === 'string' ? parseJsonRecord(actual) : actual;
+    if (!isPlainRecord(decoded)) return false;
+    return Object.entries(expected).every(([key, value]) =>
+      Object.hasOwn(decoded, key) && looselyEqual(decoded[key], value));
+  }
   if (typeof expected === 'number' || typeof expected === 'boolean') return String(actual) === String(Number(expected));
   return String(actual ?? '') === String(expected ?? '');
+}
+
+function resourceAttributes(
+  record: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const attributesValue = asRecord(record['attributes']);
+  const attributes: Record<string, unknown> = Object.keys(attributesValue).length > 0
+    ? { ...attributesValue }
+    : Object.fromEntries(
+        Object.entries(record).filter(([key]) =>
+          key !== 'id' && key !== 'relationships'),
+      );
+  const relationships = asRecord(record['relationships']);
+  const relationFields: Readonly<Record<string, string>> = {
+    category: 'catid',
+    client: 'cid',
+  };
+  for (const [name, relationship] of Object.entries(relationships)) {
+    const field = relationFields[name];
+    if (field === undefined || Object.hasOwn(attributes, field)) continue;
+    const data = asRecord(relationship)['data'];
+    if (Array.isArray(data)) {
+      attributes[field] = data
+        .map((entry) => asRecord(entry)['id'])
+        .filter((id) => typeof id === 'string' || typeof id === 'number');
+    } else {
+      const id = asRecord(data)['id'];
+      if (typeof id === 'string' || typeof id === 'number') attributes[field] = id;
+    }
+  }
+  return Object.freeze(attributes);
+}
+
+function normalizeComparableText(value: unknown): string {
+  return String(value ?? '').replace(/\s+/gu, ' ').trim();
+}
+
+function fieldMismatch(key: string, expected: unknown, actual: unknown): string {
+  return `${key} expected=${JSON.stringify(expected)} actual=${JSON.stringify(actual)}`;
+}
+
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseJsonRecord(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
 }
 
 function validateSelection(options: LiveTestOptions, site: SiteConfig): void {

@@ -775,6 +775,8 @@ async function runCrudProfile(
     seed: options.seed,
     get: (baseId) => state.records.get(baseId),
     reference: (baseId) => state.references.get(baseId),
+    actor: () =>
+      state.references.get('authenticated.actor') ?? state.references.get('users.users'),
   };
 
   for (const baseId of crudFixtureOrder) {
@@ -1144,7 +1146,17 @@ async function runConfiguredCrudProfile(
     seed: options.seed,
     get: (baseId) => state.records.get(baseId),
     reference: (baseId) => state.references.get(baseId),
+    actor: () => state.references.get('authenticated.actor'),
   };
+  await resolveAuthenticatedActor(
+    session,
+    path,
+    site,
+    selected,
+    state,
+    record,
+    configuration,
+  );
 
   for (const configured of orderedLiveScenarioRecords(configuration)) {
     const { baseId, reference, definition: configuredRecord } = configured;
@@ -1479,6 +1491,71 @@ async function runConfiguredCrudProfile(
       removeRetainedRecord(state, configured.baseId, entity.id);
     }
   }
+}
+
+async function resolveAuthenticatedActor(
+  session: LiveMcpSession,
+  path: LiveJoomlaPath,
+  site: string,
+  selected: readonly LiveScenario[],
+  state: LaneState,
+  record: AttemptRecorder,
+  configuration: LiveScenarioConfiguration,
+): Promise<void> {
+  if (configuration.resources['messages.messages'] === undefined) return;
+
+  const listScenario = selected.find((scenario) => scenario.id === 'users.users.list');
+  if (listScenario === undefined || !listScenario.joomlaPaths.includes(path)) return;
+
+  const username = configuration.target.actorUsernames?.[path];
+  await record(
+    session,
+    path,
+    listScenario,
+    'resolve-authenticated-actor',
+    { username },
+    async () => {
+      if (username === undefined) {
+        throw new Error(
+          `Private-message verification requires target.actorUsernames.${path} ` +
+          'to name the Joomla account authenticated on this path.',
+        );
+      }
+
+      const limit = 100;
+      for (let offset = 0; offset <= 10_000; offset += limit) {
+        const response = await callRead(
+          session,
+          site,
+          listScenario.id,
+          { offset, limit },
+          path,
+        );
+        const entities = collectEntities(response);
+        const actor = entities.find((entity) =>
+          entity.attributes['username'] === username);
+        if (actor !== undefined) {
+          state.references.set('authenticated.actor', actor);
+          return {
+            response: {
+              id: actor.id,
+              username: actor.attributes['username'],
+              pagesRead: (offset / limit) + 1,
+            },
+            expected: {
+              username,
+              purpose: 'Private messages must target the authenticated recipient.',
+            },
+          };
+        }
+        if (entities.length < limit) break;
+      }
+
+      throw new Error(
+        `Authenticated Joomla actor ${username} was not found by users.users.list on ${path}.`,
+      );
+    },
+  );
 }
 
 async function verifyConfiguredResource(

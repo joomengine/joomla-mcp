@@ -117,6 +117,8 @@ creates and independently verifies several categories, articles, user groups,
 users, banner categories, banners, menus, article menu items, and custom HTML
 modules. Relationships use named references in JSON; Joomla IDs are resolved
 only after the referenced record has been created and independently observed.
+Private-message tests likewise resolve each path's authenticated account from
+the human-readable `target.actorUsernames` scenario setting before sending.
 Pass `--scenario /path/to/override.json` to replace the packaged scenario, or
 omit a resource family from the override to skip that family.
 

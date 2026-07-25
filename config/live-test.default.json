@@ -3,7 +3,11 @@
   "name": "Complete Joomla MCP live scenario",
   "description": "Deterministic multi-record scenario that proves real MCP create, list, get, update, publish, assignment, delete, and postcondition behavior.",
   "target": {
-    "configurationFile": "config/sites.json"
+    "configurationFile": "config/sites.json",
+    "actorUsernames": {
+      "api": "mcpfixture",
+      "cli": "mcpfixture"
+    }
   },
   "selection": {
     "profile": "full",

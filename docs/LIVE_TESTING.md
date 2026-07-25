@@ -44,10 +44,17 @@ profile, Joomla and MCP lanes, mutation/disposable acknowledgement, cleanup
 policy, selected CRUD families, special actions, fixture values, updates, and
 relationships. Command-line selection and safety flags override the scenario.
 
+Joomla private-message list and item models expose a message only to its
+authenticated recipient. When `messages.messages` is configured, set
+`target.actorUsernames.api` and/or `target.actorUsernames.cli` to the
+human-readable username authenticated on each selected path. The runner
+resolves that username through `users.users.list`; no actor ID is stored in
+the scenario.
+
 Omitting a resource family from `resources` skips all CRUD actions for that
 family. Omitting `specialActions` skips non-CRUD actions. The packaged default
 explicitly contains all 36 CRUD families and all special actions. Its visible
-site graph contains three content categories, five articles, three user groups,
+site graph contains three content categories, five articles, four user groups,
 five users, two banner clients, three banner categories, five banners, two site
 menus, five article menu items, and five custom HTML modules.
 

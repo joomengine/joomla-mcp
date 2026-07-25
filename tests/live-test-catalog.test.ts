@@ -48,6 +48,7 @@ describe('live-test catalogue', () => {
         seed: 'deterministic',
         get: (id: string) => records.get(id),
         reference: (id: string) => references.get(id),
+        actor: () => references.get('users.users'),
       };
       const showcase = definition.create(context, 'showcase');
       const deletion = definition.create(context, 'deletion');
@@ -72,6 +73,7 @@ describe('live-test catalogue', () => {
       seed: 'accepted-values',
       get: (_id: string) => undefined,
       reference: (id: string) => id === 'users.users' ? existingUser : undefined,
+      actor: () => existingUser,
     };
 
     expect(crudFixtureDefinitions.get('content.articles')?.create({

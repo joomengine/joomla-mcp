@@ -44,14 +44,12 @@ describe('live fixture Joomla regressions', () => {
         attributes: { id: 61 },
       }],
     ]);
-    const references = new Map<string, LiveFixtureRecord>([
-      ['users.users', {
-        id: 6,
-        label: 'Pre-existing user',
-        attributes: { id: 6 },
-      }],
-    ]);
-    const context = fixtureContext(records, references);
+    const actor: LiveFixtureRecord = {
+      id: 6,
+      label: 'Authenticated actor',
+      attributes: { id: 6, username: 'mcpfixture' },
+    };
+    const context = fixtureContext(records, new Map(), actor);
     const field = crudFixtureDefinitions.get('fields.content-articles')!.create(context, 'primary');
     const message = crudFixtureDefinitions.get('messages.messages')!.create(context, 'primary');
 
@@ -123,12 +121,14 @@ describe('live fixture Joomla regressions', () => {
 function fixtureContext(
   records: ReadonlyMap<string, LiveFixtureRecord> = new Map(),
   references: ReadonlyMap<string, LiveFixtureRecord> = new Map(),
+  actor?: LiveFixtureRecord,
 ): LiveFixtureContext {
   return {
     lane: 'http-api',
     seed: 'regression',
     get: (baseId) => records.get(baseId),
     reference: (baseId) => references.get(baseId),
+    actor: () => actor,
   };
 }
 

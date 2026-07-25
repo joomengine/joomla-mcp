@@ -48,6 +48,10 @@ describe('live scenario configuration', () => {
     expect(scenario.resources['menus.site-items']?.records).toHaveLength(5);
     expect(scenario.resources['modules.site']?.records).toHaveLength(5);
     expect(orderedLiveScenarioRecords(scenario)).toHaveLength(117);
+    expect(scenario.target.actorUsernames).toEqual({
+      api: 'mcpfixture',
+      cli: 'mcpfixture',
+    });
   });
 
   it('orders named dependencies and resolves their runtime Joomla identifiers', () => {
@@ -254,5 +258,43 @@ describe('live scenario configuration', () => {
     expect(scenarioActionSelected('users.users.create', scenario)).toBe(false);
     expect(scenarioActionSelected('cache.status', scenario)).toBe(true);
     expect(scenarioActionSelected('cache.clean', scenario)).toBe(false);
+  });
+
+  it('selects the user-list prerequisite when private messages need an authenticated actor', () => {
+    const scenario: LiveScenarioConfiguration = {
+      ...configuration({
+        'messages.messages': {
+          records: [{
+            key: 'message',
+            generate: true,
+            updates: [],
+            deleteAfterVerify: false,
+          }],
+        },
+      }),
+      target: {
+        configurationFile: 'config/sites.json',
+        actorUsernames: { api: 'mcpfixture' },
+      },
+    };
+
+    expect(() => validateScenarioConfiguration(scenario)).not.toThrow();
+    expect(scenarioActionSelected('users.users.list', scenario)).toBe(true);
+  });
+
+  it('requires a human-readable authenticated actor for each private-message path', () => {
+    const scenario = configuration({
+      'messages.messages': {
+        records: [{
+          key: 'message',
+          generate: true,
+          updates: [],
+          deleteAfterVerify: false,
+        }],
+      },
+    });
+
+    expect(() => validateScenarioConfiguration(scenario))
+      .toThrow('target.actorUsernames.api');
   });
 });

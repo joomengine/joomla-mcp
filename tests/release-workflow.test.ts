@@ -316,7 +316,7 @@ describe('release metadata sealing', () => {
 });
 
 describe('release workflow contract', () => {
-  it('uses a maintainer-gated orchestrator and tag-ref publication workflow', () => {
+  it('uses current publication logic with an immutable tagged source', () => {
     const orchestrator = readFileSync('.github/workflows/release.yml', 'utf8');
     const publication = readFileSync('.github/workflows/publish-release.yml', 'utf8');
 
@@ -330,9 +330,15 @@ describe('release workflow contract', () => {
     expect(orchestrator).toContain("github.run_attempt }}\" != '1'");
     expect(orchestrator).toContain('push --atomic origin');
     expect(orchestrator).toContain('gh workflow run publish-release.yml');
-    expect(orchestrator).toContain('--ref "${RELEASE_TAG}"');
+    expect(orchestrator).toContain('--ref main');
+    expect(orchestrator).toContain('-f "release_commit=${RELEASE_COMMIT}"');
+    expect(orchestrator).not.toContain('--ref "${RELEASE_TAG}"');
     expect(orchestrator).not.toContain('attest-build-provenance');
-    expect(publication).toContain('test "${release_commit}" = "${GITHUB_SHA}"');
+    expect(publication).toContain('release_commit:');
+    expect(publication).toContain("test \"${GITHUB_REF}\" = 'refs/heads/main'");
+    expect(publication).toContain('[[ "${RELEASE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]');
+    expect(publication).toContain('test "${tag_commit}" = "${RELEASE_COMMIT}"');
+    expect(publication).toContain('ref: ${{ needs.verify.outputs.release_commit }}');
     expect(publication).toContain("path <<< \"${source_run}\")\" = '.github/workflows/release.yml'");
   });
 

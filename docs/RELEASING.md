@@ -122,10 +122,14 @@ Create an environment named `release` and configure:
 
 - required reviewers from the release-maintainer or system-administrator team;
 - prevent self-review when at least two maintainers are available;
-- deployment refs restricted to branch `main` and tags matching `v*`;
+- administrator bypass disabled so the approval boundary cannot be skipped;
+- no wait timer or custom deployment protection rule;
+- deployment refs set to **Selected branches and tags**, with a branch rule for
+  `main` and a separate tag rule for `v*`;
 - `NPM_TOKEN` only for the first npm bootstrap release, if required;
 - optional `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` for the dedicated
-  release GitHub App.
+  release GitHub App;
+- no environment variables.
 
 The actor permission check is defense in depth. Environment reviewers are the
 human authorization boundary. A normal release asks for approval twice: first
@@ -167,7 +171,8 @@ For the first publication:
    from SemVer, verifies the exact integrity and channel, then makes the
    already-sealed GitHub release public.
 4. Configure npm trusted publishing for organization `joomengine`, repository
-   `joomla-mcp`, workflow `publish-release.yml`, environment `release`.
+   `joomla-mcp`, workflow filename `publish-release.yml` (not the full path),
+   environment `release`, and allowed action **npm publish**.
 5. Remove `NPM_TOKEN`. Later releases use GitHub OIDC with npm provenance.
 
 Keeping the bootstrap token permanently defeats the purpose of trusted

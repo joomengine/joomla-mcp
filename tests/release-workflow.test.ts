@@ -378,6 +378,14 @@ describe('release workflow contract', () => {
     );
     expect(npmPublishStep).toContain('test -f "${asset}"');
     expect(npmPublishStep).not.toContain('asset="release-assets/');
+    expect(npmPublishStep).toContain(
+      '"${RUNNER_TEMP}/npm-registry-view" \\\n'
+      + '            "@joomengine/joomla-mcp@${RELEASE_VERSION}"',
+    );
+    expect(npmPublishStep).toContain(
+      '"${RUNNER_TEMP}/npm-registry-view" \\\n'
+      + '            "@joomengine/joomla-mcp@${NPM_TAG}"',
+    );
     expect(workflow.indexOf('Verify commit-addressed image provenance'))
       .toBeLessThan(workflow.indexOf('Publish or verify the versioned image coordinate'));
   });

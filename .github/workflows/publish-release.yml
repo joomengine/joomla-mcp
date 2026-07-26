@@ -442,6 +442,89 @@ jobs:
           node-version: '22.17.1'
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.18.0
+      - name: Install bounded npm registry visibility check
+        env:
+          NPM_REGISTRY_ATTEMPTS: '8'
+          NPM_REGISTRY_INITIAL_DELAY_SECONDS: '2'
+          NPM_REGISTRY_MAX_DELAY_SECONDS: '30'
+        run: |
+          helper="${RUNNER_TEMP}/npm-registry-view"
+          cat > "${helper}" <<'NPM_REGISTRY_VIEW'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          spec="${1:?npm package specification is required}"
+          field="${2:?npm view field is required}"
+          expected="${3-}"
+          mode="${4:-eventual}"
+          attempts="${NPM_REGISTRY_ATTEMPTS:-8}"
+          delay="${NPM_REGISTRY_INITIAL_DELAY_SECONDS:-2}"
+          maximum_delay="${NPM_REGISTRY_MAX_DELAY_SECONDS:-30}"
+          registry="${NPM_REGISTRY_URL:-https://registry.npmjs.org}"
+
+          [[ "${attempts}" =~ ^[1-9][0-9]*$ ]]
+          [[ "${delay}" =~ ^[0-9]+$ ]]
+          [[ "${maximum_delay}" =~ ^[0-9]+$ ]]
+          case "${mode}" in
+            eventual|integrity) ;;
+            *)
+              echo "Unsupported npm registry visibility mode: ${mode}" >&2
+              exit 64
+              ;;
+          esac
+
+          error_file="$(mktemp "${RUNNER_TEMP:-/tmp}/npm-registry-view.XXXXXX")"
+          trap 'rm -f "${error_file}"' EXIT
+
+          for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+            value=''
+            if value="$(
+              npm view "${spec}" "${field}" \
+                --registry="${registry}" 2>"${error_file}"
+            )"; then
+              if [[ -z "${expected}" || "${value}" == "${expected}" ]]; then
+                printf '%s\n' "${value}"
+                exit 0
+              fi
+
+              if [[ "${mode}" == 'integrity' && -n "${value}" ]]; then
+                echo "npm ${spec} returned an unexpected ${field}." >&2
+                echo "Expected: ${expected}" >&2
+                echo "Actual:   ${value}" >&2
+                exit 2
+              fi
+
+              echo \
+                "npm ${spec} ${field} is ${value:-empty}; waiting for ${expected} " \
+                "(attempt ${attempt}/${attempts})." >&2
+            else
+              status=$?
+              echo \
+                "npm ${spec} ${field} is not visible " \
+                "(attempt ${attempt}/${attempts}, exit ${status})." >&2
+              if [[ -s "${error_file}" ]]; then
+                sed 's/^/npm view: /' "${error_file}" >&2
+              fi
+            fi
+
+            if (( attempt == attempts )); then
+              break
+            fi
+
+            echo "Retrying npm registry read in ${delay}s." >&2
+            sleep "${delay}"
+            delay=$((delay * 2))
+            if (( delay > maximum_delay )); then
+              delay="${maximum_delay}"
+            fi
+          done
+
+          echo \
+            "npm ${spec} ${field} did not reach ${expected:-a visible value} " \
+            "after ${attempts} attempts." >&2
+          exit 1
+          NPM_REGISTRY_VIEW
+          chmod 0755 "${helper}"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-assets-${{ needs.verify.outputs.tag }}-${{ github.run_attempt }}
@@ -460,18 +543,32 @@ jobs:
           if [[ "${RELEASE_PUBLIC}" == 'true' ]]; then
             test "${manifest_integrity}" = "${local_integrity}"
           fi
-          registry_integrity="$(
-            npm view "@joomengine/joomla-mcp@${RELEASE_VERSION}" dist.integrity \
-              --registry=https://registry.npmjs.org 2>/dev/null || true
-          )"
-          if [[ -n "${registry_integrity}" && "${registry_integrity}" != "${local_integrity}" ]]; then
-            echo "npm ${RELEASE_VERSION} exists with different integrity." >&2
-            exit 1
+          registry_integrity=''
+          if registry_integrity="$(
+            NPM_REGISTRY_ATTEMPTS=4 \
+              "${RUNNER_TEMP}/npm-registry-view" \
+              "@joomengine/joomla-mcp@${RELEASE_VERSION}" \
+              dist.integrity \
+              "${local_integrity}" \
+              integrity
+          )"; then
+            published='true'
+          else
+            status=$?
+            if [[ "${status}" == '2' ]]; then
+              echo "npm ${RELEASE_VERSION} exists with different integrity." >&2
+              exit 1
+            fi
+            published='false'
           fi
 
           channel_version="$(
-            npm view "@joomengine/joomla-mcp@${NPM_TAG}" version \
-              --registry=https://registry.npmjs.org 2>/dev/null || true
+            NPM_REGISTRY_ATTEMPTS=4 \
+              "${RUNNER_TEMP}/npm-registry-view" \
+              "@joomengine/joomla-mcp@${NPM_TAG}" \
+              version \
+              2>/dev/null \
+              || true
           )"
           if [[ -n "${channel_version}" ]]; then
             RELEASE_CHANNEL_VERSION="${channel_version}" \
@@ -491,11 +588,7 @@ jobs:
           fi
           {
             echo "integrity=${local_integrity}"
-            if [[ -n "${registry_integrity}" ]]; then
-              echo 'published=true'
-            else
-              echo 'published=false'
-            fi
+            echo "published=${published}"
           } >> "${GITHUB_OUTPUT}"
       - uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c # v4
         with:
@@ -707,18 +800,22 @@ jobs:
               --provenance \
               --registry=https://registry.npmjs.org
           fi
-          test "$(
-            npm view "@joomengine/joomla-mcp@${RELEASE_VERSION}" dist.integrity \
-              --registry=https://registry.npmjs.org
-          )" = "${EXPECTED_INTEGRITY}"
 
-          channel_version="$(
-            npm view "@joomengine/joomla-mcp@${NPM_TAG}" version \
-              --registry=https://registry.npmjs.org 2>/dev/null || true
-          )"
-          if [[ "${channel_version}" != "${RELEASE_VERSION}" ]]; then
+          "${RUNNER_TEMP}/npm-registry-view" \
+            "@joomengine/joomla-mcp@${RELEASE_VERSION}" \
+            dist.integrity \
+            "${EXPECTED_INTEGRITY}" \
+            integrity \
+            >/dev/null
+
+          if ! "${RUNNER_TEMP}/npm-registry-view" \
+            "@joomengine/joomla-mcp@${NPM_TAG}" \
+            version \
+            "${RELEASE_VERSION}" \
+            eventual \
+            >/dev/null; then
             if [[ -z "${NODE_AUTH_TOKEN}" ]]; then
-              echo "npm ${RELEASE_VERSION} exists but ${NPM_TAG} points to ${channel_version:-nothing}." >&2
+              echo "npm ${RELEASE_VERSION} exists but ${NPM_TAG} is not visible at that version." >&2
               echo 'Trusted publishing cannot repair dist-tags; configure NPM_TOKEN temporarily and dispatch Current.' >&2
               exit 1
             fi
@@ -727,10 +824,13 @@ jobs:
               "${NPM_TAG}" \
               --registry=https://registry.npmjs.org
           fi
-          test "$(
-            npm view "@joomengine/joomla-mcp@${NPM_TAG}" version \
-              --registry=https://registry.npmjs.org
-          )" = "${RELEASE_VERSION}"
+
+          "${RUNNER_TEMP}/npm-registry-view" \
+            "@joomengine/joomla-mcp@${NPM_TAG}" \
+            version \
+            "${RELEASE_VERSION}" \
+            eventual \
+            >/dev/null
       - name: Publish the verified GitHub draft last
         if: needs.verify.outputs.release_public != 'true'
         env:

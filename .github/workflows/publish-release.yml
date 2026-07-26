@@ -7,6 +7,10 @@ on:
         description: Exact SemVer already anchored by v<version>
         required: true
         type: string
+      release_commit:
+        description: Full immutable commit SHA anchored by v<version>
+        required: true
+        type: string
       source_run_id:
         description: Orchestrator run ID; leave empty only for audited manual recovery
         required: false
@@ -21,7 +25,7 @@ permissions:
 
 jobs:
   verify:
-    name: Verify tag-ref publication
+    name: Verify main-ref publication and immutable source
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -76,7 +80,7 @@ jobs:
           esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.release_commit }}
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
@@ -87,14 +91,16 @@ jobs:
       - id: identity
         name: Verify source, tag, and complete version identity
         env:
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
           RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           node scripts/release/verify-version.mjs
+          test "${GITHUB_REF}" = 'refs/heads/main'
+          [[ "${RELEASE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
           tag="v${RELEASE_VERSION}"
-          release_commit="$(git rev-parse HEAD)"
-          test "${GITHUB_REF}" = "refs/tags/${tag}"
-          test "${release_commit}" = "${GITHUB_SHA}"
-          test "$(git rev-list -n 1 "${tag}")" = "${release_commit}"
+          tag_commit="$(git rev-list -n 1 "${tag}")"
+          test -n "${tag_commit}"
+          test "${tag_commit}" = "${RELEASE_COMMIT}"
 
           if [[ "${RELEASE_VERSION}" == *-* ]]; then
             prerelease='true'
@@ -108,7 +114,7 @@ jobs:
             echo "tag=${tag}"
             echo "prerelease=${prerelease}"
             echo "npm_tag=${npm_tag}"
-            echo "release_commit=${release_commit}"
+            echo "release_commit=${RELEASE_COMMIT}"
           } >> "${GITHUB_OUTPUT}"
       - id: release
         name: Inspect the GitHub release boundary

@@ -208,7 +208,11 @@ when the requested version is already current.
 Dispatch a new run with `auto` or `current` while the current version is
 partial. Do not use GitHub's **Re-run jobs** button: every dispatch persists a
 fresh release intent and artifact namespace. The workflow resumes from the
-immutable source/tag and reconciles each boundary:
+immutable source/tag and reconciles each boundary. Recovery executes the
+current, reviewed publication workflow from `main`, while all packages and
+images are checked out and built from the exact commit anchored by the
+immutable release tag. This allows workflow defects to be repaired without
+moving a release tag or changing the released source:
 
 - a tag must resolve to the same release commit;
 - external npm or OCI state without that source tag is rejected as

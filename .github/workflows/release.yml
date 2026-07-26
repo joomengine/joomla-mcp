@@ -453,22 +453,24 @@ jobs:
             echo "- Commit: \`${release_commit}\`"
             echo "- Tag: \`${RELEASE_TAG}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
-      - name: Dispatch publication from the immutable tag
+      - name: Dispatch current publication logic for the immutable release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+          RELEASE_COMMIT: ${{ steps.publish.outputs.release_commit }}
           RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
         run: |
           gh workflow run publish-release.yml \
             --repo "${GITHUB_REPOSITORY}" \
-            --ref "${RELEASE_TAG}" \
+            --ref main \
             -f "release_version=${RELEASE_VERSION}" \
+            -f "release_commit=${RELEASE_COMMIT}" \
             -f "source_run_id=${GITHUB_RUN_ID}"
 
           {
             echo '## Publication dispatched'
             echo
-            echo "- Tag-ref workflow: https://github.com/${GITHUB_REPOSITORY}/actions/workflows/publish-release.yml"
+            echo "- Main-ref workflow: https://github.com/${GITHUB_REPOSITORY}/actions/workflows/publish-release.yml"
             echo "- Immutable source: \`${{ steps.publish.outputs.release_commit }}\`"
             echo "- Tag: \`${RELEASE_TAG}\`"
           } >> "${GITHUB_STEP_SUMMARY}"

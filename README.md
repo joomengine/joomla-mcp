@@ -1,5 +1,7 @@
 # JoomEngine MCP for Joomla
 
+[![CI](https://github.com/joomengine/joomla-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/ci.yml) [![Release](https://github.com/joomengine/joomla-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/release.yml) [![Publish](https://github.com/joomengine/joomla-mcp/actions/workflows/publish-release.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/publish-release.yml) [![npm](https://img.shields.io/npm/v/%40joomengine%2Fjoomla-mcp?label=npm)](https://www.npmjs.com/package/@joomengine/joomla-mcp) [![Joomla](https://img.shields.io/badge/Joomla-6.1%2B-5091CD?logo=joomla&logoColor=white)](https://www.joomla.org/) [![Node](https://img.shields.io/badge/Node-22.12%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/) [![License](https://img.shields.io/badge/License-GPL--2.0%2B-blue)](LICENSE)
+
 An embeddable library and self-hosted Model Context Protocol (MCP) server for
 administering Joomla 6.x through bounded, auditable semantic actions.
 

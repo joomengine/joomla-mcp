@@ -106,7 +106,7 @@
     "validate": "npm run version:check && npm run check && npm test && npm run docs:actions:check && npm run build && npm run package:check && npm run test:package"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@types/node": "^26.1.1",
     "zod": "^4.0.0"
   },

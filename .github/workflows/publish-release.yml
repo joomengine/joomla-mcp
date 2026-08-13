@@ -178,7 +178,7 @@ jobs:
             deploy scripts/deploy \
             docs/CLIENTS.md docs/DEPLOYMENT.md docs/LIBRARY.md docs/OPERATIONS.md \
             docs/RELEASING.md docs/SINGLE_SITE.md docs/TROUBLESHOOTING.md
-      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: release-assets/*
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -222,7 +222,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.verify.outputs.version }}
         run: test -f "companion/dist/pkg_joomlamcp-${RELEASE_VERSION}.zip"
-      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: companion/dist/pkg_joomlamcp-*.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -251,7 +251,7 @@ jobs:
           format: spdx-json
           output-file: joomengine-mcp-for-joomla-${{ needs.verify.outputs.tag }}.spdx.json
           upload-artifact: false
-      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: joomengine-mcp-for-joomla-${{ needs.verify.outputs.tag }}.spdx.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -690,7 +690,7 @@ jobs:
           fi
           echo "Registry digest: ${digest}; build action reported: ${ACTION_DIGEST:-not-built}"
           echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
-      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         if: steps.image-before.outputs.attested != 'true'
         with:
           subject-name: ghcr.io/${{ github.repository }}
@@ -752,7 +752,7 @@ jobs:
               | xargs sha256sum > SHA256SUMS
             sha256sum -c SHA256SUMS
           )
-      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         if: needs.verify.outputs.release_public != 'true'
         with:
           subject-path: release-assets/*

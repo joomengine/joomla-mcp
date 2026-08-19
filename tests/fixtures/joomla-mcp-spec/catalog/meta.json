@@ -18,7 +18,11 @@
   ],
   "status": "extracting",
   "extractedFamilies": [
-    "content.articles"
+    "content.articles",
+    "content.categories",
+    "tags.tags",
+    "users.users",
+    "media"
   ],
   "notes": [
     "Test fixture subset used by joomla-mcp-ts spec consumption tests."

@@ -1,0 +1,230 @@
+{
+  "$comment": "Source-backed content.categories CRUD family. Expanded from joomengine/joomla-mcp-ts catalogue (Joomla 6.1 createCRUDRoutes).",
+  "base": {
+    "id": "content.categories",
+    "domain": "content",
+    "resource": "content-category",
+    "collectionName": "Content categories",
+    "itemName": "Content category",
+    "basePath": "v1/content/categories",
+    "controller": "categories",
+    "component": "com_categories",
+    "defaults": { "extension": "com_content" },
+    "toolsetRead": "structure.read",
+    "toolsetWrite": "structure.write",
+    "deleteSemantics": "resource-model-defined",
+    "driver": {
+      "kind": "joomla-api",
+      "transport": "https",
+      "authentication": "joomla-api-token",
+      "plugin": "webservices/content",
+      "responseShape": "json-api",
+      "mutationBody": "flat-joomla-form-json"
+    },
+    "source": {
+      "repository": "joomla/joomla-cms",
+      "branch": "6.1-dev",
+      "commit": "071afb7ad305c02983a653ccfc301b5c8360264b",
+      "path": "plugins/webservices/content/src/Extension/Content.php",
+      "registration": "createCRUDRoutes"
+    }
+  },
+  "actions": [
+    {
+      "id": "content.categories.list",
+      "title": "List Joomla content categories",
+      "description": "Lists content categories with bounded pagination and source-supported filters.",
+      "domain": "content",
+      "operation": "list",
+      "method": "GET",
+      "routeTemplate": "v1/content/categories",
+      "routeParameters": [],
+      "paginated": true,
+      "sideEffect": false,
+      "toolset": "structure.read",
+      "risk": "read",
+      "component": "com_categories",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "offset": { "type": "integer", "minimum": 0, "default": 0 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 500, "default": 20 },
+          "search": { "type": "string", "maxLength": 500 },
+          "published": { "type": "integer" },
+          "language": { "type": "string", "maxLength": 50 },
+          "parent_id": { "type": "integer", "exclusiveMinimum": 0 },
+          "ordering": { "type": "string", "maxLength": 100 },
+          "direction": { "type": "string", "enum": ["ASC", "DESC"] }
+        }
+      }
+    },
+    {
+      "id": "content.categories.get",
+      "title": "Get a Joomla content category",
+      "description": "Retrieves one content category by its positive numeric id.",
+      "domain": "content",
+      "operation": "get",
+      "method": "GET",
+      "routeTemplate": "v1/content/categories/{id}",
+      "routeParameters": [
+        { "name": "id", "kind": "positive-integer", "required": true, "maximumLength": 16 }
+      ],
+      "paginated": false,
+      "sideEffect": false,
+      "toolset": "structure.read",
+      "risk": "read",
+      "component": "com_categories",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "integer", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    {
+      "id": "content.categories.create",
+      "title": "Create a Joomla content category",
+      "description": "Creates a content category using the reviewed field allowlist.",
+      "domain": "content",
+      "operation": "create",
+      "method": "POST",
+      "routeTemplate": "v1/content/categories",
+      "routeParameters": [],
+      "bodyPolicy": "required",
+      "toolset": "structure.write",
+      "risk": "write",
+      "component": "com_categories",
+      "writeFields": [
+        "parent_id", "title", "alias", "note", "description", "published", "access", "params",
+        "metadesc", "metakey", "metadata", "language", "ordering"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "parent_id": { "type": "integer", "exclusiveMinimum": 0 },
+          "alias": { "type": "string", "maxLength": 400 },
+          "note": { "type": "string", "maxLength": 1000 },
+          "description": { "type": "string", "maxLength": 5000000 },
+          "published": { "type": "integer", "minimum": -2, "maximum": 1 },
+          "access": { "type": "integer", "exclusiveMinimum": 0 },
+          "language": { "type": "string", "maxLength": 50 },
+          "metadesc": { "type": "string", "maxLength": 1000 },
+          "metakey": { "type": "string", "maxLength": 1000 },
+          "ordering": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "id": "content.categories.update",
+      "title": "Update a Joomla content category",
+      "description": "Partial update of a content category.",
+      "domain": "content",
+      "operation": "update",
+      "method": "PATCH",
+      "routeTemplate": "v1/content/categories/{id}",
+      "routeParameters": [
+        { "name": "id", "kind": "positive-integer", "required": true, "maximumLength": 16 }
+      ],
+      "bodyPolicy": "required",
+      "toolset": "structure.write",
+      "risk": "write",
+      "component": "com_categories",
+      "writeFields": [
+        "parent_id", "title", "alias", "note", "description", "published", "access", "params",
+        "metadesc", "metakey", "metadata", "language", "ordering"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "integer", "exclusiveMinimum": 0 },
+          "etag": { "type": "string", "maxLength": 512 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "parent_id": { "type": "integer", "exclusiveMinimum": 0 },
+          "alias": { "type": "string", "maxLength": 400 },
+          "note": { "type": "string", "maxLength": 1000 },
+          "description": { "type": "string", "maxLength": 5000000 },
+          "published": { "type": "integer", "minimum": -2, "maximum": 1 },
+          "access": { "type": "integer", "exclusiveMinimum": 0 },
+          "language": { "type": "string", "maxLength": 50 },
+          "metadesc": { "type": "string", "maxLength": 1000 },
+          "metakey": { "type": "string", "maxLength": 1000 },
+          "ordering": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "id": "content.categories.delete",
+      "title": "Delete a Joomla content category",
+      "description": "Deletes one content category. Delete semantics follow the Joomla resource model.",
+      "domain": "content",
+      "operation": "delete",
+      "method": "DELETE",
+      "routeTemplate": "v1/content/categories/{id}",
+      "routeParameters": [
+        { "name": "id", "kind": "positive-integer", "required": true, "maximumLength": 16 }
+      ],
+      "bodyPolicy": "none",
+      "toolset": "structure.write",
+      "risk": "destructive",
+      "component": "com_categories",
+      "deleteSemantics": "resource-model-defined",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "integer", "exclusiveMinimum": 0 },
+          "etag": { "type": "string", "maxLength": 512 }
+        }
+      }
+    }
+  ]
+}

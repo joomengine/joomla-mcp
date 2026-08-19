@@ -35,11 +35,12 @@ php companion/tests/run.php
 php companion/build.php
 ```
 
-Spec consumption tests live under `tests/spec/`. They load the small fixture at
-`tests/fixtures/joomla-mcp-spec/` (meta, toolsets, write-fields, the
-`content.articles` family, and `contracts/mcp-public-tools.json`) and assert
-fail-closed missing-file behavior. When a full joomla-mcp-spec checkout is
-present, the mapper also exercises every extracted family from that tree.
+Spec consumption tests live under `tests/spec/`. They load the representative fixture at
+`tests/fixtures/joomla-mcp-spec/` (meta, toolsets, write-fields, `content.articles`,
+`content.categories`, `tags.tags`, `users.users`, `media`, and
+`contracts/mcp-public-tools.json`) and assert fail-closed missing-file behavior.
+When a full joomla-mcp-spec checkout is present, the mapper also exercises every
+extracted family from that tree.
 
 With Docker and Compose v2 available, also run the blocking Joomla 6.1 package
 installation smoke gate:

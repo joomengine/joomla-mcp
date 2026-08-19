@@ -1,0 +1,361 @@
+{
+  "$comment": "Source-backed users.users CRUD family. Expanded from joomengine/joomla-mcp-ts catalogue (Joomla 6.1 createCRUDRoutes).",
+  "base": {
+    "id": "users.users",
+    "domain": "users",
+    "resource": "user",
+    "collectionName": "Users",
+    "itemName": "User",
+    "basePath": "v1/users",
+    "controller": "users",
+    "component": "com_users",
+    "toolsetRead": "users.read",
+    "toolsetWrite": "users.admin",
+    "deleteSemantics": "permanent",
+    "driver": {
+      "kind": "joomla-api",
+      "transport": "https",
+      "authentication": "joomla-api-token",
+      "plugin": "webservices/users",
+      "responseShape": "json-api",
+      "mutationBody": "flat-joomla-form-json"
+    },
+    "source": {
+      "repository": "joomla/joomla-cms",
+      "branch": "6.1-dev",
+      "commit": "071afb7ad305c02983a653ccfc301b5c8360264b",
+      "path": "plugins/webservices/users/src/Extension/Users.php",
+      "registration": "createCRUDRoutes"
+    }
+  },
+  "actions": [
+    {
+      "id": "users.users.list",
+      "title": "Users",
+      "description": "Lists users with bounded pagination and source-supported filters.",
+      "domain": "users",
+      "operation": "list",
+      "method": "GET",
+      "routeTemplate": "v1/users",
+      "routeParameters": [],
+      "paginated": true,
+      "sideEffect": false,
+      "toolset": "users.read",
+      "risk": "read",
+      "component": "com_users",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/users",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 20
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "ordering": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "ASC",
+              "DESC"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "users.users.get",
+      "title": "Get a User",
+      "description": "Retrieves one user by its positive numeric id.",
+      "domain": "users",
+      "operation": "get",
+      "method": "GET",
+      "routeTemplate": "v1/users/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "paginated": false,
+      "sideEffect": false,
+      "toolset": "users.read",
+      "risk": "read",
+      "component": "com_users",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/users",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "users.users.create",
+      "title": "Create a User",
+      "description": "Creates a user using the reviewed field allowlist. Joomla form/model validation remains authoritative.",
+      "domain": "users",
+      "operation": "create",
+      "method": "POST",
+      "routeTemplate": "v1/users",
+      "routeParameters": [],
+      "bodyPolicy": "required",
+      "toolset": "users.admin",
+      "risk": "write",
+      "component": "com_users",
+      "writeFields": [
+        "name",
+        "username",
+        "email",
+        "password",
+        "password2",
+        "block",
+        "sendEmail",
+        "requireReset",
+        "groups",
+        "params"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/users",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "username",
+          "email"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          },
+          "email": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 255
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "password2": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "block": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sendEmail": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "requireReset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "users.users.update",
+      "title": "Update a User",
+      "description": "Partial update of a user. At least one allowlisted field is required.",
+      "domain": "users",
+      "operation": "update",
+      "method": "PATCH",
+      "routeTemplate": "v1/users/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "bodyPolicy": "required",
+      "toolset": "users.admin",
+      "risk": "write",
+      "component": "com_users",
+      "writeFields": [
+        "name",
+        "username",
+        "email",
+        "password",
+        "password2",
+        "block",
+        "sendEmail",
+        "requireReset",
+        "groups",
+        "params"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/users",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "etag": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          },
+          "email": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 255
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "password2": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "block": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sendEmail": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "requireReset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "users.users.delete",
+      "title": "Delete a User",
+      "description": "Deletes one user. Delete semantics follow the Joomla resource model.",
+      "domain": "users",
+      "operation": "delete",
+      "method": "DELETE",
+      "routeTemplate": "v1/users/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "bodyPolicy": "none",
+      "toolset": "users.admin",
+      "risk": "destructive",
+      "component": "com_users",
+      "deleteSemantics": "permanent",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/users",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "etag": {
+            "type": "string",
+            "maxLength": 512
+          }
+        }
+      }
+    }
+  ]
+}

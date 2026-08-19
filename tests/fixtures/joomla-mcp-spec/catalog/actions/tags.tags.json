@@ -1,0 +1,365 @@
+{
+  "$comment": "Source-backed tags.tags CRUD family. Expanded from joomengine/joomla-mcp-ts catalogue (Joomla 6.1 createCRUDRoutes).",
+  "base": {
+    "id": "tags.tags",
+    "domain": "tags",
+    "resource": "tag",
+    "collectionName": "Tags",
+    "itemName": "Tag",
+    "basePath": "v1/tags",
+    "controller": "tags",
+    "component": "com_tags",
+    "toolsetRead": "structure.read",
+    "toolsetWrite": "structure.write",
+    "deleteSemantics": "resource-model-defined",
+    "driver": {
+      "kind": "joomla-api",
+      "transport": "https",
+      "authentication": "joomla-api-token",
+      "plugin": "webservices/tags",
+      "responseShape": "json-api",
+      "mutationBody": "flat-joomla-form-json"
+    },
+    "source": {
+      "repository": "joomla/joomla-cms",
+      "branch": "6.1-dev",
+      "commit": "071afb7ad305c02983a653ccfc301b5c8360264b",
+      "path": "plugins/webservices/tags/src/Extension/Tags.php",
+      "registration": "createCRUDRoutes"
+    }
+  },
+  "actions": [
+    {
+      "id": "tags.tags.list",
+      "title": "Tags",
+      "description": "Lists tags with bounded pagination and source-supported filters.",
+      "domain": "tags",
+      "operation": "list",
+      "method": "GET",
+      "routeTemplate": "v1/tags",
+      "routeParameters": [],
+      "paginated": true,
+      "sideEffect": false,
+      "toolset": "structure.read",
+      "risk": "read",
+      "component": "com_tags",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/tags",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 20
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "ordering": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "ASC",
+              "DESC"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "tags.tags.get",
+      "title": "Get a Tag",
+      "description": "Retrieves one tag by its positive numeric id.",
+      "domain": "tags",
+      "operation": "get",
+      "method": "GET",
+      "routeTemplate": "v1/tags/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "paginated": false,
+      "sideEffect": false,
+      "toolset": "structure.read",
+      "risk": "read",
+      "component": "com_tags",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/tags",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "tags.tags.create",
+      "title": "Create a Tag",
+      "description": "Creates a tag using the reviewed field allowlist. Joomla form/model validation remains authoritative.",
+      "domain": "tags",
+      "operation": "create",
+      "method": "POST",
+      "routeTemplate": "v1/tags",
+      "routeParameters": [],
+      "bodyPolicy": "required",
+      "toolset": "structure.write",
+      "risk": "write",
+      "component": "com_tags",
+      "writeFields": [
+        "parent_id",
+        "title",
+        "alias",
+        "note",
+        "description",
+        "published",
+        "access",
+        "params",
+        "metadesc",
+        "metakey",
+        "metadata",
+        "images",
+        "urls",
+        "language",
+        "publish_up",
+        "publish_down",
+        "ordering"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/tags",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "parent_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "alias": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500000
+          },
+          "published": {
+            "type": "integer",
+            "minimum": -2,
+            "maximum": 1
+          },
+          "access": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 50
+          }
+        }
+      }
+    },
+    {
+      "id": "tags.tags.update",
+      "title": "Update a Tag",
+      "description": "Partial update of a tag. At least one allowlisted field is required.",
+      "domain": "tags",
+      "operation": "update",
+      "method": "PATCH",
+      "routeTemplate": "v1/tags/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "bodyPolicy": "required",
+      "toolset": "structure.write",
+      "risk": "write",
+      "component": "com_tags",
+      "writeFields": [
+        "parent_id",
+        "title",
+        "alias",
+        "note",
+        "description",
+        "published",
+        "access",
+        "params",
+        "metadesc",
+        "metakey",
+        "metadata",
+        "images",
+        "urls",
+        "language",
+        "publish_up",
+        "publish_down",
+        "ordering"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/tags",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "etag": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "parent_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "alias": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500000
+          },
+          "published": {
+            "type": "integer",
+            "minimum": -2,
+            "maximum": 1
+          },
+          "access": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 50
+          }
+        }
+      }
+    },
+    {
+      "id": "tags.tags.delete",
+      "title": "Delete a Tag",
+      "description": "Deletes one tag. Delete semantics follow the Joomla resource model.",
+      "domain": "tags",
+      "operation": "delete",
+      "method": "DELETE",
+      "routeTemplate": "v1/tags/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "bodyPolicy": "none",
+      "toolset": "structure.write",
+      "risk": "destructive",
+      "component": "com_tags",
+      "deleteSemantics": "resource-model-defined",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/tags",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "etag": {
+            "type": "string",
+            "maxLength": 512
+          }
+        }
+      }
+    }
+  ]
+}

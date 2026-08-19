@@ -1,0 +1,446 @@
+{
+  "$comment": "Source-backed media family. Adapters, files, and directories from joomengine/joomla-mcp-ts catalogue (Joomla 6.1 Route).",
+  "base": {
+    "id": "media",
+    "domain": "media",
+    "resource": "media",
+    "collectionName": "Media",
+    "itemName": "Media item",
+    "basePath": "v1/media",
+    "controller": "media",
+    "component": "com_media",
+    "toolsetRead": "media.read",
+    "toolsetWrite": "media.write",
+    "deleteSemantics": "permanent",
+    "driver": {
+      "kind": "joomla-api",
+      "transport": "https",
+      "authentication": "joomla-api-token",
+      "plugin": "webservices/media",
+      "responseShape": "json-api",
+      "mutationBody": "flat-joomla-form-json"
+    },
+    "source": {
+      "repository": "joomla/joomla-cms",
+      "branch": "6.1-dev",
+      "commit": "071afb7ad305c02983a653ccfc301b5c8360264b",
+      "path": "plugins/webservices/media/src/Extension/Media.php",
+      "registration": "Route"
+    }
+  },
+  "actions": [
+    {
+      "id": "media.adapters.list",
+      "title": "List media adapters",
+      "description": "Lists configured Joomla media adapters.",
+      "domain": "media",
+      "operation": "list",
+      "method": "GET",
+      "routeTemplate": "v1/media/adapters",
+      "routeParameters": [],
+      "paginated": true,
+      "sideEffect": false,
+      "toolset": "media.read",
+      "risk": "read",
+      "component": "com_media",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/media",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 20
+          }
+        }
+      }
+    },
+    {
+      "id": "media.adapters.get",
+      "title": "Get media adapter",
+      "description": "Gets one configured media adapter by identifier.",
+      "domain": "media",
+      "operation": "get",
+      "method": "GET",
+      "routeTemplate": "v1/media/adapters/{adapter}",
+      "routeParameters": [
+        {
+          "name": "adapter",
+          "kind": "adapter-id",
+          "required": true,
+          "maximumLength": 128
+        }
+      ],
+      "paginated": false,
+      "sideEffect": false,
+      "toolset": "media.read",
+      "risk": "read",
+      "component": "com_media",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/media",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "adapter": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "adapter"
+        ]
+      }
+    },
+    {
+      "id": "media.files.list",
+      "title": "List root media files",
+      "description": "Lists files and directories at the media root.",
+      "domain": "media",
+      "operation": "list",
+      "method": "GET",
+      "routeTemplate": "v1/media/files",
+      "routeParameters": [],
+      "paginated": true,
+      "sideEffect": false,
+      "toolset": "media.read",
+      "risk": "read",
+      "component": "com_media",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/media",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 20
+          }
+        }
+      }
+    },
+    {
+      "id": "media.directory.list",
+      "title": "List media directory",
+      "description": "Lists files in a bounded relative media directory path.",
+      "domain": "media",
+      "operation": "list",
+      "method": "GET",
+      "routeTemplate": "v1/media/files/{path}/",
+      "routeParameters": [
+        {
+          "name": "path",
+          "kind": "media-path",
+          "required": true,
+          "maximumLength": 1024
+        }
+      ],
+      "paginated": true,
+      "sideEffect": false,
+      "toolset": "media.read",
+      "risk": "read",
+      "component": "com_media",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/media",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 20
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "id": "media.files.get",
+      "title": "Get media file",
+      "description": "Gets metadata or content for a bounded relative media path.",
+      "domain": "media",
+      "operation": "get",
+      "method": "GET",
+      "routeTemplate": "v1/media/files/{path}",
+      "routeParameters": [
+        {
+          "name": "path",
+          "kind": "media-path",
+          "required": true,
+          "maximumLength": 1024
+        }
+      ],
+      "paginated": false,
+      "sideEffect": false,
+      "toolset": "media.read",
+      "risk": "read",
+      "component": "com_media",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/media",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "id": "media.files.create",
+      "title": "Create media file",
+      "description": "Creates a file or directory through Joomla Media.",
+      "domain": "media",
+      "operation": "create",
+      "method": "POST",
+      "routeTemplate": "v1/media/files",
+      "routeParameters": [],
+      "bodyPolicy": "required",
+      "toolset": "media.write",
+      "risk": "write",
+      "component": "com_media",
+      "writeFields": [
+        "path",
+        "content",
+        "override"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/media",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1048576,
+                "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+              },
+              "override": {
+                "enum": [
+                  false,
+                  true,
+                  0,
+                  1
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "media.files.update",
+      "title": "Update media file",
+      "description": "Updates or moves one bounded relative media path.",
+      "domain": "media",
+      "operation": "update",
+      "method": "PATCH",
+      "routeTemplate": "v1/media/files/{path}",
+      "routeParameters": [
+        {
+          "name": "path",
+          "kind": "media-path",
+          "required": true,
+          "maximumLength": 1024
+        }
+      ],
+      "bodyPolicy": "required",
+      "toolset": "media.write",
+      "risk": "write",
+      "component": "com_media",
+      "writeFields": [
+        "path",
+        "content",
+        "override"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/media",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1048576,
+                "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+              },
+              "override": {
+                "enum": [
+                  false,
+                  true,
+                  0,
+                  1
+                ]
+              }
+            }
+          },
+          "etag": {
+            "type": "string",
+            "maxLength": 512
+          }
+        },
+        "required": [
+          "path",
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "media.files.delete",
+      "title": "Delete media file",
+      "description": "Deletes one bounded relative media path.",
+      "domain": "media",
+      "operation": "delete",
+      "method": "DELETE",
+      "routeTemplate": "v1/media/files/{path}",
+      "routeParameters": [
+        {
+          "name": "path",
+          "kind": "media-path",
+          "required": true,
+          "maximumLength": 1024
+        }
+      ],
+      "bodyPolicy": "none",
+      "toolset": "media.write",
+      "risk": "destructive",
+      "component": "com_media",
+      "deleteSemantics": "permanent",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/media",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "etag": {
+            "type": "string",
+            "maxLength": 512
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    }
+  ]
+}

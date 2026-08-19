@@ -55,8 +55,10 @@ describe('joomla-mcp-spec catalogue overlay', () => {
     expect(specCatalogProvenance()).toMatchObject({
       consumed: true,
       fallback: 'spec-overlay',
-      extractedFamilies: ['content.articles'],
+      extractedFamilies: ['content.articles', 'content.categories', 'tags.tags', 'users.users', 'media'],
     });
+    expect(getJoomlaReadAction('media.adapters.list')?.title).toBe('List media adapters');
+    expect(getJoomlaCrudBase('users.users')?.toolset).toBe('users.read');
     expect(publicCatalog()['spec']).toMatchObject({ consumed: true, specVersion: '0.3.0' });
   });
 

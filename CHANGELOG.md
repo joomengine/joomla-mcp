@@ -15,6 +15,10 @@ follow Semantic Versioning.
   into the existing TypeScript action-descriptor shape.
 - Spec overlay prefers extracted spec families while the in-repo catalogue
   remains the fallback for anything the spec has not published yet.
+- Spec consumption tests now cover a representative fixture subset
+  (`content.articles`, `content.categories`, `tags.tags`, `users.users`,
+  `media`) plus every extracted family from a canonical spec checkout when
+  present.
 - Spec list filters such as `search`, `featured`, and `category` are mapped
   onto Joomla `filter[]` / `list[]` query keys for spec-backed read actions.
 
@@ -23,8 +27,9 @@ follow Semantic Versioning.
 - Package `homepage`, `bugs`, and `repository` URLs now point at
   `https://github.com/joomengine/joomla-mcp-ts`.
 - `@modelcontextprotocol/sdk` is pinned to `1.30.0`.
-- npm `overrides` pin `fast-uri@3.1.5`, `ip-address@10.1.0`, `hono@4.13.3`,
-  and `@hono/node-server@1.19.17`.
+- npm `overrides` pin `fast-uri@3.1.5`, `ip-address@10.5.0`, `hono@4.13.3`,
+  and `@hono/node-server@1.19.17`. `ip-address@10.5.0` clears
+  GHSA-mwp4-54f8-5fhr (high; affected range `<=10.3.0`).
 
 ### Compatibility
 

@@ -13,6 +13,10 @@ const requiredFiles = [
   'catalog/toolsets.json',
   'catalog/write-fields.json',
   'catalog/actions/content.articles.json',
+  'catalog/actions/content.categories.json',
+  'catalog/actions/media.json',
+  'catalog/actions/tags.tags.json',
+  'catalog/actions/users.users.json',
 ] as const;
 const tempDirs: string[] = [];
 
@@ -44,9 +48,9 @@ describe('joomla-mcp-spec fail-closed loading', () => {
     const meta = JSON.parse(readFileSync(join(root, 'catalog/meta.json'), 'utf8')) as {
       extractedFamilies: string[];
     };
-    meta.extractedFamilies = ['content.articles', 'content.categories'];
+    meta.extractedFamilies = ['content.articles', 'content.categories', 'banners.banners'];
     writeFileSync(join(root, 'catalog/meta.json'), JSON.stringify(meta, null, 2));
-    expect(() => loadSpecCatalog({ specRoot: root })).toThrow(/content\.categories\.json/);
+    expect(() => loadSpecCatalog({ specRoot: root })).toThrow(/banners\.banners\.json/);
   });
 
   it('fails closed when a family has no actions', () => {
@@ -92,9 +96,11 @@ describe('joomla-mcp-spec fail-closed loading', () => {
     expect(() => loadSpecCatalog({ specRoot: root })).toThrow(/additionalProperties must be false/);
   });
 
-  it('fails closed when catalog/actions is an empty directory', () => {
+  it('fails closed when catalog/actions contains no family documents', () => {
     const root = cloneFixture();
-    rmSync(join(root, 'catalog/actions/content.articles.json'));
+    for (const entry of readdirSync(join(root, 'catalog/actions'))) {
+      rmSync(join(root, 'catalog/actions', entry), { force: true, recursive: true });
+    }
     expect(() => loadSpecCatalog({ specRoot: root })).toThrow(/no family documents|missing/);
   });
 });

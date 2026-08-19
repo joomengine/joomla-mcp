@@ -13,7 +13,15 @@ import {
 } from '../../src/catalog/spec/index.js';
 
 const fixtureRoot = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/joomla-mcp-spec');
-const fullSpecRoot = '/tmp/repos/joomla-mcp-spec';
+
+function resolveFullSpecRoot(): string | undefined {
+  const candidates = [
+    process.env.JOOMLA_MCP_SPEC,
+    '/tmp/work/spec',
+    '/tmp/repos/joomla-mcp-spec',
+  ];
+  return candidates.find((root) => typeof root === 'string' && root.length > 0 && existsSync(join(root, 'catalog/meta.json')));
+}
 
 describe('joomla-mcp-spec mapper', () => {
   it('maps the content.articles family into the TypeScript catalogue shape', () => {
@@ -108,6 +116,80 @@ describe('joomla-mcp-spec mapper', () => {
     expect(mapped.sourceOnlyGates['configuration.component.get']).toMatch(/component configuration/i);
   });
 
+  it('maps representative extra families from the fixture (CRUD, users, tags, media)', () => {
+    const mapped = mapSpecCatalog(loadSpecCatalog({ specRoot: fixtureRoot, installOverlay: false }));
+    expect(mapped.families.map((family) => family.familyId)).toEqual([
+      'content.articles',
+      'content.categories',
+      'media',
+      'tags.tags',
+      'users.users',
+    ]);
+
+    const categories = mapped.crudBases.find((candidate) => candidate.id === 'content.categories');
+    expect(categories).toMatchObject({
+      domain: 'content',
+      resource: 'content-category',
+      basePath: 'v1/content/categories',
+      controller: 'categories',
+      toolset: 'structure.read',
+      deleteSemantics: 'resource-model-defined',
+    });
+    expect(categories?.controllerDefaults).toMatchObject({ component: 'com_categories', extension: 'com_content' });
+    expect(mapped.readActions.find((action) => action.id === 'content.categories.list')?.routeTemplate).toBe(
+      'v1/content/categories',
+    );
+    expect(mapped.writeActions.find((action) => action.id === 'content.categories.create')?.inputSchema.required).toEqual([
+      'data',
+    ]);
+
+    const tags = mapped.crudBases.find((candidate) => candidate.id === 'tags.tags');
+    expect(tags).toMatchObject({
+      domain: 'tags',
+      resource: 'tag',
+      basePath: 'v1/tags',
+      toolset: 'structure.read',
+    });
+    expect(mapped.writeActions.find((action) => action.id === 'tags.tags.update')?.routeTemplate).toBe('v1/tags/:id');
+
+    const users = mapped.crudBases.find((candidate) => candidate.id === 'users.users');
+    expect(users).toMatchObject({
+      domain: 'users',
+      resource: 'user',
+      basePath: 'v1/users',
+      toolset: 'users.read',
+      deleteSemantics: 'permanent',
+    });
+    expect(users?.operations.find((operation) => operation.name === 'create')).toMatchObject({
+      deliveryPhase: 6,
+      risk: 'write',
+    });
+    const createUser = mapped.writeActions.find((action) => action.id === 'users.users.create');
+    expect(createUser?.toolset).toBe('users.admin');
+    const userData = createUser?.inputSchema.properties['data']?.['properties'] as Readonly<Record<string, unknown>>;
+    expect(Object.keys(userData ?? {})).toEqual(expect.arrayContaining(['username', 'email', 'password', 'password2']));
+
+    const media = mapped.crudBases.find((candidate) => candidate.id === 'media');
+    expect(media).toMatchObject({
+      domain: 'media',
+      basePath: 'v1/media',
+      toolset: 'media.read',
+      deleteSemantics: 'permanent',
+    });
+    expect(media?.source.registration).toBe('Route');
+    const adapters = mapped.readActions.find((action) => action.id === 'media.adapters.list');
+    expect(adapters).toMatchObject({
+      method: 'GET',
+      paginated: true,
+      routeTemplate: 'v1/media/adapters',
+      toolset: 'media.read',
+    });
+    expect(mapped.readActions.find((action) => action.id === 'media.adapters.get')?.routeTemplate).toBe(
+      'v1/media/adapters/:adapter',
+    );
+    expect(mapped.writeActions.find((action) => action.id === 'media.files.create')?.method).toBe('POST');
+  });
+
   it('converts spec {id} placeholders into the runtime :id route form', () => {
     expect(convertSpecRouteTemplate('v1/content/articles/{id}')).toBe('v1/content/articles/:id');
     expect(convertSpecRouteTemplate('v1/content/articles')).toBe('v1/content/articles');
@@ -135,7 +217,8 @@ describe('joomla-mcp-spec mapper', () => {
   });
 
   it('maps every extracted family from the canonical spec checkout when present', () => {
-    if (!existsSync(join(fullSpecRoot, 'catalog/meta.json'))) {
+    const fullSpecRoot = resolveFullSpecRoot();
+    if (fullSpecRoot === undefined) {
       return;
     }
 

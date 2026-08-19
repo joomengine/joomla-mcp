@@ -15,16 +15,21 @@ describe('joomla-mcp-spec loader', () => {
     expect(loaded.meta).toMatchObject({
       name: 'joomla-mcp-spec',
       specVersion: '0.3.0',
-      extractedFamilies: ['content.articles'],
+      extractedFamilies: ['content.articles', 'content.categories', 'tags.tags', 'users.users', 'media'],
     });
     expect(loaded.meta.consumers).toContain('joomengine/joomla-mcp-ts');
     expect(loaded.meta.examinedHeads['6.1-dev']).toMatch(/^[a-f0-9]{40}$/);
     expect(loaded.toolsets.toolsets.some((entry) => entry.id === 'content.read' && entry.write === false)).toBe(true);
     expect(loaded.toolsets.toolsets.some((entry) => entry.id === 'content.write' && entry.write === true)).toBe(true);
     expect(loaded.writeFields.bases['content.articles']?.fields).toContain('articletext');
-    expect(loaded.families).toHaveLength(1);
-    expect(loaded.families[0]?.document.base.id).toBe('content.articles');
-    expect(loaded.families[0]?.document.actions.map((action) => action.operation)).toEqual([
+    expect(loaded.families.map((family) => family.document.base.id)).toEqual([
+      'content.articles',
+      'content.categories',
+      'media',
+      'tags.tags',
+      'users.users',
+    ]);
+    expect(loaded.families.find((family) => family.document.base.id === 'content.articles')?.document.actions.map((action) => action.operation)).toEqual([
       'list', 'get', 'create', 'update', 'delete',
     ]);
     expect(Object.isFrozen(loaded)).toBe(true);

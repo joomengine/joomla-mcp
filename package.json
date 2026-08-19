@@ -2,13 +2,13 @@
   "name": "@joomengine/joomla-mcp",
   "version": "0.7.0",
   "description": "Embeddable and self-hosted Model Context Protocol server for administering Joomla 6.x.",
-  "homepage": "https://github.com/joomengine/joomla-mcp#readme",
+  "homepage": "https://github.com/joomengine/joomla-mcp-ts#readme",
   "bugs": {
-    "url": "https://github.com/joomengine/joomla-mcp/issues"
+    "url": "https://github.com/joomengine/joomla-mcp-ts/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/joomengine/joomla-mcp.git"
+    "url": "git+https://github.com/joomengine/joomla-mcp-ts.git"
   },
   "keywords": [
     "joomla",
@@ -106,14 +106,20 @@
     "validate": "npm run version:check && npm run check && npm test && npm run docs:actions:check && npm run build && npm run package:check && npm run test:package"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
-    "@types/node": "^26.1.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@types/node": "^26.2.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "tsx": "^4.20.0",
+    "tsx": "^4.23.11",
     "typescript": "^7.0.2",
     "vitest": "^4.0.8"
   },
-  "license": "GPL-2.0-or-later"
+  "license": "GPL-2.0-or-later",
+  "overrides": {
+    "@hono/node-server": "^1.19.15",
+    "hono": "^4.12.34",
+    "fast-uri": "^3.1.5",
+    "ip-address": "^10.3.1"
+  }
 }

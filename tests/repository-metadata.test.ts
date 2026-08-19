@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 
 import { describe, expect, it } from 'vitest';
 
-const repositoryUrl = 'https://github.com/joomengine/joomla-mcp';
-const containerUrl = 'ghcr.io/joomengine/joomla-mcp';
+const repositoryUrl = 'https://github.com/joomengine/joomla-mcp-ts';
+const containerUrl = 'ghcr.io/joomengine/joomla-mcp-ts';
 
 describe('repository metadata', () => {
   it('uses the canonical JoomEngine repository coordinates everywhere users install or inspect the project', async () => {

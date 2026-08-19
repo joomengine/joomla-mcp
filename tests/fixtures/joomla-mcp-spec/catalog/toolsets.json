@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Allowed toolset identifiers used for site configuration, OAuth scopes, and permission grants",
+  "toolsets": [
+    {
+      "id": "discovery",
+      "description": "Read-only discovery of sites, capabilities, and action catalogue",
+      "write": false
+    },
+    {
+      "id": "content.read",
+      "description": "Read articles, categories, tags, and related content resources",
+      "write": false
+    },
+    {
+      "id": "content.write",
+      "description": "Create, update, delete, and state-change content resources",
+      "write": true
+    },
+    {
+      "id": "structure.write",
+      "description": "Menus, modules, and structural mutations",
+      "write": true
+    },
+    {
+      "id": "media.write",
+      "description": "Media file and directory mutations",
+      "write": true
+    },
+    {
+      "id": "users.admin",
+      "description": "User, group, and access-level administration",
+      "write": true
+    },
+    {
+      "id": "extensions.admin",
+      "description": "Extension discovery, enable/disable, and related administration",
+      "write": true
+    },
+    {
+      "id": "configuration.write",
+      "description": "Application and component configuration writes",
+      "write": true
+    },
+    {
+      "id": "maintenance.admin",
+      "description": "Cache, sessions, scheduler, and site state maintenance",
+      "write": true
+    },
+    {
+      "id": "core-update",
+      "description": "Joomla core update lifecycle",
+      "write": true
+    },
+    {
+      "id": "cli.discovery",
+      "description": "CLI command inventory and help (non-executing)",
+      "write": false
+    },
+    {
+      "id": "extensions.read",
+      "description": "Installed extension and update-site reads",
+      "write": false
+    },
+    {
+      "id": "configuration.read",
+      "description": "Safe configuration reads",
+      "write": false
+    },
+    {
+      "id": "structure.read",
+      "description": "Read menus, modules, categories used as structure, and related layout resources",
+      "write": false
+    },
+    {
+      "id": "users.read",
+      "description": "Read users, groups, and access levels without mutation",
+      "write": false
+    },
+    {
+      "id": "media.read",
+      "description": "Read media files and directories",
+      "write": false
+    },
+    {
+      "id": "maintenance.read",
+      "description": "Read cache, sessions, scheduler, and site-state status",
+      "write": false
+    }
+  ]
+}

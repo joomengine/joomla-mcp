@@ -15,6 +15,8 @@ import { joomlaCrudBases } from './crud-bases.js';
 import { crudWriteFields, sensitiveCrudWriteFieldsByBaseId } from './crud-write-fields.js';
 import { joomlaSpecialReadActions } from './special-reads.js';
 import { joomlaSpecialWriteActions } from './special-writes.js';
+import { mapSpecListQueryFilters } from './spec/mapper.js';
+import { getActionCatalogOverlay } from './spec/overlay.js';
 
 export interface ActionCatalogFilter {
   readonly toolsets?: ReadonlySet<Toolset>;
@@ -200,23 +202,28 @@ const writeActionById: ReadonlyMap<string, WriteActionDescriptor> = new Map(
 );
 
 export function getJoomlaReadAction(id: string): ReadActionDescriptor | undefined {
-  return actionById.get(id);
+  return getActionCatalogOverlay()?.readById.get(id) ?? actionById.get(id);
 }
 
 export function getJoomlaWriteAction(id: string): WriteActionDescriptor | undefined {
-  return writeActionById.get(id);
+  return getActionCatalogOverlay()?.writeById.get(id) ?? writeActionById.get(id);
 }
 
 export function getJoomlaAction(id: string): JoomlaActionDescriptor | undefined {
   return getJoomlaReadAction(id) ?? getJoomlaWriteAction(id);
 }
 
+export function getJoomlaCrudBase(id: string): CrudBaseDescriptor | undefined {
+  return resolvedCrudBases().find((base) => base.id === id);
+}
+
 export function findJoomlaActions(
   filter: ActionCatalogFilter & { readonly includeWrites?: boolean } = {},
 ): readonly JoomlaActionDescriptor[] {
   const needle = filter.text?.trim().toLocaleLowerCase('en');
+  const catalog = getActionCatalogOverlay()?.actions ?? joomlaActions;
 
-  return joomlaActions.filter((action) => {
+  return catalog.filter((action) => {
     if (action.risk !== 'read' && action.risk !== 'sensitive-read' && filter.includeWrites !== true) {
       return false;
     }
@@ -242,8 +249,9 @@ export function findJoomlaActions(
  */
 export function findJoomlaReadActions(filter: ActionCatalogFilter = {}): readonly ReadActionDescriptor[] {
   const needle = filter.text?.trim().toLocaleLowerCase('en');
+  const catalog = getActionCatalogOverlay()?.readActions ?? joomlaReadActions;
 
-  return joomlaReadActions.filter((action) => {
+  return catalog.filter((action) => {
     if (filter.toolsets !== undefined && !filter.toolsets.has(action.toolset)) {
       return false;
     }
@@ -273,9 +281,10 @@ export function resolveJoomlaReadRequest(
   }
 
   const values = input === undefined ? {} : assertPlainInput(input);
+  const routeNames = new Set(action.routeParameters.map((parameter) => parameter.name));
   const allowed = new Set([
-    ...action.routeParameters.map((parameter) => parameter.name),
-    ...(action.paginated ? ['offset', 'limit'] : []),
+    ...routeNames,
+    ...Object.keys(action.inputSchema.properties),
   ]);
   const unexpected = Object.keys(values).filter((key) => !allowed.has(key));
 
@@ -292,14 +301,18 @@ export function resolveJoomlaReadRequest(
   }
 
   const path = resolveReadActionRoute(action, routeInput);
+  const pagination = action.paginated
+    ? normalizeBoundedListQuery(
+      { offset: values['offset'], limit: values['limit'] },
+      configuredMaximumPageSize,
+    )
+    : Object.freeze({});
+  const filters = action.paginated
+    ? mapSpecListQueryFilters(values, action.inputSchema.properties, routeNames)
+    : Object.freeze({});
   const query = withFixedReadDefaults(
     action.id,
-    action.paginated
-      ? normalizeBoundedListQuery(
-          { offset: values['offset'], limit: values['limit'] },
-          configuredMaximumPageSize,
-        )
-      : Object.freeze({}),
+    Object.keys(filters).length === 0 ? pagination : Object.freeze({ ...pagination, ...filters }),
   );
 
   return Object.freeze({ method: 'GET', path, query });
@@ -361,7 +374,7 @@ export function completeJoomlaApiPatchBody(
 ): Readonly<Record<string, unknown>> {
   const action = getJoomlaWriteAction(actionId);
   if (action?.operation !== 'update') return changes;
-  const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
+  const base = resolvedCrudBases().find((candidate) => actionId.startsWith(`${candidate.id}.`));
   if (base === undefined) return changes;
 
   const preservedKeys = base.id === 'menus.site-items' || base.id === 'menus.administrator-items'
@@ -401,7 +414,7 @@ function withFixedMutationDefaults(
   actionId: string,
   body: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
-  const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
+  const base = resolvedCrudBases().find((candidate) => actionId.startsWith(`${candidate.id}.`));
   if (base === undefined) return body;
   const normalized = withJoomlaDerivedMutationFields(base.id, body);
   const fixed = Object.fromEntries(
@@ -421,7 +434,7 @@ function withFixedReadDefaults(
   actionId: string,
   query: Readonly<Record<string, string | number>>,
 ): Readonly<Record<string, string | number>> {
-  const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
+  const base = resolvedCrudBases().find((candidate) => actionId.startsWith(`${candidate.id}.`));
   if (base?.id !== 'menus.administrator' || !actionId.endsWith('.list')) return query;
   const fixed = Object.fromEntries(
     Object.entries(base.controllerDefaults).filter(([key]) => key !== 'component'),
@@ -473,6 +486,10 @@ function withJoomlaDerivedMutationFields(
   }
 
   return body;
+}
+
+function resolvedCrudBases(): readonly CrudBaseDescriptor[] {
+  return getActionCatalogOverlay()?.crudBases ?? joomlaCrudBases;
 }
 
 function assertPlainInput(input: unknown): Readonly<Record<string, unknown>> {

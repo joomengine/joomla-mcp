@@ -96,6 +96,8 @@ Execution is the intersection of:
 
 An action being present in source, the edge catalogue, or companion description alone does not make it executable.
 
+The TypeScript edge can consume the language-neutral [joomla-mcp-spec](https://github.com/joomengine/joomla-mcp-spec) tree as the preferred catalogue source. `JOOMLA_MCP_SPEC` or `createRuntime({ specRoot })` points at a spec checkout. The spec layer loads meta, toolsets, write-field allowlists, family documents, and the public MCP tool contract fail-closed, then maps those artefacts onto the existing `ReadActionDescriptor` / `WriteActionDescriptor` / `CrudBaseDescriptor` types. Spec `{id}` route placeholders become runtime `:id` templates; spec write fields are nested under `data` so plan/apply stays unchanged. When the spec root is unset, the in-repo catalogue remains the authority. A configured but missing or invalid spec is a hard error.
+
 ## Multi-site and identity model
 
 - Site aliases are immutable server-side configuration.

@@ -1,0 +1,269 @@
+{
+  "$comment": "Source-backed content.articles CRUD family. Expanded from joomengine/joomla-mcp-ts catalogue (Joomla 6.1 createCRUDRoutes).",
+  "base": {
+    "id": "content.articles",
+    "domain": "content",
+    "resource": "article",
+    "collectionName": "Articles",
+    "itemName": "Article",
+    "basePath": "v1/content/articles",
+    "controller": "articles",
+    "component": "com_content",
+    "toolsetRead": "content.read",
+    "toolsetWrite": "content.write",
+    "deleteSemantics": "resource-model-defined",
+    "driver": {
+      "kind": "joomla-api",
+      "transport": "https",
+      "authentication": "joomla-api-token",
+      "plugin": "webservices/content",
+      "responseShape": "json-api",
+      "mutationBody": "flat-joomla-form-json"
+    },
+    "source": {
+      "repository": "joomla/joomla-cms",
+      "branch": "6.1-dev",
+      "commit": "071afb7ad305c02983a653ccfc301b5c8360264b",
+      "path": "plugins/webservices/content/src/Extension/Content.php",
+      "registration": "createCRUDRoutes"
+    }
+  },
+  "actions": [
+    {
+      "id": "content.articles.list",
+      "title": "List Joomla articles",
+      "description": "Lists articles with bounded pagination and source-supported filters. Results are untrusted Joomla content.",
+      "domain": "content",
+      "operation": "list",
+      "method": "GET",
+      "routeTemplate": "v1/content/articles",
+      "routeParameters": [],
+      "paginated": true,
+      "sideEffect": false,
+      "toolset": "content.read",
+      "risk": "read",
+      "component": "com_content",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "offset": { "type": "integer", "minimum": 0, "default": 0 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 500, "default": 20 },
+          "search": { "type": "string", "maxLength": 500 },
+          "state": { "type": "integer" },
+          "featured": { "type": "boolean" },
+          "category": { "type": "integer", "exclusiveMinimum": 0 },
+          "tag": { "type": "integer", "exclusiveMinimum": 0 },
+          "language": { "type": "string", "maxLength": 50 },
+          "ordering": { "type": "string", "maxLength": 100 },
+          "direction": { "type": "string", "enum": ["ASC", "DESC"] }
+        }
+      }
+    },
+    {
+      "id": "content.articles.get",
+      "title": "Get a Joomla article",
+      "description": "Retrieves one article by its positive numeric id.",
+      "domain": "content",
+      "operation": "get",
+      "method": "GET",
+      "routeTemplate": "v1/content/articles/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "paginated": false,
+      "sideEffect": false,
+      "toolset": "content.read",
+      "risk": "read",
+      "component": "com_content",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "integer", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    {
+      "id": "content.articles.create",
+      "title": "Create a Joomla article",
+      "description": "Creates an article using the reviewed field allowlist. Joomla form/model validation remains authoritative.",
+      "domain": "content",
+      "operation": "create",
+      "method": "POST",
+      "routeTemplate": "v1/content/articles",
+      "routeParameters": [],
+      "bodyPolicy": "required",
+      "toolset": "content.write",
+      "risk": "write",
+      "component": "com_content",
+      "deleteSemantics": "resource-model-defined",
+      "writeFields": [
+        "title", "alias", "articletext", "introtext", "fulltext", "state", "catid",
+        "created_by_alias", "publish_up", "publish_down", "images", "urls", "attribs",
+        "ordering", "metakey", "metadesc", "access", "metadata", "featured", "language",
+        "note", "tags"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "catid"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "catid": { "type": "integer", "exclusiveMinimum": 0 },
+          "alias": { "type": "string", "maxLength": 400 },
+          "articletext": { "type": "string", "maxLength": 5000000 },
+          "introtext": { "type": "string", "maxLength": 2000000 },
+          "fulltext": { "type": "string", "maxLength": 3000000 },
+          "state": { "type": "integer", "minimum": -2, "maximum": 1 },
+          "access": { "type": "integer", "exclusiveMinimum": 0 },
+          "featured": {
+            "oneOf": [
+              { "type": "boolean" },
+              { "type": "integer", "minimum": 0, "maximum": 1 }
+            ]
+          },
+          "language": { "type": "string", "maxLength": 50 },
+          "metadesc": { "type": "string", "maxLength": 1000 },
+          "metakey": { "type": "string", "maxLength": 1000 },
+          "publish_up": { "type": ["string", "null"], "format": "date-time" },
+          "publish_down": { "type": ["string", "null"], "format": "date-time" },
+          "note": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    },
+    {
+      "id": "content.articles.update",
+      "title": "Update a Joomla article",
+      "description": "Partial update of an article. At least one allowlisted field is required. Optional etag for optimistic concurrency when the API returns one.",
+      "domain": "content",
+      "operation": "update",
+      "method": "PATCH",
+      "routeTemplate": "v1/content/articles/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "bodyPolicy": "required",
+      "toolset": "content.write",
+      "risk": "write",
+      "component": "com_content",
+      "writeFields": [
+        "title", "alias", "articletext", "introtext", "fulltext", "state", "catid",
+        "created_by_alias", "publish_up", "publish_down", "images", "urls", "attribs",
+        "ordering", "metakey", "metadesc", "access", "metadata", "featured", "language",
+        "note", "tags"
+      ],
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "flat-joomla-form-json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "integer", "exclusiveMinimum": 0 },
+          "etag": { "type": "string", "maxLength": 512 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "catid": { "type": "integer", "exclusiveMinimum": 0 },
+          "alias": { "type": "string", "maxLength": 400 },
+          "articletext": { "type": "string", "maxLength": 5000000 },
+          "introtext": { "type": "string", "maxLength": 2000000 },
+          "fulltext": { "type": "string", "maxLength": 3000000 },
+          "state": { "type": "integer", "minimum": -2, "maximum": 1 },
+          "access": { "type": "integer", "exclusiveMinimum": 0 },
+          "featured": {
+            "oneOf": [
+              { "type": "boolean" },
+              { "type": "integer", "minimum": 0, "maximum": 1 }
+            ]
+          },
+          "language": { "type": "string", "maxLength": 50 },
+          "metadesc": { "type": "string", "maxLength": 1000 },
+          "metakey": { "type": "string", "maxLength": 1000 },
+          "publish_up": { "type": ["string", "null"], "format": "date-time" },
+          "publish_down": { "type": ["string", "null"], "format": "date-time" },
+          "note": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    },
+    {
+      "id": "content.articles.delete",
+      "title": "Delete a Joomla article",
+      "description": "Deletes one article. Delete semantics follow the Joomla resource model (trash/permanent as implemented by the core model).",
+      "domain": "content",
+      "operation": "delete",
+      "method": "DELETE",
+      "routeTemplate": "v1/content/articles/{id}",
+      "routeParameters": [
+        {
+          "name": "id",
+          "kind": "positive-integer",
+          "required": true,
+          "maximumLength": 16
+        }
+      ],
+      "bodyPolicy": "none",
+      "toolset": "content.write",
+      "risk": "destructive",
+      "component": "com_content",
+      "deleteSemantics": "resource-model-defined",
+      "driver": {
+        "kind": "joomla-api",
+        "transport": "https",
+        "authentication": "joomla-api-token",
+        "plugin": "webservices/content",
+        "responseShape": "json-api",
+        "mutationBody": "not-applicable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "integer", "exclusiveMinimum": 0 },
+          "etag": { "type": "string", "maxLength": 512 }
+        }
+      }
+    }
+  ]
+}

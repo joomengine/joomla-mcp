@@ -6,7 +6,7 @@ the status of a broader one.
 | Layer | Command or job | Evidence |
 |---|---|---|
 | Type and build | `npm run check`, `npm run build` | TypeScript contracts compile and production output is generated |
-| Offline behavior | `npm test` | Complete route catalogue, field allowlists, special schemas, adapter availability, MCP tools, operator permission grants, write controls, release validation, HTTP security, and process boundaries behave against mocks/fixtures |
+| Offline behavior | `npm test` | Complete route catalogue, field allowlists, special schemas, adapter availability, MCP tools, operator permission grants, write controls, release validation, HTTP security, process boundaries, and joomla-mcp-spec loader/mapper/public-tool contract checks behave against mocks/fixtures |
 | Generated action reference | `npm run docs:actions:check` | The 236-action user reference exactly matches the executable catalogue |
 | Offline security | `npm run test:security` | Focused authorization, confirmation, and security-boundary checks |
 | Companion boundary | `php companion/tests/run.php` | Framing, registry, ACL preflight, allowlists, confirmation, manifests, and source escape-hatch checks |
@@ -34,6 +34,12 @@ npm audit --omit=dev --audit-level=high
 php companion/tests/run.php
 php companion/build.php
 ```
+
+Spec consumption tests live under `tests/spec/`. They load the small fixture at
+`tests/fixtures/joomla-mcp-spec/` (meta, toolsets, write-fields, the
+`content.articles` family, and `contracts/mcp-public-tools.json`) and assert
+fail-closed missing-file behavior. When a full joomla-mcp-spec checkout is
+present, the mapper also exercises every extracted family from that tree.
 
 With Docker and Compose v2 available, also run the blocking Joomla 6.1 package
 installation smoke gate:

@@ -35,8 +35,20 @@ TypeScript is a Tier 1 MCP SDK while PHP is Tier 3. For convenience, TypeScript 
 - Interactive and unattended catalogue-complete live validation with
   deterministic Joomla fixtures, safety confirmation, and redacted
   Markdown/JSON/JUnit failure evidence.
+- Shared [joomla-mcp-spec](https://github.com/joomengine/joomla-mcp-spec) consumption so this TypeScript server and the PHP implementation use the same action descriptors, toolsets, write-field allowlists, and public MCP tool contract.
 
 The generated [API action reference](docs/API_ACTIONS.md) lists every route, semantic ID, accepted field set, transport, risk, and source-only gate. The release truth table is in [docs/COVERAGE.md](docs/COVERAGE.md). An implemented action is not described as production-verified until it has passed the corresponding live Joomla matrix.
+
+## Shared catalogue spec
+
+The in-repo TypeScript catalogue remains the fallback so the server boots without a spec checkout. When `JOOMLA_MCP_SPEC` or `createRuntime({ specRoot })` points at a [joomla-mcp-spec](https://github.com/joomengine/joomla-mcp-spec) tree, the server loads `catalog/meta.json`, `catalog/toolsets.json`, `catalog/write-fields.json`, and `catalog/actions/*.json` fail-closed, maps those family documents into the existing descriptor shape, and prefers spec-backed actions over overlapping in-repo entries. Families and specials not present in the spec tree stay on the in-repo catalogue.
+
+```bash
+export JOOMLA_MCP_SPEC=/opt/joomla-mcp-spec
+npx joomla-mcp
+```
+
+A missing or invalid spec artefact is a startup error. The server does not silently ignore a configured spec root.
 
 ## Requirements
 

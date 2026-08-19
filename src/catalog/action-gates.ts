@@ -1,3 +1,5 @@
+import { getActionCatalogOverlay } from './spec/overlay.js';
+
 /**
  * Source-registered actions that are intentionally not executable.
  *
@@ -19,5 +21,5 @@ export const sourceOnlyActionGates: Readonly<Record<string, string>> = Object.fr
 });
 
 export function sourceOnlyGateReason(actionId: string): string | undefined {
-  return sourceOnlyActionGates[actionId];
+  return getActionCatalogOverlay()?.sourceOnlyGates[actionId] ?? sourceOnlyActionGates[actionId];
 }

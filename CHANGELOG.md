@@ -3,6 +3,35 @@
 All notable changes to the published packages are documented here. Releases
 follow Semantic Versioning.
 
+## Unreleased
+
+### Added
+
+- Consume [joomla-mcp-spec](https://github.com/joomengine/joomla-mcp-spec) as
+  the shared catalogue source when `JOOMLA_MCP_SPEC` or `specRoot` is set.
+  The loader reads `catalog/meta.json`, `catalog/toolsets.json`,
+  `catalog/write-fields.json`, `catalog/actions/*.json`, and
+  `contracts/mcp-public-tools.json` fail-closed, then maps family documents
+  into the existing TypeScript action-descriptor shape.
+- Spec overlay prefers extracted spec families while the in-repo catalogue
+  remains the fallback for anything the spec has not published yet.
+- Spec list filters such as `search`, `featured`, and `category` are mapped
+  onto Joomla `filter[]` / `list[]` query keys for spec-backed read actions.
+
+### Changed
+
+- Package `homepage`, `bugs`, and `repository` URLs now point at
+  `https://github.com/joomengine/joomla-mcp-ts`.
+- `@modelcontextprotocol/sdk` is pinned to `1.30.0`.
+- npm `overrides` pin `fast-uri@3.1.5`, `ip-address@10.1.0`, `hono@4.13.3`,
+  and `@hono/node-server@1.19.17`.
+
+### Compatibility
+
+- Existing library, CLI, HTTP, Docker, systemd, API, companion, catalogue,
+  permission, plan/apply, deployment, and release behavior is retained when
+  no spec root is configured.
+
 ## [0.7.0] - 2026-07-24
 
 ### Added

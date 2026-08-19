@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 const repositoryUrl = 'https://github.com/joomengine/joomla-mcp';
+const typescriptRepositoryUrl = 'https://github.com/joomengine/joomla-mcp-ts';
 const containerUrl = 'ghcr.io/joomengine/joomla-mcp';
 
 describe('repository metadata', () => {
@@ -23,11 +24,11 @@ describe('repository metadata', () => {
 
     expect(packageDocument).toMatchObject({
       name: '@joomengine/joomla-mcp',
-      homepage: `${repositoryUrl}#readme`,
-      bugs: { url: `${repositoryUrl}/issues` },
+      homepage: `${typescriptRepositoryUrl}#readme`,
+      bugs: { url: `${typescriptRepositoryUrl}/issues` },
       repository: {
         type: 'git',
-        url: `git+${repositoryUrl}.git`,
+        url: `git+${typescriptRepositoryUrl}.git`,
       },
     });
     expect(dockerfile).toContain(`org.opencontainers.image.source="${repositoryUrl}"`);

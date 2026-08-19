@@ -78,6 +78,20 @@ const configuration = await loadConfiguration('/etc/joomla-mcp/sites.json');
 const application = createJoomlaMcp({ configuration });
 ```
 
+To prefer the shared [joomla-mcp-spec](https://github.com/joomengine/joomla-mcp-spec) catalogue, pass a spec checkout path. `JOOMLA_MCP_SPEC` is used when `specRoot` is omitted. The in-repo catalogue remains the fallback when neither is set.
+
+```js
+const application = createJoomlaMcp({
+  configuration,
+  runtimeOptions: { specRoot: '/opt/joomla-mcp-spec' },
+});
+```
+
+A configured spec root is fail-closed: missing `catalog/meta.json`,
+`catalog/toolsets.json`, `catalog/write-fields.json`, family documents, or
+`contracts/mcp-public-tools.json` prevents startup. Importing the package still
+has no side effects; spec loading happens when the runtime or server is created.
+
 The application owns one shared `JoomlaMcpRuntime`. Each call to
 `application.createServer()` returns a fresh MCP protocol server backed by
 that runtime. This is essential for authenticated HTTP sessions: protocol

@@ -3,6 +3,8 @@ import { joomlaActions, joomlaReadActions, joomlaWriteActions } from './action-c
 import { companionActions, companionReadActions, companionWriteActions } from './companion-actions.js';
 import { joomlaCliCommandTargets } from './cli-command-targets.js';
 import { sourceOnlyActionGates } from './action-gates.js';
+import { getActionCatalogOverlay } from './spec/overlay.js';
+import { specCatalogProvenance } from './spec/index.js';
 
 export const supportedJoomlaBranches = {
   baseline: '6.1-dev',
@@ -84,27 +86,34 @@ export const implementedActions: readonly ImplementedAction[] = [
 ];
 
 export function publicCatalog(): Record<string, unknown> {
+  const overlay = getActionCatalogOverlay();
+  const reads = overlay?.readActions ?? joomlaReadActions;
+  const writes = overlay?.writeActions ?? joomlaWriteActions;
+  const actions = overlay?.actions ?? joomlaActions;
+  const gates = overlay?.sourceOnlyGates ?? sourceOnlyActionGates;
+
   return {
     joomla: supportedJoomlaBranches,
+    spec: specCatalogProvenance(),
     api: {
       crudCollections: apiCrudBases.length,
       crudRoutes: apiCrudBases.length * 5,
       bases: apiCrudBases,
-      semanticReadActions: joomlaReadActions.length,
-      semanticWriteActions: joomlaWriteActions.length,
-      semanticActions: joomlaActions.length,
+      semanticReadActions: reads.length,
+      semanticWriteActions: writes.length,
+      semanticActions: actions.length,
       sourceRouteTemplates: 236,
-      cataloguedRouteTemplates: joomlaActions.length,
-      sourceOnlyBlockedActions: sourceOnlyActionGates,
-      readActions: joomlaReadActions,
-      writeActions: joomlaWriteActions,
+      cataloguedRouteTemplates: actions.length,
+      sourceOnlyBlockedActions: gates,
+      readActions: reads,
+      writeActions: writes,
       mutationContracts: {
         crudFieldAllowlisted: 108,
         specialExactBodyOrNoBody: 22,
         specialRuntimeDynamicBody: 1,
         specialSourceGatedGenericBody: 4,
       },
-      selfDescribing: false,
+      selfDescribing: overlay?.provenance.consumed === true,
     },
     cli: {
       installedSiteCommands: cliCommands.length,

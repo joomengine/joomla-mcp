@@ -1,0 +1,74 @@
+{
+  "description": "Public MCP tools that every Joomla MCP implementation must expose (or document as intentionally omitted with rationale). Names and high-level behaviour are part of the shared contract; exact input schemas live under schemas/ and catalog/.",
+  "tools": [
+    {
+      "name": "joomla_sites_list",
+      "category": "discovery",
+      "write": false
+    },
+    {
+      "name": "joomla_capabilities",
+      "category": "discovery",
+      "write": false
+    },
+    {
+      "name": "joomla_actions_search",
+      "category": "discovery",
+      "write": false
+    },
+    {
+      "name": "joomla_action_describe",
+      "category": "discovery",
+      "write": false
+    },
+    {
+      "name": "joomla_action_read",
+      "category": "read",
+      "write": false
+    },
+    {
+      "name": "joomla_permission_request",
+      "category": "security",
+      "write": false
+    },
+    {
+      "name": "joomla_permission_approve",
+      "category": "security",
+      "write": false
+    },
+    {
+      "name": "joomla_permissions_list",
+      "category": "security",
+      "write": false
+    },
+    {
+      "name": "joomla_permission_revoke",
+      "category": "security",
+      "write": false
+    },
+    {
+      "name": "joomla_action_write_plan",
+      "category": "write",
+      "write": true
+    },
+    {
+      "name": "joomla_write_apply",
+      "category": "write",
+      "write": true
+    },
+    {
+      "name": "joomla_companion_capabilities",
+      "category": "discovery",
+      "write": false
+    },
+    {
+      "name": "joomla_companion_action_read",
+      "category": "read",
+      "write": false
+    }
+  ],
+  "notes": [
+    "Convenience tools such as joomla_content_articles_list / _get / _create_plan are allowed as thin wrappers over the generic action surface but must not diverge from the catalogue schemas.",
+    "Both implementations should aim for behavioural parity on the tools listed above."
+  ]
+}

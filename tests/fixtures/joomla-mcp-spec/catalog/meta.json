@@ -1,0 +1,26 @@
+{
+  "specVersion": "0.3.0",
+  "name": "joomla-mcp-spec",
+  "description": "Shared neutral contracts for Joomla MCP implementations",
+  "joomlaBaselines": {
+    "implementation": "6.1",
+    "compatibilityTarget": "6.2",
+    "canary": "7.x"
+  },
+  "examinedHeads": {
+    "6.1-dev": "071afb7ad305c02983a653ccfc301b5c8360264b",
+    "6.2-dev": "df0e57da1cf3febfd8d4da0c522b87f3d5c6aec5",
+    "7.0-dev": "b3a08ce4cbca0c77ff34c9b1abe1c431536dbb3f"
+  },
+  "consumers": [
+    "joomengine/joomla-mcp-ts",
+    "joomengine/joomla-mcp"
+  ],
+  "status": "extracting",
+  "extractedFamilies": [
+    "content.articles"
+  ],
+  "notes": [
+    "Test fixture subset used by joomla-mcp-ts spec consumption tests."
+  ]
+}

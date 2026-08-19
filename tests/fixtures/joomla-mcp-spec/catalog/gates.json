@@ -1,0 +1,25 @@
+{
+  "$comment": "Actions that are catalogued but not executable (source defects, missing recovery contracts, or explicit gates).",
+  "gates": [
+    {
+      "id": "component-config-read",
+      "reason": "Joomla 6.1 component configuration routes require runtime schema/secret discovery not yet modelled.",
+      "severity": "source-only"
+    },
+    {
+      "id": "component-config-write",
+      "reason": "Joomla 6.1 component configuration write routes require runtime schema/secret discovery not yet modelled.",
+      "severity": "source-only"
+    },
+    {
+      "id": "language-package-install",
+      "reason": "Language package install route retained as source-only; controller path incomplete for safe automation.",
+      "severity": "source-only"
+    },
+    {
+      "id": "language-override-patch",
+      "reason": "Language override PATCH routes defective in Joomla 6.1 source; retained as source-only.",
+      "severity": "source-only"
+    }
+  ]
+}

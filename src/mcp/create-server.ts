@@ -6,6 +6,7 @@ import { publicCatalog } from '../catalog/core.js';
 import { getJoomlaReadAction, getJoomlaWriteAction } from '../catalog/action-catalog.js';
 import { getCompanionReadAction, getCompanionWriteAction } from '../catalog/companion-actions.js';
 import { getJoomlaCliCommandTarget } from '../catalog/cli-command-targets.js';
+import { ensureSpecCatalogConfigured } from '../catalog/spec/index.js';
 import type { Configuration } from '../config/schema.js';
 import { JoomlaService } from '../application/joomla-service.js';
 import { JoomlaWriteService } from '../application/joomla-write-service.js';
@@ -41,6 +42,11 @@ export interface JoomlaMcpRuntimeOptions {
   readonly cli?: JoomlaCliTransport;
   readonly service?: JoomlaService;
   readonly writes?: JoomlaWriteService;
+  /**
+   * Path to a joomla-mcp-spec checkout. When omitted, JOOMLA_MCP_SPEC is used.
+   * When neither is set the in-repo catalogue remains the fallback.
+   */
+  readonly specRoot?: string;
 }
 
 export interface JoomlaMcpServerOptions {
@@ -52,12 +58,15 @@ export interface JoomlaMcpServerOptions {
   readonly version?: string;
   /** Complete MCP instruction text; defaults to the security-preserving package instructions. */
   readonly instructions?: string;
+  /** Path to a joomla-mcp-spec checkout; see JoomlaMcpRuntimeOptions.specRoot. */
+  readonly specRoot?: string;
 }
 
 export function createRuntime(
   configuration: Configuration,
   options: JoomlaMcpRuntimeOptions = {},
 ): JoomlaMcpRuntime {
+  ensureSpecCatalogConfigured(options.specRoot === undefined ? {} : { specRoot: options.specRoot });
   const sites = options.sites ?? new SiteRegistry(configuration);
   const audit = options.audit ?? new JsonLineAuditSink();
   const api = options.api ?? new JoomlaApiClient();
@@ -73,6 +82,7 @@ export function createServer(
   runtime: JoomlaMcpRuntime = createRuntime(configuration),
   options: JoomlaMcpServerOptions = {},
 ): McpServer {
+  ensureSpecCatalogConfigured(options.specRoot === undefined ? {} : { specRoot: options.specRoot });
   const { service, writes } = runtime;
   const localPrincipal = normalizeLocalPrincipal(options.localPrincipal ?? 'local-stdio');
   const server = new McpServer(

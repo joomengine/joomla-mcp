@@ -1,0 +1,608 @@
+{
+  "$comment": "Reviewed mutation field allowlists per CRUD base. Joomla form/model validation remains authoritative for values.",
+  "bases": {
+    "banners.banners": {
+      "fields": [
+        "cid",
+        "type",
+        "name",
+        "alias",
+        "imptotal",
+        "clickurl",
+        "state",
+        "catid",
+        "description",
+        "custombannercode",
+        "sticky",
+        "ordering",
+        "metakey",
+        "params",
+        "own_prefix",
+        "metakey_prefix",
+        "purchase_type",
+        "track_clicks",
+        "track_impressions",
+        "publish_up",
+        "publish_down",
+        "reset",
+        "language"
+      ],
+      "sensitive": []
+    },
+    "banners.categories": {
+      "fields": [
+        "parent_id",
+        "title",
+        "alias",
+        "note",
+        "description",
+        "published",
+        "access",
+        "params",
+        "metadesc",
+        "metakey",
+        "metadata",
+        "language",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "banners.clients": {
+      "fields": [
+        "name",
+        "contact",
+        "email",
+        "extrainfo",
+        "state",
+        "metakey",
+        "own_prefix",
+        "metakey_prefix",
+        "purchase_type",
+        "track_clicks",
+        "track_impressions"
+      ],
+      "sensitive": []
+    },
+    "contacts.categories": {
+      "fields": [
+        "parent_id",
+        "title",
+        "alias",
+        "note",
+        "description",
+        "published",
+        "access",
+        "params",
+        "metadesc",
+        "metakey",
+        "metadata",
+        "language",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "contacts.contacts": {
+      "fields": [
+        "name",
+        "alias",
+        "con_position",
+        "address",
+        "suburb",
+        "state",
+        "country",
+        "postcode",
+        "telephone",
+        "fax",
+        "misc",
+        "image",
+        "email_to",
+        "default_con",
+        "published",
+        "ordering",
+        "params",
+        "user_id",
+        "catid",
+        "access",
+        "mobile",
+        "webpage",
+        "sortname1",
+        "sortname2",
+        "sortname3",
+        "language",
+        "metakey",
+        "metadesc",
+        "metadata",
+        "featured",
+        "publish_up",
+        "publish_down",
+        "tags"
+      ],
+      "sensitive": []
+    },
+    "content.articles": {
+      "fields": [
+        "title",
+        "alias",
+        "articletext",
+        "introtext",
+        "fulltext",
+        "state",
+        "catid",
+        "created_by_alias",
+        "publish_up",
+        "publish_down",
+        "images",
+        "urls",
+        "attribs",
+        "ordering",
+        "metakey",
+        "metadesc",
+        "access",
+        "metadata",
+        "featured",
+        "language",
+        "note",
+        "tags"
+      ],
+      "sensitive": []
+    },
+    "content.categories": {
+      "fields": [
+        "parent_id",
+        "title",
+        "alias",
+        "note",
+        "description",
+        "published",
+        "access",
+        "params",
+        "metadesc",
+        "metakey",
+        "metadata",
+        "language",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "field-groups.contact": {
+      "fields": [
+        "title",
+        "note",
+        "description",
+        "state",
+        "language",
+        "access",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "field-groups.contact-categories": {
+      "fields": [
+        "title",
+        "note",
+        "description",
+        "state",
+        "language",
+        "access",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "field-groups.contact-mail": {
+      "fields": [
+        "title",
+        "note",
+        "description",
+        "state",
+        "language",
+        "access",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "field-groups.content-articles": {
+      "fields": [
+        "title",
+        "note",
+        "description",
+        "state",
+        "language",
+        "access",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "field-groups.content-categories": {
+      "fields": [
+        "title",
+        "note",
+        "description",
+        "state",
+        "language",
+        "access",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "field-groups.users": {
+      "fields": [
+        "title",
+        "note",
+        "description",
+        "state",
+        "language",
+        "access",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "fields.contact": {
+      "fields": [
+        "group_id",
+        "title",
+        "name",
+        "label",
+        "default_value",
+        "type",
+        "note",
+        "description",
+        "state",
+        "required",
+        "only_use_in_subform",
+        "language",
+        "access",
+        "ordering",
+        "params",
+        "fieldparams"
+      ],
+      "sensitive": []
+    },
+    "fields.contact-categories": {
+      "fields": [
+        "group_id",
+        "title",
+        "name",
+        "label",
+        "default_value",
+        "type",
+        "note",
+        "description",
+        "state",
+        "required",
+        "only_use_in_subform",
+        "language",
+        "access",
+        "ordering",
+        "params",
+        "fieldparams"
+      ],
+      "sensitive": []
+    },
+    "fields.contact-mail": {
+      "fields": [
+        "group_id",
+        "title",
+        "name",
+        "label",
+        "default_value",
+        "type",
+        "note",
+        "description",
+        "state",
+        "required",
+        "only_use_in_subform",
+        "language",
+        "access",
+        "ordering",
+        "params",
+        "fieldparams"
+      ],
+      "sensitive": []
+    },
+    "fields.content-articles": {
+      "fields": [
+        "group_id",
+        "title",
+        "name",
+        "label",
+        "default_value",
+        "type",
+        "note",
+        "description",
+        "state",
+        "required",
+        "only_use_in_subform",
+        "language",
+        "access",
+        "ordering",
+        "params",
+        "fieldparams"
+      ],
+      "sensitive": []
+    },
+    "fields.content-categories": {
+      "fields": [
+        "group_id",
+        "title",
+        "name",
+        "label",
+        "default_value",
+        "type",
+        "note",
+        "description",
+        "state",
+        "required",
+        "only_use_in_subform",
+        "language",
+        "access",
+        "ordering",
+        "params",
+        "fieldparams"
+      ],
+      "sensitive": []
+    },
+    "fields.users": {
+      "fields": [
+        "group_id",
+        "title",
+        "name",
+        "label",
+        "default_value",
+        "type",
+        "note",
+        "description",
+        "state",
+        "required",
+        "only_use_in_subform",
+        "language",
+        "access",
+        "ordering",
+        "params",
+        "fieldparams"
+      ],
+      "sensitive": []
+    },
+    "languages.content": {
+      "fields": [
+        "lang_code",
+        "title",
+        "title_native",
+        "sef",
+        "image",
+        "description",
+        "metadesc",
+        "sitename",
+        "published",
+        "access",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "menus.administrator": {
+      "fields": [
+        "menutype",
+        "title",
+        "description"
+      ],
+      "sensitive": []
+    },
+    "menus.administrator-items": {
+      "fields": [
+        "menutype",
+        "title",
+        "alias",
+        "note",
+        "link",
+        "type",
+        "published",
+        "parent_id",
+        "browserNav",
+        "access",
+        "img",
+        "template_style_id",
+        "params",
+        "home",
+        "language",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "menus.site": {
+      "fields": [
+        "menutype",
+        "title",
+        "description"
+      ],
+      "sensitive": []
+    },
+    "menus.site-items": {
+      "fields": [
+        "menutype",
+        "title",
+        "alias",
+        "note",
+        "link",
+        "type",
+        "published",
+        "parent_id",
+        "browserNav",
+        "access",
+        "img",
+        "template_style_id",
+        "params",
+        "home",
+        "language",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "messages.messages": {
+      "fields": [
+        "user_id_to",
+        "folder_id",
+        "state",
+        "priority",
+        "subject",
+        "message"
+      ],
+      "sensitive": []
+    },
+    "modules.administrator": {
+      "fields": [
+        "title",
+        "note",
+        "content",
+        "ordering",
+        "position",
+        "published",
+        "module",
+        "access",
+        "showtitle",
+        "params",
+        "language",
+        "assigned"
+      ],
+      "sensitive": []
+    },
+    "modules.site": {
+      "fields": [
+        "title",
+        "note",
+        "content",
+        "ordering",
+        "position",
+        "published",
+        "module",
+        "access",
+        "showtitle",
+        "params",
+        "language",
+        "assigned"
+      ],
+      "sensitive": []
+    },
+    "newsfeeds.categories": {
+      "fields": [
+        "parent_id",
+        "title",
+        "alias",
+        "note",
+        "description",
+        "published",
+        "access",
+        "params",
+        "metadesc",
+        "metakey",
+        "metadata",
+        "language",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "newsfeeds.feeds": {
+      "fields": [
+        "catid",
+        "name",
+        "alias",
+        "link",
+        "published",
+        "numarticles",
+        "cache_time",
+        "ordering",
+        "rtl",
+        "access",
+        "language",
+        "params",
+        "metakey",
+        "metadesc",
+        "metadata",
+        "description",
+        "images",
+        "publish_up",
+        "publish_down",
+        "tags"
+      ],
+      "sensitive": []
+    },
+    "redirects.redirects": {
+      "fields": [
+        "old_url",
+        "new_url",
+        "comment",
+        "published",
+        "header"
+      ],
+      "sensitive": []
+    },
+    "tags.tags": {
+      "fields": [
+        "parent_id",
+        "title",
+        "alias",
+        "note",
+        "description",
+        "published",
+        "access",
+        "params",
+        "metadesc",
+        "metakey",
+        "metadata",
+        "images",
+        "urls",
+        "language",
+        "publish_up",
+        "publish_down",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "templates.administrator-styles": {
+      "fields": [
+        "template",
+        "home",
+        "title",
+        "params"
+      ],
+      "sensitive": []
+    },
+    "templates.site-styles": {
+      "fields": [
+        "template",
+        "home",
+        "title",
+        "params"
+      ],
+      "sensitive": []
+    },
+    "users.groups": {
+      "fields": [
+        "parent_id",
+        "title"
+      ],
+      "sensitive": []
+    },
+    "users.levels": {
+      "fields": [
+        "title",
+        "rules",
+        "ordering"
+      ],
+      "sensitive": []
+    },
+    "users.users": {
+      "fields": [
+        "name",
+        "username",
+        "email",
+        "password",
+        "password2",
+        "block",
+        "sendEmail",
+        "requireReset",
+        "groups",
+        "params"
+      ],
+      "sensitive": []
+    }
+  }
+}

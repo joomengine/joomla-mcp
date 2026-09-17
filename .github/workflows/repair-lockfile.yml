@@ -1,0 +1,67 @@
+name: Dependency lockfile repair (temporary)
+
+on:
+  push:
+    branches:
+      - dependabot/npm_and_yarn/types/node-26.5.1
+      - dependabot/npm_and_yarn/zod-4.6.5
+    paths:
+      - .github/workflows/repair-lockfile.yml
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Refresh vulnerable resolutions within the declared version ranges
+        run: |
+          npm audit fix --package-lock-only --ignore-scripts
+          git diff --exit-code -- package.json
+          git diff --stat
+          git diff -- package-lock.json
+      - run: npm ci
+      - run: npm run validate
+      - name: Validate deployment and rollback artifacts
+        run: ./tests/deploy/static-deployment.test.sh
+      - name: Verify the unchanged production audit gate
+        run: node scripts/ci/npm-audit.mjs
+      - name: Audit the complete dependency tree
+        run: npm audit --audit-level=low
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: repaired-lockfile
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 3
+
+  store-validated-blob:
+    needs: repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: repaired-lockfile
+          path: repaired
+      - name: Store the validated lockfile without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected=$(git hash-object repaired/package-lock.json)
+          actual=$(jq -Rs '{content: ., encoding: "utf-8"}' repaired/package-lock.json |
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq '.sha')
+          test "$actual" = "$expected"
+          printf 'Validated lockfile blob: %s\n' "$actual"

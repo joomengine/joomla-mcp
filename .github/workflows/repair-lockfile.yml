@@ -25,7 +25,7 @@ jobs:
           cache: npm
       - name: Refresh vulnerable resolutions within the declared version ranges
         run: |
-          npm audit fix --package-lock-only --ignore-scripts
+          npx --yes npm@11 audit fix --package-lock-only --ignore-scripts
           git diff --exit-code -- package.json
           git diff --stat
           git diff -- package-lock.json

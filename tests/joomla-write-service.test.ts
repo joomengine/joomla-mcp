@@ -48,7 +48,7 @@ describe('JoomlaWriteService', () => {
       expect.objectContaining({
         method: 'POST',
         path: 'v1/content/articles',
-        body: { title: 'Hello', catid: 2, articletext: '<p>World</p>' },
+        body: { title: 'Hello', catid: 2, introtext: '<p>World</p>', fulltext: '' },
       }),
     );
     expect(api.get).toHaveBeenCalledWith(expect.anything(), 'v1/content/articles/41');

@@ -7,6 +7,7 @@ import { getJoomlaReadAction, getJoomlaWriteAction } from '../catalog/action-cat
 import { getCompanionReadAction, getCompanionWriteAction } from '../catalog/companion-actions.js';
 import { getJoomlaCliCommandTarget } from '../catalog/cli-command-targets.js';
 import type { Configuration } from '../config/schema.js';
+import { articleTextDescription } from '../contracts/article-text.js';
 import { JoomlaService } from '../application/joomla-service.js';
 import { JoomlaWriteService } from '../application/joomla-write-service.js';
 import { SiteRegistry } from '../application/site-registry.js';
@@ -489,7 +490,7 @@ export function createServer(
           title: z.string().trim().min(1).max(255),
           catid: z.int().positive(),
           alias: z.string().trim().max(400).optional(),
-          articletext: z.string().max(5_000_000).optional(),
+          articletext: z.string().max(5_000_000).optional().describe(articleTextDescription),
           introtext: z.string().max(2_000_000).optional(),
           fulltext: z.string().max(3_000_000).optional(),
           state: z.int().min(-2).max(1).optional(),
@@ -528,7 +529,7 @@ export function createServer(
             title: z.string().trim().min(1).max(255).optional(),
             catid: z.int().positive().optional(),
             alias: z.string().trim().max(400).optional(),
-            articletext: z.string().max(5_000_000).optional(),
+            articletext: z.string().max(5_000_000).optional().describe(articleTextDescription),
             introtext: z.string().max(2_000_000).optional(),
             fulltext: z.string().max(3_000_000).optional(),
             state: z.int().min(-2).max(1).optional(),

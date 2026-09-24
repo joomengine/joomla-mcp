@@ -200,9 +200,10 @@ async function assertBody(session, id, expectedIntro, expectedFull, title) {
     arguments: { site, action: 'content.articles.get', input: { id }, transport: 'cli' },
   });
   assert.equal(native.data?.ok, true, 'The companion must read the persisted article successfully.');
-  assert.equal(String(native.data?.result?.id), String(id));
-  assert.equal(native.data.result.introtext, expectedIntro, 'Stored introtext must match exactly.');
-  assert.equal(native.data.result.fulltext, expectedFull, 'Stored fulltext must match exactly.');
+  const stored = native.data?.result?.item;
+  assert.equal(String(stored?.id), String(id), 'The companion item must identify the created article.');
+  assert.equal(stored.introtext, expectedIntro, 'Stored introtext must match exactly.');
+  assert.equal(stored.fulltext, expectedFull, 'Stored fulltext must match exactly.');
 }
 
 function passed(name) {

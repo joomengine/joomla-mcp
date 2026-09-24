@@ -411,6 +411,10 @@ NODE
 rm -f -- "$api_token_file"
 
 npm run build --silent
+printf 'JMCP-FIXTURE state=START phase=article-bodies message=%q\n' \
+  'verifying article body persistence through generic and typed MCP API writes'
+node "${SCRIPT_DIRECTORY}/verify-article-bodies.mjs" \
+  "$live_config" "${artifact_directory}/article-bodies.json" --disposable
 live_test_directory="${artifact_directory}/live-test"
 mkdir -p -- "$live_test_directory"
 chmod 0700 -- "$live_test_directory"

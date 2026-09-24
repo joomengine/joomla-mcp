@@ -10,6 +10,7 @@ import type {
   WriteActionDescriptor,
 } from '../contracts/action-catalog.js';
 import { boundedListQueryProperties, normalizeBoundedListQuery } from '../contracts/bounded-query.js';
+import { articleTextDescription, normalizeArticleText } from '../contracts/article-text.js';
 import { resolveReadActionRoute } from '../contracts/route-resolution.js';
 import { joomlaCrudBases } from './crud-bases.js';
 import { crudWriteFields, sensitiveCrudWriteFieldsByBaseId } from './crud-write-fields.js';
@@ -123,6 +124,10 @@ function crudWriteAction(base: CrudBaseDescriptor, operation: CrudOperationDescr
         Object.freeze({
           description: `Reviewed Joomla ${base.itemName.toLocaleLowerCase('en')} form field.`,
           ...(sensitiveFields.has(field) ? { type: 'string', maxLength: 4_096, writeOnly: true } : {}),
+          ...(base.id === 'content.articles' && ['articletext', 'introtext', 'fulltext'].includes(field)
+            ? { type: 'string' } : {}),
+          ...(base.id === 'content.articles' && field === 'articletext'
+            ? { description: articleTextDescription } : {}),
         }),
       ]),
     );
@@ -339,6 +344,7 @@ export function resolveJoomlaWriteRequest(actionId: string, input: unknown): Res
   const body = values['data'] === undefined
     ? undefined
     : withFixedMutationDefaults(action.id, normalizeMutationBody(values['data'], action));
+  if (body !== undefined) assertMutationBodySize(body);
   const etag = values['etag'] === undefined ? undefined : normalizeEtag(values['etag']);
 
   return Object.freeze({
@@ -440,6 +446,10 @@ function withJoomlaDerivedMutationFields(
   baseId: string,
   body: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
+  if (baseId === 'content.articles') {
+    return normalizeArticleText(body);
+  }
+
   if (
     (baseId === 'menus.site-items' || baseId === 'menus.administrator-items') &&
     body['type'] === 'component' &&
@@ -496,15 +506,16 @@ function normalizeMutationBody(
   }
 
   validateJsonValue(body, 0);
-  const serialized = JSON.stringify(body);
-
-  if (Buffer.byteLength(serialized, 'utf8') > 1_048_576) {
-    throw new Error('Joomla mutation body exceeds the 1048576-byte limit.');
-  }
-
+  assertMutationBodySize(body);
   validateMutationSchema(body, action);
 
   return body;
+}
+
+function assertMutationBodySize(body: Readonly<Record<string, unknown>>): void {
+  if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 1_048_576) {
+    throw new Error('Joomla mutation body exceeds the 1048576-byte limit.');
+  }
 }
 
 function validateMutationSchema(

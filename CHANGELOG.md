@@ -3,6 +3,17 @@
 All notable changes to the published packages are documented here. Releases
 follow Semantic Versioning.
 
+## Unreleased
+
+### Fixed
+
+- Normalize combined article text to Joomla's native `introtext` and `fulltext`
+  before planning API or companion creates and updates, fixing silently unchanged
+  article bodies on Joomla 6 PATCH requests ([#31](https://github.com/joomengine/joomla-mcp/issues/31)).
+- Preserve Joomla Read More splitting, clear old full text on complete body
+  replacement, and reject ambiguous combined/native text inputs. Native partial
+  text updates and title-only updates retain omitted content.
+
 ## [0.7.0] - 2026-07-24
 
 ### Added

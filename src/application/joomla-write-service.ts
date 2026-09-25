@@ -18,6 +18,7 @@ import {
   type CompanionActionDescriptor,
 } from '../catalog/companion-actions.js';
 import type { Configuration } from '../config/schema.js';
+import { normalizeArticleText } from '../contracts/article-text.js';
 import {
   JoomlaApiClient,
   type JoomlaApiResponse,
@@ -234,7 +235,7 @@ export class JoomlaWriteService {
     let operation: PlannedOperation;
 
     if (input.operation === 'create') {
-      const body = ArticleCreateSchema.parse(input.data);
+      const body = normalizeArticleText(ArticleCreateSchema.parse(input.data));
       operation = {
         site: site.id,
         action: 'content.articles.create',
@@ -245,7 +246,7 @@ export class JoomlaWriteService {
         summary: `Create article “${body.title}” in category ${body.catid}.`,
       };
     } else if (input.operation === 'update') {
-      const body = ArticleUpdateSchema.parse(input.data);
+      const body = normalizeArticleText(ArticleUpdateSchema.parse(input.data));
       operation = {
         site: site.id,
         action: 'content.articles.update',
@@ -309,6 +310,10 @@ export class JoomlaWriteService {
     this.sites.requireToolset(site, action.toolset);
     idempotencyKeySchema.parse(input.idempotencyKey);
     const request = resolveJoomlaWriteRequest(action.id, input.input);
+    const actionInput = (action.id === 'content.articles.create' || action.id === 'content.articles.update') &&
+      request.body !== undefined
+      ? { ...input.input, data: request.body }
+      : input.input;
     const transport = this.selectTransport(site, input.transport ?? 'auto');
 
     if (transport === 'cli') {
@@ -321,7 +326,7 @@ export class JoomlaWriteService {
       await this.requireCompanionAction(site.cli!, action.id);
     }
     const preflight = transport === 'cli'
-      ? await this.preflightCompanionAction(site.cli!, action.id, input.input)
+      ? await this.preflightCompanionAction(site.cli!, action.id, actionInput)
       : undefined;
 
     const subject = action.operation === 'create'
@@ -338,7 +343,7 @@ export class JoomlaWriteService {
       summary: `${action.operation[0]!.toUpperCase()}${action.operation.slice(1)} ${subject} via Joomla ${transport.toUpperCase()}.`,
       transport,
       toolset: action.toolset,
-      actionInput: input.input,
+      actionInput,
       ...(preflight === undefined ? {} : { preflight }),
     };
 

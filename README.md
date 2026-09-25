@@ -38,6 +38,10 @@ TypeScript is a Tier 1 MCP SDK while PHP is Tier 3. For convenience, TypeScript 
 
 The generated [API action reference](docs/API_ACTIONS.md) lists every route, semantic ID, accepted field set, transport, risk, and source-only gate. The release truth table is in [docs/COVERAGE.md](docs/COVERAGE.md). An implemented action is not described as production-verified until it has passed the corresponding live Joomla matrix.
 
+For article creation and updates, see [Writing article text](docs/ARTICLE_TEXT.md).
+MCP converts `articletext` into Joomla's native `introtext` and `fulltext` fields,
+including Read More splitting and clearing old full text when replacing the body.
+
 ## Requirements
 
 - Node.js 22.12 or newer.

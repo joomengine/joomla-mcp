@@ -38,6 +38,8 @@ function render(): string {
     '',
     'Use `joomla_actions_search` to find actions available to a configured site and actor, then `joomla_action_describe` to retrieve the complete machine-readable schema, source reference, ACL hints, availability, and certification state.',
     '',
+    'The table lists static reviewed fields. API create/update plans for `content.articles`, `content.categories`, `contacts.contacts` and `users.users` also accept published custom fields resolved on the selected site, with the matching field-list read authorization (`structure.read`, or `users.read` for users). Their names/types appear in site-specific action descriptions; the static catalogue remains closed. See [Writing custom field values](CUSTOM_FIELDS.md) for aliases, controller-specific bodies, limits and testing.',
+    '',
   ];
   const domains = [...new Set(joomlaActions.map((action) => action.domain))].sort();
 

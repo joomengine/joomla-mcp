@@ -32,6 +32,7 @@ import {
 } from '../infrastructure/api/joomla-api-client.js';
 import { JoomlaCliClient, type JoomlaCliTransport } from '../infrastructure/cli/joomla-cli-client.js';
 import { SiteRegistry } from './site-registry.js';
+import { customFieldTarget, resolvePublishedCustomFields } from './custom-fields.js';
 
 export interface ArticleListInput {
   readonly site?: string | undefined;
@@ -310,7 +311,11 @@ export class JoomlaService {
     };
   }
 
-  public async describeAction(actionId: string, siteId?: string): Promise<Record<string, unknown>> {
+  public async describeAction(
+    actionId: string,
+    siteId?: string,
+    authorizeRead?: (site: string, toolset: string) => void,
+  ): Promise<Record<string, unknown>> {
     const apiAction = getJoomlaAction(actionId);
     const companionAction = getCompanionReadAction(actionId) ?? getCompanionWriteAction(actionId);
 
@@ -332,10 +337,55 @@ export class JoomlaService {
           : null
       );
 
+    const target = customFieldTarget(actionId);
+    let describedAction = apiAction;
+    let customFields: Record<string, unknown> | undefined;
+    if (target !== undefined && apiAction !== undefined) {
+      let permitted = site.api !== undefined && site.toolsets.has(target.readToolset);
+      if (permitted && authorizeRead !== undefined) {
+        try { authorizeRead(site.id, target.readToolset); } catch { permitted = false; }
+      }
+      const fields = permitted ? await resolvePublishedCustomFields(actionId, site.api!, this.api) : [];
+      customFields = {
+        status: permitted ? 'resolved' : 'unavailable',
+        context: target.context,
+        transport: 'api',
+        readToolset: target.readToolset,
+        fields,
+        ...(permitted ? {} : { reason: `Custom field discovery requires the Joomla API adapter and ${target.readToolset} permission.` }),
+      };
+      if (permitted) {
+        const dataSchema = apiAction.inputSchema.properties['data']!;
+        const customProperties = Object.fromEntries(fields.map((field) => [field.name, {
+          description: `Published Joomla ${field.type} custom field; Joomla validates its value. Null is not supported.`,
+          'x-joomla-field-type': field.type,
+          'x-joomla-field-context': field.context,
+          not: { type: 'null' },
+        }]));
+        describedAction = {
+          ...apiAction,
+          inputSchema: {
+            ...apiAction.inputSchema,
+            properties: {
+              ...apiAction.inputSchema.properties,
+              data: {
+                ...dataSchema,
+                properties: {
+                  ...(dataSchema['properties'] as Record<string, unknown>),
+                  ...customProperties,
+                  com_fields: { type: 'object', properties: customProperties, additionalProperties: false, maxProperties: 512,
+                    description: 'Alias for published custom fields; do not also supply the same name at the top level.' },
+                },
+              },
+            },
+          },
+        };
+      }
+    }
     return {
       site: site.id,
       action: {
-        ...(apiAction ?? {}),
+        ...(describedAction ?? {}),
         ...(companionAction === undefined ? {} : { companionNative: companionAction.native }),
       },
       availability: {
@@ -345,6 +395,7 @@ export class JoomlaService {
         companionCapability: companionCapability.status,
       },
       coverage: actionCoverage(actionId),
+      ...(customFields === undefined ? {} : { customFields }),
     };
   }
 

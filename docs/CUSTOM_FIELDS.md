@@ -5,9 +5,10 @@ selected Joomla site. This applies to `content.articles`, `content.categories`,
 `contacts.contacts` and `users.users`, and to the typed
 `joomla_content_article_create_plan` and `joomla_content_article_update_plan` tools.
 
-Enable `structure.read` alongside the action's write toolset, and give the Joomla
-API identity permission to read the corresponding field definitions. Remote MCP
-principals also need that read scope. Existing core-field-only plans do not need
+Enable the matching field-list read toolset alongside the action's write toolset:
+`structure.read` for articles, content categories and contacts, or `users.read`
+for users. Give the Joomla API identity permission to read the corresponding
+field definitions. Remote MCP principals also need that read scope. Existing core-field-only plans do not need
 field discovery. Use `joomla_action_describe` for the selected action and site to
 inspect resolved custom field names and their Joomla types.
 

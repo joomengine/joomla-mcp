@@ -11,11 +11,39 @@ import {
   verifiedPartialMutationLimitation,
 } from '../src/live-test/known-limitations.js';
 import type { LiveTestOptions } from '../src/live-test/types.js';
+import { assertChangedFields } from '../src/live-test/runner.js';
 
 const pinnedFixture =
   'octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372';
 
 describe('live fixture Joomla regressions', () => {
+  it('exercises omitted and explicit field defaults in every installed-fixture context', () => {
+    const context = { ...fixtureContext(), get: () => ({ id: 51, label: 'Field group', attributes: {} }) };
+    const fields = [...crudFixtureDefinitions].filter(([baseId]) => baseId.startsWith('fields.'));
+    expect(fields).toHaveLength(6);
+    for (const [baseId, fixture] of fields) {
+      for (const purpose of ['showcase', 'configured-primary']) {
+        expect(fixture.create(context, purpose)).not.toHaveProperty('default_value');
+      }
+      for (const purpose of ['deletion', 'configured-secondary', 'configured-deletion']) {
+        const created = fixture.create(context, purpose);
+        expect(created).toHaveProperty('default_value', 'Retained field default');
+        expect(fixture.update(context, { id: 41, label: baseId, attributes: created }))
+          .not.toHaveProperty('default_value');
+      }
+    }
+  });
+
+  it('rejects NULL or missing stored field defaults instead of accepting them as empty', () => {
+    for (const attributes of [{ default_value: null }, {}, { default_value: 'unexpected' }]) {
+      expect(() => assertChangedFields({ data: { id: '41', attributes } },
+        { default_value: '' }, 'fields.content-articles')).toThrow(/default_value/);
+    }
+    for (const expected of ['', '0', 'Retained field default', null]) {
+      expect(() => assertChangedFields({ data: { id: '41', attributes: { default_value: expected } } },
+        { default_value: expected }, 'fields.content-articles')).not.toThrow();
+    }
+  });
   it('generates collision-safe update values for each configured record', () => {
     const fixture = crudFixtureDefinitions.get('users.levels');
     expect(fixture).toBeDefined();

@@ -413,7 +413,15 @@ function withFixedMutationDefaults(
 ): Readonly<Record<string, unknown>> {
   const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
   if (base === undefined) return body;
-  const normalized = withJoomlaDerivedMutationFields(base.id, body);
+  // The administrator field form submits an empty default for a new field.
+  // Omitting it leaves SQL NULL, which Joomla later passes to DOMCdataSection.
+  // This is a fallback, not fixed controller state: explicit values must win,
+  // and partial updates must never reset an existing field's default.
+  const createBody = base.id.startsWith('fields.') && actionId === `${base.id}.create` &&
+    !Object.hasOwn(body, 'default_value')
+    ? Object.freeze({ ...body, default_value: '' })
+    : body;
+  const normalized = withJoomlaDerivedMutationFields(base.id, createBody);
   const fixed = Object.fromEntries(
     Object.entries(base.controllerDefaults).filter(([key]) => key !== 'component'),
   );

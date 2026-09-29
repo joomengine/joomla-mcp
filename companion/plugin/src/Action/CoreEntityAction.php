@@ -191,6 +191,14 @@ final readonly class CoreEntityAction implements ActionInterface
             throw new ActionException('INVALID_INPUT', 'Create data must contain at least one allowed field.');
         }
 
+        // Joomla's administrator field form submits an empty default value.
+        // Supply it only for a new field with an omitted key; updates and
+        // explicit values retain their native model semantics.
+        if ($this->entity->component === 'com_fields' && $this->entity->itemModel === 'Field'
+            && !array_key_exists('default_value', $data)) {
+            $data['default_value'] = '';
+        }
+
         $inheritance = in_array($this->entity->id, ['templates.site-styles', 'templates.administrator-styles'], true)
             ? TemplateStyleInheritance::resolve($this->models, $data['template'] ?? null, (int) $this->entity->defaults['client_id'])
             : null;

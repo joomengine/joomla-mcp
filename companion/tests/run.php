@@ -1059,6 +1059,7 @@ test('manifests declare an installable package and Joomla console plugin', stati
 });
 
 require __DIR__ . '/template-style-inheritance.php';
+require __DIR__ . '/field-default-value.php';
 
 if ($GLOBALS['failures'] > 0) {
     file_put_contents('php://stderr', sprintf("%d test(s) failed.\n", $GLOBALS['failures']), FILE_APPEND);

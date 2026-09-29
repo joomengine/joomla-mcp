@@ -39,6 +39,7 @@ interface FixtureNames {
 type Factory = (
   context: LiveFixtureContext,
   value: FixtureNames,
+  purpose: string,
 ) => Readonly<Record<string, unknown>>;
 
 const definitions = new Map<string, CrudFixtureDefinition>();
@@ -53,11 +54,12 @@ function fixture(
     baseId,
     dependencies: Object.freeze([...dependencies]),
     create: (context: LiveFixtureContext, purpose: string) =>
-      create(context, names(context, baseId, purpose)),
+      create(context, names(context, baseId, purpose), purpose),
     update: (context: LiveFixtureContext, _record: LiveFixtureRecord, purpose = 'updated') =>
       (update ?? ((_inner, value) => defaultUpdate(baseId, value)))(
         context,
         names(context, baseId, purpose),
+        purpose,
       ),
   };
   definitions.set(baseId, Object.freeze(definition));
@@ -265,12 +267,16 @@ for (const baseId of [
           : baseId === 'fields.contact-categories'
             ? 'field-groups.contact-categories'
             : 'field-groups.users';
-  fixture(baseId, [groupId], (context, value) => ({
+  fixture(baseId, [groupId], (context, value, purpose) => ({
     group_id: requiredId(context, groupId),
     title: value.title,
     name: value.alias,
     label: value.title,
-    default_value: '',
+    // Primary records exercise omission; secondary/deletion records prove that
+    // explicit defaults survive both creation and subsequent partial updates.
+    ...(['deletion', 'configured-secondary', 'configured-deletion'].includes(purpose)
+      ? { default_value: 'Retained field default' }
+      : {}),
     type: 'text',
     description: value.description,
     state: 1,

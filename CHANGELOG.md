@@ -7,6 +7,10 @@ follow Semantic Versioning.
 
 ### Fixed
 
+- Supply Joomla's empty-string `default_value` when a `fields.*.create` call
+  omits it, through both API and companion transports. Preserve caller-supplied
+  defaults and leave partial updates unchanged
+  ([#42](https://github.com/joomengine/joomla-mcp/issues/42)).
 - Resolve site-specific published custom fields for API article, content-category,
   contact and user create/update plans, including the typed article tools,
   while rejecting unrecognized keys and retaining approved field snapshots

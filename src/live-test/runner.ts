@@ -952,6 +952,11 @@ async function runCrudProfile(
           const response = await callRead(session, site, getScenario.id, input, path);
           const actual = firstEntity(response);
           assertEntityId(actual, showcase.id, getScenario.id);
+          if (baseId.startsWith('fields.')) {
+            // The showcase fixture deliberately omits default_value; do not
+            // derive its expectation from the mutation response being tested.
+            assertChangedFields(response, { default_value: '' }, baseId);
+          }
           return { response, expected: { id: showcase.id }, actual };
         });
       }
@@ -1023,7 +1028,10 @@ async function runCrudProfile(
             const entity = firstEntity(response);
             assertEntityId(entity, showcase.id, getScenario.id);
             try {
-              const attributes = assertChangedFields(response, changes, baseId);
+              const attributes = assertChangedFields(response, {
+                ...(baseId.startsWith('fields.') ? { default_value: '' } : {}),
+                ...changes,
+              }, baseId);
               state.records.set(baseId, entity!);
               return { response, expected: changes, actual: attributes };
             } catch (error) {
@@ -1318,6 +1326,8 @@ async function runConfiguredCrudProfile(
     }
     const createExpectation = Object.freeze({
       ...submitted,
+      ...(baseId.startsWith('fields.') && !Object.hasOwn(submitted, 'default_value')
+        ? { default_value: '' } : {}),
       ...(configuredRecord.verify === undefined
         ? {}
         : asRecord(resolveLiveScenarioValue(
@@ -1422,7 +1432,10 @@ async function runConfiguredCrudProfile(
         reference,
         configuredRecord.key,
         current.id,
-        changes,
+        {
+          ...(baseId.startsWith('fields.') ? { default_value: current.attributes['default_value'] } : {}),
+          ...changes,
+        },
         state,
         getScenario,
         listScenario,
@@ -3259,7 +3272,7 @@ function assertLanguageOverride(
   }
 }
 
-function assertChangedFields(
+export function assertChangedFields(
   response: unknown,
   changes: Readonly<Record<string, unknown>>,
   baseId: string,
@@ -3268,6 +3281,13 @@ function assertChangedFields(
   const mismatches: string[] = [];
   for (const [key, expected] of Object.entries(changes)) {
     if (key === 'password' || key === 'password2') continue;
+    if (baseId.startsWith('fields.') && key === 'default_value') {
+      // NULL and missing are not an empty string: both hide the field XML/DOM regression.
+      if (!Object.hasOwn(attributes, key) || attributes[key] !== expected) {
+        mismatches.push(fieldMismatch(key, expected, attributes[key]));
+      }
+      continue;
+    }
     if (
       baseId === 'content.articles' &&
       (key === 'introtext' || key === 'fulltext' || key === 'articletext') &&

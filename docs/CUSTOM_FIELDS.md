@@ -1,4 +1,31 @@
-# Writing custom field values
+# Custom field definitions and values
+
+## Creating field definitions
+
+All six `fields.*.create` actions supply `default_value: ""` when that property is
+omitted, matching Joomla's administrator form. This applies to article, content
+category, contact, contact-mail, contact-category and user fields through both
+API and companion transports. It prevents new fields from storing an unintended
+SQL `NULL` that triggers a `DOMCdataSection` deprecation when an editor prepares
+the field.
+
+The fallback is part of the approved create payload. Explicit caller values are
+preserved for Joomla's native validation, and `fields.*.update` does not receive
+a default when the property is omitted. Field-group actions are unaffected.
+
+Existing fields are not rewritten automatically. To repair an affected field,
+read its ID through the matching `fields.*.list` action, then plan and approve a
+matching `fields.*.update` with `data.default_value` set to an empty string.
+Keep any intentional nonempty default.
+
+To test [issue #42](https://github.com/joomengine/joomla-mcp/issues/42), create a
+text field without `default_value`, confirm the saved value is an empty string,
+and open the corresponding Joomla editor with deprecation reporting enabled.
+Also create a field with an explicit nonempty default and update only its title;
+the original default must remain unchanged. Report the action, transport, Joomla
+and PHP versions, and redacted result if the warning persists.
+
+## Writing field values
 
 API create and update plans accept the names of published custom fields from the
 selected Joomla site. This applies to `content.articles`, `content.categories`,

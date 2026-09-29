@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace VDM\Plugin\Console\JoomlaMcp\Domain;
 
+use stdClass;
+
 final class Input
 {
     private const MAX_COLLECTION_ITEMS = 1_000;
@@ -82,6 +84,10 @@ final class Input
     {
         $value = $input[$key] ?? null;
 
+        if ($value instanceof stdClass) {
+            $value = get_object_vars($value);
+        }
+
         if (!is_array($value) || ($value !== [] && array_is_list($value))) {
             throw new ActionException('INVALID_INPUT', sprintf('Input "%s" must be an object.', $key));
         }
@@ -113,6 +119,12 @@ final class Input
             return $value;
         }
 
+        $object = $value instanceof stdClass;
+
+        if ($object) {
+            $value = get_object_vars($value);
+        }
+
         if (!is_array($value) || $depth >= self::MAX_NESTING_DEPTH || count($value) > self::MAX_COLLECTION_ITEMS) {
             throw new ActionException('INVALID_INPUT', sprintf('Input "%s" contains an unsupported or oversized value.', $key));
         }
@@ -127,7 +139,7 @@ final class Input
             $result[$member] = self::boundedValue($nested, $key, $depth + 1);
         }
 
-        return $result;
+        return $object ? (object) $result : $result;
     }
 
     /**

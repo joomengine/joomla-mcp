@@ -39,7 +39,7 @@ final readonly class SafeConfigurationAction implements ActionInterface
             'Return only explicitly non-secret Joomla global configuration values.',
             'read',
             [['action' => 'core.admin', 'asset' => 'com_config']],
-            ['type' => 'object', 'properties' => [], 'additionalProperties' => false],
+            ['type' => 'object', 'properties' => (object) [], 'additionalProperties' => false],
             ['type' => 'object', 'additionalProperties' => ['type' => ['string', 'integer', 'boolean', 'null']]],
         );
     }

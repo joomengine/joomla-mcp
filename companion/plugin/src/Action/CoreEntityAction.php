@@ -6,6 +6,7 @@ namespace VDM\Plugin\Console\JoomlaMcp\Action;
 
 use JsonSerializable;
 use Joomla\CMS\Factory;
+use stdClass;
 use Throwable;
 use VDM\Plugin\Console\JoomlaMcp\Contract\ActionInterface;
 use VDM\Plugin\Console\JoomlaMcp\Contract\ModelProviderInterface;
@@ -13,6 +14,7 @@ use VDM\Plugin\Console\JoomlaMcp\Domain\ActionDescriptor;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 use VDM\Plugin\Console\JoomlaMcp\Domain\CoreEntityDefinition;
 use VDM\Plugin\Console\JoomlaMcp\Domain\Input;
+use VDM\Plugin\Console\JoomlaMcp\Joomla\ModelListPage;
 use VDM\Plugin\Console\JoomlaMcp\Joomla\TemplateStyleInheritance;
 
 /**
@@ -94,12 +96,10 @@ final readonly class CoreEntityAction implements ActionInterface
         $this->setModelState($model);
         $model->setState('list.start', $offset);
         $model->setState('list.limit', $limit);
-        $model->setState('list.ordering', $order);
+        $model->setState('list.ordering', $this->nativeOrdering($model, $order));
         $model->setState('list.direction', $direction);
 
-        if ($search !== '') {
-            $model->setState('filter.search', $search);
-        }
+        $model->setState('filter.search', $search);
 
         if (array_key_exists('state', $input)) {
             $model->setState(
@@ -109,7 +109,13 @@ final readonly class CoreEntityAction implements ActionInterface
         }
 
         try {
-            $rawItems = $model->getItems();
+            $page = ModelListPage::read($model, $offset, $limit);
+            $rawItems = $page['items'];
+        } catch (ActionException $exception) {
+            throw new ActionException(
+                $exception->errorCode,
+                $exception->getMessage() . $this->modelFailureDetail($model),
+            );
         } catch (Throwable $exception) {
             throw new ActionException(
                 'MODEL_OPERATION_FAILED',
@@ -132,12 +138,6 @@ final readonly class CoreEntityAction implements ActionInterface
             }
         }
 
-        try {
-            $total = method_exists($model, 'getTotal') ? (int) $model->getTotal() : count($items);
-        } catch (Throwable) {
-            $total = count($items);
-        }
-
         return [
             'entity' => $this->entity->id,
             'items' => $items,
@@ -145,7 +145,7 @@ final readonly class CoreEntityAction implements ActionInterface
                 'offset' => $offset,
                 'limit' => $limit,
                 'count' => count($items),
-                'total' => max(0, $total),
+                'total' => $page['total'],
             ],
         ];
     }
@@ -428,6 +428,10 @@ final readonly class CoreEntityAction implements ActionInterface
             $result[$field] = $this->safeOutput($source[$field] ?? null);
         }
 
+        if (array_key_exists('id', $result) && $result['id'] === null && $this->entity->primaryKey !== 'id') {
+            $result['id'] = $result[$this->entity->primaryKey] ?? null;
+        }
+
         return $result;
     }
 
@@ -474,7 +478,7 @@ final readonly class CoreEntityAction implements ActionInterface
     private function save(object $model, array $payload): void
     {
         try {
-            $saved = $model->save($payload);
+            $saved = $model->save($this->nativeModelValue($payload));
         } catch (Throwable $exception) {
             throw new ActionException(
                 'MODEL_OPERATION_FAILED',
@@ -488,6 +492,24 @@ final readonly class CoreEntityAction implements ActionInterface
                 sprintf('Joomla did not save %s.%s', $this->entity->label, $this->modelFailureDetail($model)),
             );
         }
+    }
+
+    /** Convert validated JSON mappings to Joomla's native form-data arrays. */
+    private function nativeModelValue(mixed $value): mixed
+    {
+        if ($value instanceof stdClass) {
+            $value = get_object_vars($value);
+        }
+
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        foreach ($value as $key => $nested) {
+            $value[$key] = $this->nativeModelValue($nested);
+        }
+
+        return $value;
     }
 
     /** @return array<string, mixed> */
@@ -747,6 +769,21 @@ final readonly class CoreEntityAction implements ActionInterface
         )));
 
         return $fields === [] ? [$this->entity->readFields[0]] : $fields;
+    }
+
+    private function nativeOrdering(object $model, string $field): string
+    {
+        if ($field === 'id') {
+            $field = $this->entity->primaryKey;
+        }
+
+        // Use only aliases explicitly admitted by the selected native model.
+        // Language lists join access levels, whose title otherwise collides.
+        if (method_exists($model, 'isValidFilterColumn') && $model->isValidFilterColumn('a.' . $field)) {
+            return 'a.' . $field;
+        }
+
+        return $field;
     }
 
     /** @return array<string, mixed> */

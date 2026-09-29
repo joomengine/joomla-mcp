@@ -330,7 +330,7 @@ test('production operation schemas expose no caller-selected Joomla primitive', 
     ];
 
     foreach ($productionActions as $name) {
-        $properties = $registry->get($name)->descriptor()->inputSchema['properties'] ?? [];
+        $properties = (array) ($registry->get($name)->descriptor()->inputSchema['properties'] ?? []);
 
         foreach (['command', 'component', 'model', 'method', 'url', 'path', 'php', 'sql'] as $escape) {
             expect(!array_key_exists($escape, $properties), sprintf('Action "%s" exposes "%s".', $name, $escape));
@@ -379,7 +379,7 @@ test('generic list action bounds model state and strips non-allowlisted output',
 
         public function getTotal(): int
         {
-            return 1;
+            return 20;
         }
     };
     $provider = new class ($model) implements ModelProviderInterface {
@@ -1060,6 +1060,8 @@ test('manifests declare an installable package and Joomla console plugin', stati
 
 require __DIR__ . '/template-style-inheritance.php';
 require __DIR__ . '/field-default-value.php';
+require __DIR__ . '/json-shapes.php';
+require __DIR__ . '/native-list-pagination.php';
 
 if ($GLOBALS['failures'] > 0) {
     file_put_contents('php://stderr', sprintf("%d test(s) failed.\n", $GLOBALS['failures']), FILE_APPEND);

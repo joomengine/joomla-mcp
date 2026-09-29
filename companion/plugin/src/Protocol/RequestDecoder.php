@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VDM\Plugin\Console\JoomlaMcp\Protocol;
 
 use JsonException;
+use stdClass;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 
 final class RequestDecoder
@@ -22,14 +23,16 @@ final class RequestDecoder
         }
 
         try {
-            $request = json_decode($json, true, 64, JSON_THROW_ON_ERROR);
+            $document = json_decode($json, false, 64, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
             throw new ActionException('INVALID_JSON', 'The request is not valid JSON.');
         }
 
-        if (!is_array($request) || array_is_list($request)) {
+        if (!$document instanceof stdClass) {
             throw new ActionException('INVALID_REQUEST', 'The request must be a JSON object.');
         }
+
+        $request = get_object_vars($document);
 
         $unknown = array_diff(array_keys($request), ['protocol', 'id', 'action', 'input']);
 
@@ -56,18 +59,19 @@ final class RequestDecoder
             throw new ActionException('INVALID_REQUEST', 'Action must be a non-empty string of at most 128 bytes.');
         }
 
-        $input = $request['input'] ?? [];
+        $input = array_key_exists('input', $request) ? $request['input'] : new stdClass();
 
-        if (!is_array($input) || array_is_list($input) && $input !== []) {
+        if (!$input instanceof stdClass) {
             throw new ActionException('INVALID_REQUEST', 'Input must be a JSON object.');
         }
 
-        /** @var array<string, mixed> $input */
         return [
             'protocol' => self::PROTOCOL,
             'id' => $id,
             'action' => $action,
-            'input' => $input,
+            // The action contract uses an array for its root mapping. Keep
+            // nested JSON objects intact so {} and [] never become aliases.
+            'input' => get_object_vars($input),
         ];
     }
 }

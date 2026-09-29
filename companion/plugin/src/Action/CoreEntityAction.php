@@ -13,6 +13,7 @@ use VDM\Plugin\Console\JoomlaMcp\Domain\ActionDescriptor;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 use VDM\Plugin\Console\JoomlaMcp\Domain\CoreEntityDefinition;
 use VDM\Plugin\Console\JoomlaMcp\Domain\Input;
+use VDM\Plugin\Console\JoomlaMcp\Joomla\TemplateStyleInheritance;
 
 /**
  * Executes one operation for one fixed CoreEntityDefinition.
@@ -190,7 +191,14 @@ final readonly class CoreEntityAction implements ActionInterface
             throw new ActionException('INVALID_INPUT', 'Create data must contain at least one allowed field.');
         }
 
+        $inheritance = in_array($this->entity->id, ['templates.site-styles', 'templates.administrator-styles'], true)
+            ? TemplateStyleInheritance::resolve($this->models, $data['template'] ?? null, (int) $this->entity->defaults['client_id'])
+            : null;
         $plan = $this->writePlan('create', null, array_keys($data));
+        if ($inheritance !== null) {
+            $plan['item'] = ['template' => $data['template'], 'client_id' => (int) $this->entity->defaults['client_id']] + $inheritance;
+            $data = array_merge($data, $inheritance);
+        }
 
         if (Input::boolean($input, 'dryRun', true)) {
             return $plan;

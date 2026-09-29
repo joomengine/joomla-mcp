@@ -12,6 +12,14 @@ follow Semantic Versioning.
   while rejecting unrecognized keys and retaining approved field snapshots
   ([#38](https://github.com/joomengine/joomla-mcp/issues/38)).
 
+- Preserve installed template inheritance when creating site or administrator
+  styles through the API or companion. Derive hidden `parent` and `inheritable`
+  fields from an existing style's native manifest before confirmation; refuse
+  missing, ambiguous, invalid, or changed metadata ([#40](https://github.com/joomengine/joomla-mcp/issues/40)).
+- Persist and verify native menu component IDs for API creates and updates,
+  including cross-component link changes. Approved corrective PATCHes and
+  stored-list verification retain honest partial/uncertain outcomes and prevent
+  same-key duplicate creates ([#39](https://github.com/joomengine/joomla-mcp/issues/39)).
 - Normalize combined article text to Joomla's native `introtext` and `fulltext`
   before planning API or companion creates and updates, fixing silently unchanged
   article bodies on Joomla 6 PATCH requests ([#31](https://github.com/joomengine/joomla-mcp/issues/31)).

@@ -14,7 +14,7 @@ const configuration: Configuration = {
       'test',
       {
         id: 'test',
-        toolsets: new Set(['content.read', 'content.write', 'structure.write']),
+        toolsets: new Set(['content.read', 'content.write', 'structure.read', 'structure.write']),
         api: {
           baseUrl: 'https://example.test',
           tokenEnv: 'TOKEN',
@@ -56,7 +56,11 @@ describe('JoomlaWriteService', () => {
   });
 
   it('rejects unknown Joomla fields before creating a plan', async () => {
-    const service = new JoomlaWriteService(configuration, new SiteRegistry(configuration));
+    const api = {
+      get: vi.fn(async () => ({ status: 200, headers: {}, data: { data: [] } })),
+      request: vi.fn(),
+    } as unknown as JoomlaApiClient;
+    const service = new JoomlaWriteService(configuration, new SiteRegistry(configuration), api);
 
     await expect(
       service.planArticle({
@@ -98,13 +102,19 @@ describe('JoomlaWriteService', () => {
           type: 'component',
           parent_id: 1,
           link: 'index.php?option=com_content&view=article&id=42',
+          component_id: 22,
+          client_id: 0,
           params: { option: 'com_content', view: 'article', id: '42' },
         },
       },
     };
     const api = {
       request: vi.fn(async () => ({ status: 200, headers: {}, data: current })),
-      get: vi.fn(async () => ({ status: 200, headers: {}, data: current })),
+      get: vi.fn(async (_config, path: string) => ({
+        status: 200,
+        headers: {},
+        data: path === 'v1/menus/site/items' ? { data: [current.data] } : current,
+      })),
     } as unknown as JoomlaApiClient;
     const service = new JoomlaWriteService(configuration, new SiteRegistry(configuration), api);
     await grant(service, 'local-stdio', ['structure.write']);

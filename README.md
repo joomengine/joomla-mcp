@@ -257,6 +257,7 @@ Do not enable destructive or privileged toolsets until their live and recovery g
 - [Single-company, single-site deployment](docs/SINGLE_SITE.md)
 - [ChatGPT, Codex, Claude, Gemini, and Grok connections](docs/CLIENTS.md)
 - [Generated Joomla API action reference](docs/API_ACTIONS.md)
+- [Menu component binding and partial-write recovery](docs/MENU_COMPONENT_BINDING.md)
 - [Action coverage and release status](docs/COVERAGE.md)
 - [Deployment, upgrades, and rollback](docs/DEPLOYMENT.md)
 - [Fixture setup and live verification](docs/FIXTURES.md)

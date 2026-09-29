@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import type { Toolset } from '../config/schema.js';
+import type { ResolvedCustomField } from '../application/custom-fields.js';
 
 export interface PlannedOperation {
   readonly site: string;
@@ -21,6 +22,8 @@ export interface PlannedOperation {
   readonly preflight?: Readonly<Record<string, unknown>>;
   /** Principal-bound operator grant revalidated and, when applicable, consumed immediately before apply. */
   readonly permissionGrantId?: string;
+  /** Site-resolved names and types accepted at plan time, included in the fingerprint. */
+  readonly customFields?: readonly ResolvedCustomField[];
 }
 
 export interface ConfirmationPlan {
@@ -34,6 +37,7 @@ export interface ConfirmationPlan {
     readonly idempotencyKey: string;
     readonly fingerprint: string;
     readonly preflight?: Readonly<Record<string, unknown>>;
+    readonly customFields?: readonly ResolvedCustomField[];
   };
 }
 
@@ -68,6 +72,9 @@ export class ConfirmationService {
   }
 
   public create(operation: PlannedOperation, principal = 'local-stdio'): ConfirmationPlan {
+    // Caller-owned nested data must not change after approval or leak through
+    // public metadata. Fingerprint and apply use this detached immutable snapshot.
+    operation = freezeSnapshot(structuredClone(operation));
     this.sweep();
 
     if (this.plans.size >= 1_000) {
@@ -102,6 +109,7 @@ export class ConfirmationService {
         idempotencyKey: operation.idempotencyKey,
         fingerprint,
         ...(operation.preflight === undefined ? {} : { preflight: operation.preflight }),
+        ...(operation.customFields === undefined ? {} : { customFields: operation.customFields }),
       },
     };
   }
@@ -166,6 +174,14 @@ export class ConfirmationService {
       }
     }
   }
+}
+
+function freezeSnapshot<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    Object.values(value).forEach((entry) => freezeSnapshot(entry));
+    Object.freeze(value);
+  }
+  return value;
 }
 
 export class SiteWriteLock {

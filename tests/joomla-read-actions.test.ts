@@ -39,7 +39,10 @@ describe('semantic Joomla read actions', () => {
   });
 
   it('reports executable transports and keeps a source-only blocked endpoint out of enabled search', async () => {
-    const service = new JoomlaService(new SiteRegistry(configuration));
+    const api = {
+      get: vi.fn(async () => ({ status: 200, headers: {}, data: { data: [] } })),
+    } as unknown as JoomlaApiClient;
+    const service = new JoomlaService(new SiteRegistry(configuration), api);
 
     expect(await service.describeAction('content.articles.create')).toMatchObject({
       availability: { executable: true, transports: ['api'], blockedReason: null },

@@ -7,9 +7,8 @@ import { getJoomlaReadAction, getJoomlaWriteAction } from '../catalog/action-cat
 import { getCompanionReadAction, getCompanionWriteAction } from '../catalog/companion-actions.js';
 import { getJoomlaCliCommandTarget } from '../catalog/cli-command-targets.js';
 import type { Configuration } from '../config/schema.js';
-import { articleTextDescription } from '../contracts/article-text.js';
 import { JoomlaService } from '../application/joomla-service.js';
-import { JoomlaWriteService } from '../application/joomla-write-service.js';
+import { ArticleCreateSchema, ArticleUpdateSchema, JoomlaWriteService } from '../application/joomla-write-service.js';
 import { SiteRegistry } from '../application/site-registry.js';
 import { JsonLineAuditSink } from '../audit/audit-sink.js';
 import type { AuditSink } from '../audit/audit-sink.js';
@@ -165,7 +164,8 @@ export function createServer(
       const apiAction = getJoomlaReadAction(action) ?? getJoomlaWriteAction(action);
       const companionAction = getCompanionReadAction(action) ?? getCompanionWriteAction(action);
       requireRemoteAccess(configuration, extra.authInfo, site, apiAction?.toolset ?? companionAction?.toolset ?? 'discovery');
-      return result(await service.describeAction(action, site));
+      return result(await service.describeAction(action, site,
+        (resolvedSite, toolset) => requireRemoteAccess(configuration, extra.authInfo, resolvedSite, toolset)));
     },
   );
 
@@ -295,7 +295,8 @@ export function createServer(
       const action = getJoomlaWriteAction(input.action);
       const companionAction = getCompanionWriteAction(input.action);
       requireRemoteAccess(configuration, extra.authInfo, input.site, action?.toolset ?? companionAction?.toolset ?? 'discovery');
-      return result(await writes.planAction(input, approvalPrincipal(extra.authInfo, localPrincipal)));
+      return result(await writes.planAction(input, approvalPrincipal(extra.authInfo, localPrincipal),
+        (resolvedSite, toolset) => requireRemoteAccess(configuration, extra.authInfo, resolvedSite, toolset)));
     },
   );
 
@@ -486,22 +487,7 @@ export function createServer(
       inputSchema: {
         site: siteSelector,
         idempotencyKey: z.uuid(),
-        data: z.object({
-          title: z.string().trim().min(1).max(255),
-          catid: z.int().positive(),
-          alias: z.string().trim().max(400).optional(),
-          articletext: z.string().max(5_000_000).optional().describe(articleTextDescription),
-          introtext: z.string().max(2_000_000).optional(),
-          fulltext: z.string().max(3_000_000).optional(),
-          state: z.int().min(-2).max(1).optional(),
-          access: z.int().positive().optional(),
-          featured: z.union([z.boolean(), z.int().min(0).max(1)]).optional(),
-          language: z.string().max(50).optional(),
-          metadesc: z.string().max(1_000).optional(),
-          metakey: z.string().max(1_000).optional(),
-          publish_up: z.iso.datetime({ local: true }).nullable().optional(),
-          publish_down: z.iso.datetime({ local: true }).nullable().optional(),
-        }),
+        data: ArticleCreateSchema,
       },
       annotations: write(false),
     },
@@ -510,6 +496,7 @@ export function createServer(
       return result(await writes.planArticle(
         { site, operation: 'create', idempotencyKey, data },
         approvalPrincipal(extra.authInfo, localPrincipal),
+        (resolvedSite, toolset) => requireRemoteAccess(configuration, extra.authInfo, resolvedSite, toolset),
       ));
     },
   );
@@ -524,24 +511,7 @@ export function createServer(
         id: z.int().positive(),
         idempotencyKey: z.uuid(),
         etag: z.string().max(512).optional(),
-        data: z
-          .object({
-            title: z.string().trim().min(1).max(255).optional(),
-            catid: z.int().positive().optional(),
-            alias: z.string().trim().max(400).optional(),
-            articletext: z.string().max(5_000_000).optional().describe(articleTextDescription),
-            introtext: z.string().max(2_000_000).optional(),
-            fulltext: z.string().max(3_000_000).optional(),
-            state: z.int().min(-2).max(1).optional(),
-            access: z.int().positive().optional(),
-            featured: z.union([z.boolean(), z.int().min(0).max(1)]).optional(),
-            language: z.string().max(50).optional(),
-            metadesc: z.string().max(1_000).optional(),
-            metakey: z.string().max(1_000).optional(),
-            publish_up: z.iso.datetime({ local: true }).nullable().optional(),
-            publish_down: z.iso.datetime({ local: true }).nullable().optional(),
-          })
-          .refine((value) => Object.keys(value).length > 0),
+        data: ArticleUpdateSchema,
       },
       annotations: write(false),
     },
@@ -550,6 +520,7 @@ export function createServer(
       return result(await writes.planArticle(
         { site, operation: 'update', id, idempotencyKey, etag, data },
         approvalPrincipal(extra.authInfo, localPrincipal),
+        (resolvedSite, toolset) => requireRemoteAccess(configuration, extra.authInfo, resolvedSite, toolset),
       ));
     },
   );
@@ -572,6 +543,7 @@ export function createServer(
       return result(await writes.planArticle(
         { site, operation: 'delete', id, idempotencyKey, etag },
         approvalPrincipal(extra.authInfo, localPrincipal),
+        (resolvedSite, toolset) => requireRemoteAccess(configuration, extra.authInfo, resolvedSite, toolset),
       ));
     },
   );

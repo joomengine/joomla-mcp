@@ -17,7 +17,7 @@ final class SystemInfoAction implements ActionInterface
             'Return non-secret Joomla and PHP runtime versions.',
             'read',
             [],
-            ['type' => 'object', 'properties' => [], 'additionalProperties' => false],
+            ['type' => 'object', 'properties' => (object) [], 'additionalProperties' => false],
             [
                 'type' => 'object',
                 'required' => ['joomlaVersion', 'phpVersion'],

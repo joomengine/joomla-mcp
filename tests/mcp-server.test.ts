@@ -84,6 +84,11 @@ describe('MCP server', () => {
         destructiveHint: true,
       });
       expect(JSON.stringify(tools)).not.toContain('downstream-secret');
+      for (const name of ['joomla_action_read', 'joomla_companion_action_read', 'joomla_action_write_plan']) {
+        const input = tools.tools.find((tool) => tool.name === name)?.inputSchema.properties?.['input'];
+        expect(input).toMatchObject({ type: 'object', default: {} });
+        expect(Array.isArray((input as { default?: unknown }).default)).toBe(false);
+      }
     } finally {
       await client.close();
       await server.close();

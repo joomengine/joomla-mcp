@@ -9,6 +9,7 @@ use VDM\Plugin\Console\JoomlaMcp\Domain\ActionDescriptor;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 use VDM\Plugin\Console\JoomlaMcp\Domain\Input;
 use VDM\Plugin\Console\JoomlaMcp\Joomla\JoomlaModelProvider;
+use VDM\Plugin\Console\JoomlaMcp\Joomla\ModelListPage;
 
 final readonly class ListArticlesAction implements ActionInterface
 {
@@ -71,7 +72,8 @@ final readonly class ListArticlesAction implements ActionInterface
             $model->setState('filter.search', $search);
         }
 
-        $rawItems = $model->getItems();
+        $page = ModelListPage::read($model, $offset, $limit);
+        $rawItems = $page['items'];
 
         if (!is_array($rawItems)) {
             throw new ActionException('MODEL_RESULT_INVALID', 'The Joomla Articles model returned an invalid result.');
@@ -84,15 +86,13 @@ final readonly class ListArticlesAction implements ActionInterface
                 $items[] = $this->normalise($item);
             }
         }
-        $total = method_exists($model, 'getTotal') ? (int) $model->getTotal() : count($items);
-
         return [
             'items' => $items,
             'page' => [
                 'offset' => $offset,
                 'limit' => $limit,
                 'count' => count($items),
-                'total' => $total,
+                'total' => $page['total'],
             ],
         ];
     }

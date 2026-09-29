@@ -10,6 +10,7 @@ use VDM\Plugin\Console\JoomlaMcp\Contract\ModelProviderInterface;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionDescriptor;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 use VDM\Plugin\Console\JoomlaMcp\Domain\Input;
+use VDM\Plugin\Console\JoomlaMcp\Joomla\ModelListPage;
 
 final readonly class FixedModelListAction implements ActionInterface
 {
@@ -69,8 +70,16 @@ final readonly class FixedModelListAction implements ActionInterface
         $model->setState('list.limit', $limit);
         $model->setState('filter.search', $search);
 
+        if ($this->component === 'com_installer' && $this->modelName === 'Updatesites') {
+            $model->setState('list.ordering', 'update_site_id');
+            $model->setState('list.direction', 'ASC');
+        }
+
         try {
-            $rawItems = $model->{$this->getter}();
+            $page = ModelListPage::read($model, $offset, $limit, $this->getter);
+            $rawItems = $page['items'];
+        } catch (ActionException $exception) {
+            throw $exception;
         } catch (Throwable) {
             throw new ActionException('MODEL_OPERATION_FAILED', sprintf('Joomla could not execute "%s".', $this->name));
         }
@@ -97,15 +106,9 @@ final readonly class FixedModelListAction implements ActionInterface
             $items[] = $normalised;
         }
 
-        try {
-            $total = method_exists($model, 'getTotal') ? (int) $model->getTotal() : count($items);
-        } catch (Throwable) {
-            $total = count($items);
-        }
-
         return [
             'items' => $items,
-            'page' => ['offset' => $offset, 'limit' => $limit, 'count' => count($items), 'total' => max(0, $total)],
+            'page' => ['offset' => $offset, 'limit' => $limit, 'count' => count($items), 'total' => $page['total']],
         ];
     }
 }

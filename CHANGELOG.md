@@ -7,6 +7,12 @@ follow Semantic Versioning.
 
 ### Fixed
 
+- Preserve object-valued native companion inputs and schema mappings, reject
+  arrays/null/scalars where objects are required, and retain nested empty values.
+  Keep exact zero-based native list pagination at partial/end boundaries and map
+  content-language `id` ordering to Joomla's real `lang_id` field
+  ([#44](https://github.com/joomengine/joomla-mcp/issues/44),
+  [PHP PR #16](https://github.com/joomengine/mcp_component/pull/16)).
 - Supply Joomla's empty-string `default_value` when a `fields.*.create` call
   omits it, through both API and companion transports. Preserve caller-supplied
   defaults and leave partial updates unchanged

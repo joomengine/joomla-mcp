@@ -10,6 +10,7 @@ use VDM\Plugin\Console\JoomlaMcp\Contract\ModelProviderInterface;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionDescriptor;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 use VDM\Plugin\Console\JoomlaMcp\Domain\Input;
+use VDM\Plugin\Console\JoomlaMcp\Joomla\ModelListPage;
 
 final readonly class ListExtensionsAction implements ActionInterface
 {
@@ -71,7 +72,10 @@ final readonly class ListExtensionsAction implements ActionInterface
         $model->setState('list.limit', $limit);
         $model->setState('filter.search', $search);
         $model->setState('filter.type', $type);
-        $rawItems = $model->getItems();
+        $model->setState('list.ordering', 'extension_id');
+        $model->setState('list.direction', 'ASC');
+        $page = ModelListPage::read($model, $offset, $limit);
+        $rawItems = $page['items'];
 
         if (!is_array($rawItems)) {
             throw new ActionException('MODEL_RESULT_INVALID', 'The Joomla Installer Manage model returned an invalid result.');
@@ -100,11 +104,9 @@ final readonly class ListExtensionsAction implements ActionInterface
             ];
         }
 
-        $total = method_exists($model, 'getTotal') ? (int) $model->getTotal() : count($items);
-
         return [
             'items' => $items,
-            'page' => ['offset' => $offset, 'limit' => $limit, 'count' => count($items), 'total' => $total],
+            'page' => ['offset' => $offset, 'limit' => $limit, 'count' => count($items), 'total' => $page['total']],
         ];
     }
 

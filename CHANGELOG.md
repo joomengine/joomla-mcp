@@ -7,6 +7,11 @@ follow Semantic Versioning.
 
 ### Fixed
 
+- Resolve site-specific published custom fields for API article, content-category,
+  contact and user create/update plans, including the typed article tools,
+  while rejecting unrecognized keys and retaining approved field snapshots
+  ([#38](https://github.com/joomengine/joomla-mcp/issues/38)).
+
 - Normalize combined article text to Joomla's native `introtext` and `fulltext`
   before planning API or companion creates and updates, fixing silently unchanged
   article bodies on Joomla 6 PATCH requests ([#31](https://github.com/joomengine/joomla-mcp/issues/31)).

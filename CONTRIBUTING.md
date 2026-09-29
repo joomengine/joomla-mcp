@@ -18,6 +18,16 @@ architecture.
 Joomla performs domain validation and persistence. Adapter code must not clone
 Joomla business logic or bypass model events and permission checks.
 
+## TypeScript and PHP parity
+
+Every improvement to this implementation must be assessed and implemented in
+[`joomengine/mcp_component`](https://github.com/joomengine/mcp_component) in the
+same change cycle. Open linked PRs in both repositories, reference the originating
+issue, and cover equivalent behavior and authorization boundaries with tests.
+Record any transport-specific limitation explicitly; a catalogue entry alone
+does not establish executable parity. Review both PRs before considering the
+cross-implementation objective complete.
+
 ## Local checks
 
 Requirements are Node.js 22.12 or newer and PHP 8.3 or newer with the `zip`

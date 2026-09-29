@@ -42,6 +42,10 @@ For article creation and updates, see [Writing article text](docs/ARTICLE_TEXT.m
 MCP converts `articletext` into Joomla's native `introtext` and `fulltext` fields,
 including Read More splitting and clearing old full text when replacing the body.
 
+For site-specific custom fields, see [Writing custom field values](docs/CUSTOM_FIELDS.md).
+API write plans resolve published fields on the selected site and retain the
+normal permission and confirmation flow.
+
 ## Requirements
 
 - Node.js 22.12 or newer.

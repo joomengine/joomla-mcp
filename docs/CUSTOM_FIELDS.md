@@ -57,6 +57,11 @@ Prototype keys and core-field collisions are rejected, and the normal JSON/body
 limits remain enforced. Each plan binds resolved field metadata and normalized
 values so a later field-list change cannot introduce extra approved keys.
 
+Purely numeric field names such as `0` or `123` are excluded from discovery and
+rejected in writes because PHP's associative JSON decoding cannot safely retain
+their object-key shape. Rename these fields to include a letter, hyphen or
+underscore. Numeric-leading names such as `2026-reference` remain supported.
+
 | Resource | Joomla field context | API body sent |
 |---|---|---|
 | Articles | `com_content.article` | Custom field names at the top level |

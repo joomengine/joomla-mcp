@@ -54,6 +54,7 @@ export function customFieldInput(actionId: string, value: unknown): {
       throw new Error('com_fields must be a non-empty object mapping published field names to values.');
     }
     for (const [name, fieldValue] of Object.entries(alias)) {
+      assertNonNumericName(name);
       if (!safeName(name, core)) throw new Error(`Unsafe or reserved custom field name: ${name}.`);
       if (Object.hasOwn(data, name)) throw new Error(`Custom field ${name} is supplied both at the top level and in com_fields.`);
       data[name] = fieldValue;
@@ -62,6 +63,7 @@ export function customFieldInput(actionId: string, value: unknown): {
   }
   const names = Object.keys(data).filter((name) => !core.has(name)).sort();
   for (const name of names) {
+    assertNonNumericName(name);
     if (!safeName(name, core)) throw new Error(`Unsafe or reserved custom field name: ${name}.`);
     if (data[name] === null) {
       throw new Error(`Custom field ${name} cannot be null; use the field's supported empty string or array to clear it.`);
@@ -155,7 +157,13 @@ export function encodeCustomFieldBody(
 }
 
 function safeName(name: string, core: ReadonlySet<string>): boolean {
-  return /^[\p{L}\p{N}\p{M}_-]{1,255}$/u.test(name) && !reserved.has(name) && !core.has(name);
+  return /^[\p{L}\p{N}\p{M}_-]{1,255}$/u.test(name) && !/^[0-9]+$/.test(name) && !reserved.has(name) && !core.has(name);
+}
+
+function assertNonNumericName(name: string): void {
+  if (/^[0-9]+$/.test(name)) {
+    throw new Error(`Purely numeric custom field names are not supported: ${name}. Rename the field to include a letter, hyphen or underscore.`);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

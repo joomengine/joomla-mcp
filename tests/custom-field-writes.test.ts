@@ -146,6 +146,25 @@ describe.each(resources)('$action custom field writes', (resource) => {
 });
 
 describe('custom field previews and typed article plans', () => {
+  it.each(['0', '123', '007'])('rejects purely numeric field name %s in both input forms before discovery', async (name) => {
+    const { writes, api } = harness({ fields: [field(name)] });
+    await expect(preview(writes, { [name]: 'Value' })).rejects.toThrow('Purely numeric custom field names are not supported');
+    await expect(preview(writes, { com_fields: { [name]: 'Value' } })).rejects.toThrow('Purely numeric custom field names are not supported');
+    expect(api.get).not.toHaveBeenCalled();
+    expect(api.request).not.toHaveBeenCalled();
+  });
+
+  it('excludes purely numeric names from discovery while supporting numeric-leading names', async () => {
+    const name = '2026-reference';
+    const { writes, service, api } = harness({ fields: [field('0'), field('123'), field(name)] });
+    const description = await service.describeAction('content.articles.update');
+    expect(description['customFields']).toMatchObject({ fields: [{ name, type: 'text', context: 'com_content.article' }] });
+    await grant(writes);
+    const planned = await plan(writes, 'content.articles.update', { [name]: 'Reference' });
+    await writes.apply(planned.confirmationToken);
+    expect(api.request.mock.calls[0]?.[1].body).toEqual({ [name]: 'Reference' });
+  });
+
   it('accepts published Unicode field names from sites using Unicode slugs', async () => {
     const name = 'équipe-团队';
     const { writes, api } = harness({ fields: [field(name)] });

@@ -226,6 +226,8 @@ describe('release recovery state', () => {
     expectedNpmIntegrity: validNpmIntegrity,
     npmChannelVersion: stableVersion,
     ociDigest: validOciDigest,
+    ociVersionDigest: validOciDigest,
+    ociChannelDigest: validOciDigest,
     expectedOciDigest: validOciDigest,
   };
 
@@ -235,6 +237,12 @@ describe('release recovery state', () => {
     expect(resolveReleaseState({ ...complete, npmIntegrity: '' })).toBe('partial');
     expect(resolveReleaseState({ ...complete, npmChannelVersion: '1.2.2' })).toBe('partial');
     expect(resolveReleaseState({ ...complete, ociDigest: '' })).toBe('partial');
+    expect(resolveReleaseState({ ...complete, ociVersionDigest: '' })).toBe('partial');
+    expect(resolveReleaseState({ ...complete, ociChannelDigest: '' })).toBe('partial');
+    expect(resolveReleaseState({
+      ...complete,
+      ociChannelDigest: `sha256:${'b'.repeat(64)}`,
+    })).toBe('partial');
   });
 
   it('recovers tag-only and draft progress from the immutable source anchor', () => {
@@ -260,6 +268,18 @@ describe('release recovery state', () => {
       currentVersion: stableVersion,
       ociDigest: validOciDigest,
     })).toThrow('without an immutable source tag');
+    expect(() => resolveReleaseState({
+      currentVersion: stableVersion,
+      ociVersionDigest: validOciDigest,
+    })).toThrow('without an immutable source tag');
+    expect(resolveReleaseState({
+      currentVersion: stableVersion,
+      ociChannelDigest: validOciDigest,
+    })).toBe('unreleased');
+    expect(() => resolveReleaseState({
+      ...complete,
+      ociVersionDigest: 'invalid',
+    })).toThrow('canonical OCI SHA-256 digest');
     expect(() => resolveReleaseState({ ...complete, assetsValid: false }))
       .toThrow('do not satisfy');
     expect(() => resolveReleaseState({ ...complete, githubPrerelease: true }))
@@ -388,6 +408,14 @@ describe('release workflow contract', () => {
     );
     expect(workflow.indexOf('Verify commit-addressed image provenance'))
       .toBeLessThan(workflow.indexOf('Publish or verify the versioned image coordinate'));
+    const dockerChannelStepStart = workflow.indexOf(
+      '- name: Promote and verify the Docker release channel',
+    );
+    expect(dockerChannelStepStart).toBeGreaterThan(npmPublishStepStart);
+    expect(dockerChannelStepStart).toBeLessThan(githubPublishStepStart);
+    const orchestrator = readFileSync('.github/workflows/release.yml', 'utf8');
+    expect(orchestrator).toContain('RELEASE_OCI_VERSION_DIGEST="${oci_version_digest}"');
+    expect(orchestrator).toContain('RELEASE_OCI_CHANNEL_DIGEST="${oci_channel_digest}"');
   });
 });
 

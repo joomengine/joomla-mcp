@@ -15,6 +15,8 @@ export function resolveReleaseState({
   expectedNpmIntegrity = '',
   npmChannelVersion = '',
   ociDigest = '',
+  ociVersionDigest = '',
+  ociChannelDigest = '',
   expectedOciDigest = '',
 }) {
   const parsedCurrent = parseVersion(currentVersion);
@@ -25,6 +27,8 @@ export function resolveReleaseState({
   const normalizedExpectedIntegrity = String(expectedNpmIntegrity).trim();
   const normalizedChannel = String(npmChannelVersion).trim();
   const normalizedDigest = String(ociDigest).trim();
+  const normalizedVersionDigest = String(ociVersionDigest).trim();
+  const normalizedChannelDigest = String(ociChannelDigest).trim();
   const normalizedExpectedDigest = String(expectedOciDigest).trim();
 
   if (!RELEASE_STATUSES.has(normalizedStatus)) {
@@ -41,7 +45,7 @@ export function resolveReleaseState({
   }
   if (
     normalizedTagSha === ''
-    && (normalizedIntegrity !== '' || normalizedDigest !== '')
+    && (normalizedIntegrity !== '' || normalizedDigest !== '' || normalizedVersionDigest !== '')
   ) {
     throw new Error(
       'External npm or OCI coordinates exist without an immutable source tag; '
@@ -57,6 +61,8 @@ export function resolveReleaseState({
     expectedNpmIntegrity: normalizedExpectedIntegrity,
     npmChannelVersion: normalizedChannel,
     ociDigest: normalizedDigest,
+    ociVersionDigest: normalizedVersionDigest,
+    ociChannelDigest: normalizedChannelDigest,
     expectedOciDigest: normalizedExpectedDigest,
   });
 
@@ -67,7 +73,9 @@ export function resolveReleaseState({
     && normalizedIntegrity === normalizedExpectedIntegrity
     && normalizedChannel === current
     && normalizedDigest !== ''
-    && normalizedDigest === normalizedExpectedDigest;
+    && normalizedDigest === normalizedExpectedDigest
+    && normalizedVersionDigest === normalizedExpectedDigest
+    && normalizedChannelDigest === normalizedExpectedDigest;
   if (released) {
     return 'released';
   }
@@ -87,6 +95,8 @@ function run() {
     expectedNpmIntegrity: process.env['RELEASE_EXPECTED_NPM_INTEGRITY'] ?? '',
     npmChannelVersion: process.env['RELEASE_NPM_CHANNEL_VERSION'] ?? '',
     ociDigest: process.env['RELEASE_OCI_DIGEST'] ?? '',
+    ociVersionDigest: process.env['RELEASE_OCI_VERSION_DIGEST'] ?? '',
+    ociChannelDigest: process.env['RELEASE_OCI_CHANNEL_DIGEST'] ?? '',
     expectedOciDigest: process.env['RELEASE_EXPECTED_OCI_DIGEST'] ?? '',
   });
   const output = process.env['GITHUB_OUTPUT'];
@@ -102,6 +112,8 @@ function validateCoordinates({
   expectedNpmIntegrity,
   npmChannelVersion,
   ociDigest,
+  ociVersionDigest,
+  ociChannelDigest,
   expectedOciDigest,
 }) {
   if (tagSha !== '' && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(tagSha)) {
@@ -120,6 +132,8 @@ function validateCoordinates({
   }
   for (const [label, value] of [
     ['Observed OCI digest', ociDigest],
+    ['Observed OCI version alias digest', ociVersionDigest],
+    ['Observed OCI channel digest', ociChannelDigest],
     ['Expected OCI digest', expectedOciDigest],
   ]) {
     if (value !== '' && !/^sha256:[0-9a-f]{64}$/.test(value)) {

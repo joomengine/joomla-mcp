@@ -143,6 +143,16 @@ jobs:
           else
             oci_digest=''
           fi
+          oci_version_digest=''
+          oci_channel_digest=''
+          if report="$(docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}:${current}" 2>/dev/null)"; then
+            oci_version_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+            test -n "${oci_version_digest}"
+          fi
+          if report="$(docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}:${npm_channel}" 2>/dev/null)"; then
+            oci_channel_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+            test -n "${oci_channel_digest}"
+          fi
           release_json="$(
             gh release view "${current_tag}" \
               --repo "${GITHUB_REPOSITORY}" \
@@ -228,6 +238,8 @@ jobs:
             RELEASE_EXPECTED_NPM_INTEGRITY="${expected_npm_integrity}" \
             RELEASE_NPM_CHANNEL_VERSION="${npm_channel_version}" \
             RELEASE_OCI_DIGEST="${oci_digest}" \
+            RELEASE_OCI_VERSION_DIGEST="${oci_version_digest}" \
+            RELEASE_OCI_CHANNEL_DIGEST="${oci_channel_digest}" \
             RELEASE_EXPECTED_OCI_DIGEST="${expected_oci_digest}" \
             node scripts/release/release-state.mjs
 
@@ -263,13 +275,14 @@ jobs:
             npm view "@joomengine/joomla-mcp@${RELEASE_VERSION}" dist.integrity \
               --registry=https://registry.npmjs.org 2>/dev/null || true
           )"
-          image="ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_TAG}"
-          if image_report="$(docker buildx imagetools inspect "${image}" 2>/dev/null)"; then
-            image_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${image_report}")"
-            test -n "${image_digest}"
-          else
-            image_digest=''
-          fi
+          image_digest=''
+          for tag in "${RELEASE_TAG}" "${RELEASE_VERSION}"; do
+            image="ghcr.io/${GITHUB_REPOSITORY}:${tag}"
+            if image_report="$(docker buildx imagetools inspect "${image}" 2>/dev/null)"; then
+              image_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${image_report}")"
+              test -n "${image_digest}"
+            fi
+          done
           if [[ "${RELEASE_VERSION}" != "${CURRENT_VERSION}" ]]; then
             if [[ -n "${npm_integrity}" || -n "${image_digest}" ]]; then
               echo "Target ${RELEASE_VERSION} already exists in npm or GHCR without a matching source tag." >&2

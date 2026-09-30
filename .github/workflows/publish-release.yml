@@ -709,6 +709,7 @@ jobs:
         name: Publish or verify the versioned image coordinate
         env:
           IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
           SOURCE_DIGEST: ${{ steps.image-source.outputs.digest }}
           RELEASE_PUBLIC: ${{ needs.verify.outputs.release_public }}
@@ -720,20 +721,22 @@ jobs:
             expected_digest="${SOURCE_DIGEST}"
           fi
 
-          target="${IMAGE_REPOSITORY}:${RELEASE_TAG}"
-          if report="$(docker buildx imagetools inspect "${target}" 2>/dev/null)"; then
-            target_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
-            test "${target_digest}" = "${expected_digest}"
-          else
-            docker buildx imagetools create \
-              --prefer-index=false \
-              --tag "${target}" \
-              "${IMAGE_REPOSITORY}@${SOURCE_DIGEST}"
-          fi
-          report="$(docker buildx imagetools inspect "${target}")"
-          published_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
-          test "${published_digest}" = "${expected_digest}"
-          echo "digest=${published_digest}" >> "${GITHUB_OUTPUT}"
+          for tag in "${RELEASE_TAG}" "${RELEASE_VERSION}"; do
+            target="${IMAGE_REPOSITORY}:${tag}"
+            if report="$(docker buildx imagetools inspect "${target}" 2>/dev/null)"; then
+              target_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+              test "${target_digest}" = "${expected_digest}"
+            else
+              docker buildx imagetools create \
+                --prefer-index=false \
+                --tag "${target}" \
+                "${IMAGE_REPOSITORY}@${SOURCE_DIGEST}"
+            fi
+            report="$(docker buildx imagetools inspect "${target}")"
+            published_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+            test "${published_digest}" = "${expected_digest}"
+          done
+          echo "digest=${expected_digest}" >> "${GITHUB_OUTPUT}"
       - name: Seal the final manifest and checksum contract
         if: needs.verify.outputs.release_public != 'true'
         env:
@@ -831,6 +834,44 @@ jobs:
             "${RELEASE_VERSION}" \
             eventual \
             >/dev/null
+      - name: Promote and verify the Docker release channel
+        env:
+          IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          SOURCE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          if [[ "${RELEASE_VERSION}" == *-* ]]; then
+            channel='next'
+          else
+            channel='latest'
+          fi
+          target="${IMAGE_REPOSITORY}:${channel}"
+          channel_digest=''
+          if report="$(docker buildx imagetools inspect "${target}" 2>/dev/null)"; then
+            channel_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+            [[ "${channel_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+            config="$(docker buildx imagetools inspect --format '{{json .Image}}' "${IMAGE_REPOSITORY}@${channel_digest}")"
+            channel_version="$(jq -er '.config.Labels["org.opencontainers.image.version"]' <<< "${config}")"
+            RELEASE_CHANNEL_VERSION="${channel_version}" \
+              node --input-type=module <<'NODE'
+          import { compareVersions } from './scripts/release/versioning.mjs';
+          if (compareVersions(process.env.RELEASE_VERSION, process.env.RELEASE_CHANNEL_VERSION) < 0) {
+            throw new Error(`Refusing to move the Docker channel backwards from ${process.env.RELEASE_CHANNEL_VERSION} to ${process.env.RELEASE_VERSION}.`);
+          }
+          NODE
+            if [[ "${channel_version}" == "${RELEASE_VERSION}" ]]; then
+              test "${channel_digest}" = "${SOURCE_DIGEST}"
+            fi
+          fi
+          if [[ "${channel_digest}" != "${SOURCE_DIGEST}" ]]; then
+            docker buildx imagetools create \
+              --prefer-index=false \
+              --tag "${target}" \
+              "${IMAGE_REPOSITORY}@${SOURCE_DIGEST}"
+          fi
+          report="$(docker buildx imagetools inspect "${target}")"
+          published_digest="$(awk '/^Digest:/ { print $2; exit }' <<< "${report}")"
+          test "${published_digest}" = "${SOURCE_DIGEST}"
       - name: Publish the verified GitHub draft last
         if: needs.verify.outputs.release_public != 'true'
         env:
@@ -860,6 +901,6 @@ jobs:
             echo
             echo "- GitHub: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
             echo "- npm: \`@joomengine/joomla-mcp@${RELEASE_VERSION}\` (\`${NPM_TAG}\`)"
-            echo "- OCI: \`ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_TAG}\`"
+            echo "- OCI: \`ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_VERSION}\` (also \`${RELEASE_TAG}\` and \`${NPM_TAG}\`)"
             echo "- Source: \`${{ needs.verify.outputs.release_commit }}\`"
           } >> "${GITHUB_STEP_SUMMARY}"

@@ -35,3 +35,9 @@ This change does not add JCB capabilities to the TypeScript server.
 
 Run `php companion/tests/run.php` for the native companion contracts and
 `npm run validate` for the TypeScript, HTTP and packaging checks.
+
+Live extension-state acceptance selects a disabled, unprotected optional plugin
+from explicit plugin pages instead of the first unfiltered page. The selected
+identity and original state are retained for restoration; critical plugin
+folders and ambiguous/protected flags are excluded. Selector regressions cover
+later pages, bounded searches, exclusions, restoration identity and read failures.

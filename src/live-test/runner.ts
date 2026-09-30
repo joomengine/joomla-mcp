@@ -2119,6 +2119,27 @@ async function runSpecialProfile(
       );
       continue;
     }
+    if (scenario.id === 'extensions.state.set') {
+      const selectedFixture = await record(session, path, scenario, 'select-state-fixture', {
+        action: 'extensions.list', input: { type: 'plugin', offset: 0, limit: 100 },
+      }, async () => {
+        const pages: unknown[] = [];
+        const fixture = await selectExtensionStateFixture(async (input) => {
+          const response = await callRead(session, siteId, 'extensions.list', input, path);
+          pages.push({ input, response });
+          return response;
+        });
+        if (fixture === undefined) {
+          throw new BlockedError(
+            'No disabled, unprotected, noncritical plugin was found in the bounded extensions.list fixture search.',
+            ['extensions.list'],
+          );
+        }
+        state.reads.set('live.extensions.state.fixture', fixture);
+        return { response: { fixture, pages } };
+      });
+      if (selectedFixture === undefined) continue;
+    }
     const input = await prepareScenarioInput(
       session,
       path,
@@ -2740,8 +2761,8 @@ function specialWriteInput(
   if (actionId === 'site.state.set') return { offline: true };
   if (actionId === 'sessions.data.gc') return { application: 'site' };
   if (actionId === 'extensions.state.set') {
-    const extension = toggleCandidate(state.reads.get('extensions.list'));
-    if (extension === undefined) return new BlockedError('extensions.list did not return a usable item.', ['extensions.list']);
+    const extension = firstEntity(state.reads.get('live.extensions.state.fixture'));
+    if (extension === undefined) return new BlockedError('extensions.list did not return a safe plugin fixture.', ['extensions.list']);
     const enabled = Number(extension.attributes['enabled'] ?? 1);
     return { id: numericId(extension.id), enabled: enabled !== 1 };
   }
@@ -2985,7 +3006,7 @@ async function executeSpecialWrite(
   if (scenario.id === 'extensions.state.set') {
     return restoreBooleanCompanionState(
       session, path, site, scenario.id, input, applied,
-      toggleCandidate(state.reads.get('extensions.list'))?.attributes['enabled'],
+      firstEntity(state.reads.get('live.extensions.state.fixture'))?.attributes['enabled'],
     );
   }
   if (scenario.id === 'extensions.update-sites.state.set') {
@@ -3156,6 +3177,33 @@ function toggleCandidate(value: unknown): LiveFixtureRecord | undefined {
     !/token|authentication|joomla.?mcp/iu.test(String(
       entity.attributes['element'] ?? entity.attributes['name'] ?? entity.label,
     )));
+}
+
+/** Select an optional plugin without depending on the unfiltered collection's first page. */
+export async function selectExtensionStateFixture(
+  readPage: (input: Readonly<Record<string, unknown>>) => Promise<unknown>,
+): Promise<LiveFixtureRecord | undefined> {
+  const limit = 100;
+  const criticalFolders = new Set(['authentication', 'api-authentication', 'behaviour', 'system', 'user', 'console', 'webservices', 'multifactorauth']);
+  const isDisabled = (value: unknown): boolean => value === false || value === 0 || value === '0';
+  for (let offset = 0; offset < 1_000; offset += limit) {
+    const rows = collectEntities(await readPage({ type: 'plugin', offset, limit }));
+    const candidate = rows.find((entity) => {
+      const attributes = entity.attributes;
+      const id = Number(entity.id);
+      return Number.isSafeInteger(id) && id > 0 &&
+        attributes['type'] === 'plugin' &&
+        isDisabled(attributes['enabled']) && isDisabled(attributes['protected']) &&
+        typeof attributes['folder'] === 'string' && attributes['folder'].length > 0 &&
+        !criticalFolders.has(attributes['folder']) &&
+        !/token|authentication|privacy|consent|(?:joomla|joomengine)[._ -]?mcp/iu.test(
+          `${String(attributes['element'] ?? '')} ${String(attributes['name'] ?? '')}`,
+        );
+    });
+    if (candidate !== undefined) return candidate;
+    if (rows.length < limit) return undefined;
+  }
+  return undefined;
 }
 
 function collectEntities(value: unknown): readonly LiveFixtureRecord[] {

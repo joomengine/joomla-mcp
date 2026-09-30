@@ -33,7 +33,7 @@ final readonly class DescriptionService
             'protocol' => RequestDecoder::PROTOCOL,
             'companion' => [
                 'name' => 'pkg_joomlamcp',
-                'version' => '0.7.0',
+                'version' => '0.8.0',
                 'joomla' => defined('JVERSION') ? JVERSION : null,
                 'php' => PHP_VERSION,
             ],

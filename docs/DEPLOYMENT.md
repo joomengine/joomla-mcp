@@ -40,11 +40,13 @@ are in [AI client connections](CLIENTS.md).
 
 ## Release artifacts and manual release
 
-The release workflow accepts either a pushed `vX.Y.Z` tag or a manual
-`workflow_dispatch` from `main`. For a manual release, enter SemVer without the
-`v` prefix. The version must already match `package.json` and both Joomla
-companion manifests. The workflow validates, builds, attests, and only then
-creates the tag and immutable GitHub release.
+Start **Actions → Release → Run workflow** on `main`. The release workflow
+synchronizes and validates the chosen version, anchors it with an immutable
+tag, and dispatches publication on `main` with the exact source commit.
+Publication checks out that commit and coordinates npm, OCI, and GitHub
+release artifacts. Pull requests, merges, and pushed tags do not trigger
+publication. See [Versioning and releases](RELEASING.md) for strategies,
+approval gates, and recovery.
 
 Each release contains:
 
@@ -53,12 +55,13 @@ Each release contains:
   configuration, operations, and client runbooks;
 - `pkg_joomlamcp-X.Y.Z.zip` — Joomla companion package;
 - `joomengine-mcp-for-joomla-vX.Y.Z.spdx.json` — source SBOM;
+- `release-manifest.json` — exact source, package, image, and asset identities;
 - `SHA256SUMS` — checksums for every downloadable asset;
 - an attested OCI image at
-  `ghcr.io/<repository-owner>/joomla-mcp:vX.Y.Z`.
+  `ghcr.io/joomengine/joomla-mcp:X.Y.Z` and `:vX.Y.Z`.
 
-The manual release input does not rewrite versions or source. Prepare and merge
-the version change before dispatching the workflow.
+After merging the 0.8.0 preparation, run Release with strategy `current` to
+publish that version. Strategy `auto` also selects it while unreleased.
 
 ## Stdio installation
 
@@ -77,10 +80,21 @@ process should run as a dedicated account when it can reach a production site.
 
 ## OCI and Docker Compose
 
-Release images are published to `ghcr.io/joomengine/joomla-mcp` by
-the tag workflow. Verify provenance and pin the selected image by digest, for
-example `ghcr.io/joomengine/joomla-mcp@sha256:<digest>`. Do not use
-`latest` for production.
+Release images are published to `ghcr.io/joomengine/joomla-mcp` with tags
+aligned to the npm version:
+
+| Tag | Meaning |
+|---|---|
+| `0.8.0` and `v0.8.0` | Immutable tags for the same 0.8.0 release digest |
+| `sha-<commit>` | Immutable image built from the exact release commit |
+| `latest` | Latest verified stable release |
+| `next` | Latest verified prerelease; does not change `latest` |
+
+The workflow promotes `latest` or `next` only after verifying the matching npm
+version's integrity and channel, and rejects channel version regressions.
+Verify provenance and pin production deployments by digest, for example
+`ghcr.io/joomengine/joomla-mcp@sha256:<digest>`. The moving channel tags are
+convenient for discovery; the rollout script requires an immutable digest.
 
 From the repository root:
 

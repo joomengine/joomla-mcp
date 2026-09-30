@@ -59,7 +59,7 @@ normal permission and confirmation flow.
 Install the public, versioned package:
 
 ```bash
-npm install @joomengine/joomla-mcp@^0.7.0
+npm install @joomengine/joomla-mcp@^0.8.0
 ```
 
 Create a transport-neutral application without starting a process or binding a
@@ -85,6 +85,18 @@ boundaries remain controlled by this package.
 See [library integration](docs/LIBRARY.md) for every public entry point,
 configuration and secret-manager integration, stdio/HTTP lifecycle, adapter
 contracts, isolation rules, executable examples, and compatibility policy.
+
+## Docker release images
+
+Docker and npm use the same release version. For the 0.8.0 stable release,
+`ghcr.io/joomengine/joomla-mcp:0.8.0`, `:v0.8.0`, and `:latest` resolve to
+the same image digest. Commit-addressed `:sha-<commit>` images remain available.
+Version tags are immutable; `latest` advances only after verified stable npm
+publication. Prereleases use `next` and never change `latest`.
+
+See [deployment](docs/DEPLOYMENT.md) for configuration and digest-pinned
+production rollout, and [releasing](docs/RELEASING.md) for publication and
+recovery.
 
 ## Install and validate
 

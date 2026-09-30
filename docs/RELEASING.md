@@ -8,7 +8,7 @@ source commit:
 | Node.js library and CLI | `@joomengine/joomla-mcp@<version>` |
 | Installable npm tarball | `joomengine-mcp-for-joomla-v<version>.tgz` |
 | Joomla companion | `pkg_joomlamcp-<version>.zip` |
-| OCI image | `ghcr.io/joomengine/joomla-mcp:v<version>` |
+| OCI image | `ghcr.io/joomengine/joomla-mcp:<version>` and `:v<version>` |
 | Self-hosted deployment bundle | `joomengine-mcp-for-joomla-deployment-v<version>.tar.gz` |
 | Source SBOM | `joomengine-mcp-for-joomla-v<version>.spdx.json` |
 | Machine-readable release contract | `release-manifest.json` |
@@ -19,9 +19,19 @@ package identity, Joomla manifests, companion-reported version, build filename,
 tests, fixture, examples, changelog, and versioned documentation are verified
 mirrors. `npm run version:check` fails on drift.
 
+Both immutable OCI version tags and `sha-<commit>` resolve to the same image
+digest. After the exact npm integrity and channel are verified, the stable
+Docker channel advances to `latest`; prereleases advance only `next`. Channel
+promotion rejects version regressions and never replaces a conflicting
+immutable version tag.
+
 ## Maintainer release
 
 Open **Actions → Release → Run workflow** on `main`.
+
+After merging the 0.8.0 preparation, select **strategy** `current` to publish
+0.8.0 (`auto` also selects 0.8.0 while it is unreleased). Opening or merging the
+pull request does not publish a release.
 
 For the normal path, leave **strategy** as `auto` and run the workflow:
 
@@ -71,11 +81,11 @@ the repository version or an immutable version tag.
 
 ## Release state machine
 
-The one-click path uses two globally serialized workflows. `release.yml`
-plans and anchors the source. It then dispatches `publish-release.yml` with
-the new tag as that workflow's Git ref. This separation is important:
-GitHub OIDC, npm provenance, and artifact attestations therefore name the
-actual release commit rather than the pre-bump dispatch commit.
+The one-click path uses two globally serialized workflows dispatched on
+`main`. `release.yml` plans and anchors the source, then dispatches
+`publish-release.yml` with the exact version and immutable release commit as
+inputs. Publication checks out that commit explicitly and verifies its tag;
+the workflow identity remains on `main` for npm trusted publishing.
 
 The workflows run these phases:
 
@@ -90,9 +100,9 @@ The workflows run these phases:
 4. **Anchor** — push a bumped main commit and annotated tag together with
    `git push --atomic`. If `main` advanced, neither ref is pushed. An
    unpublished current version only needs the tag.
-5. **Dispatch tag publication** — start `publish-release.yml` on the immutable
-   tag. The publication workflow independently verifies the source run,
-   maintainer, tag, commit, and synchronized version.
+5. **Dispatch publication** — start `publish-release.yml` on `main` with the
+   immutable release commit. The publication workflow independently verifies
+   the source run, maintainer, tag, commit, and synchronized version.
 6. **Build** — check out the tag commit explicitly and build the
    npm/deployment packages, Joomla companion, and SPDX SBOM with provenance
    rooted in that exact commit.
@@ -102,12 +112,13 @@ The workflows run these phases:
 8. **Approve publication** — require the protected `release` environment
    again immediately before any registry publication.
 9. **Seal** — publish or verify a commit-addressed OCI image, bind the
-   versioned OCI tag to that registry digest, and seal both the OCI digest and
-   expected npm SHA-512 integrity into the final release manifest and
-   checksums.
+   bare and v-prefixed version tags to that registry digest, and seal both the
+   OCI digest and expected npm SHA-512 integrity into the final release
+   manifest and checksums.
 10. **Publish** — upload and byte-verify the final draft assets, publish npm
    directly to SemVer-derived `latest` or `next`, verify the registry
-   integrity/channel, and make the GitHub release public last.
+   integrity/channel, promote and verify the matching Docker channel, and make
+   the GitHub release public last.
 
 Git, npm, GHCR, and GitHub Releases cannot participate in one cross-service
 transaction. The draft-first, integrity-checked, resumable workflow provides
@@ -225,10 +236,14 @@ moving a release tag or changing the released source:
 - a draft may be updated only for that tag and exact asset allowlist;
 - an existing npm version must have the same SHA-512 integrity;
 - an existing OCI version tag must have the same manifest digest;
+- both immutable OCI version aliases and the matching channel participate in
+  release-state checks; missing aliases make a release partial so `current`
+  or `auto` repairs them without incrementing the version;
 - a public GitHub release must contain the exact byte-for-byte asset set;
 - public-release recovery reuses those immutable assets and skips rebuilding
   timestamp-sensitive artifacts such as the SBOM;
-- the npm channel must point at the exact version before GitHub publication.
+- the npm and Docker channels must point at the exact version before GitHub
+  publication; recovering an older release cannot move either channel backward.
 
 Any identity, integrity, digest, prerelease-state, or asset-contract mismatch
 fails closed with the conflicting coordinate. Never delete and recreate a

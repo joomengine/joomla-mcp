@@ -13,6 +13,10 @@ follow Semantic Versioning.
   content-language `id` ordering to Joomla's real `lang_id` field
   ([#44](https://github.com/joomengine/joomla-mcp/issues/44),
   [PHP PR #16](https://github.com/joomengine/mcp_component/pull/16)).
+- Preserve stored empty and numeric-key JSON mappings in native item reads and
+  saved read-back, including article metadata and attributes that Joomla models
+  convert from Registry objects to arrays. Keep stored lists distinct and retain
+  strict write verification ([#44](https://github.com/joomengine/joomla-mcp/issues/44)).
 - Supply Joomla's empty-string `default_value` when a `fields.*.create` call
   omits it, through both API and companion transports. Preserve caller-supplied
   defaults and leave partial updates unchanged

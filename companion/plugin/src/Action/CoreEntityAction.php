@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace VDM\Plugin\Console\JoomlaMcp\Action;
 
+use JsonException;
 use JsonSerializable;
 use Joomla\CMS\Factory;
 use stdClass;
@@ -171,7 +172,7 @@ final readonly class CoreEntityAction implements ActionInterface
             throw new ActionException('NOT_FOUND', sprintf('%s %d was not found.', ucfirst($this->entity->label), $id));
         }
 
-        $record = $this->normalise($item);
+        $record = $this->normalise($item, $model, $id);
         $returnedId = $record[$this->entity->primaryKey] ?? $record['id'] ?? null;
 
         if ($returnedId !== null && (int) $returnedId !== $id) {
@@ -419,9 +420,10 @@ final readonly class CoreEntityAction implements ActionInterface
     }
 
     /** @param object|array<string, mixed> $item @return array<string, mixed> */
-    private function normalise(object|array $item): array
+    private function normalise(object|array $item, ?object $model = null, ?int $id = null): array
     {
         $source = is_object($item) ? get_object_vars($item) : $item;
+        $source = $this->storedJsonFields($source, $model, $id);
         $result = [];
 
         foreach ($this->entity->readFields as $field) {
@@ -433,6 +435,95 @@ final readonly class CoreEntityAction implements ActionInterface
         }
 
         return $result;
+    }
+
+    /**
+     * Restore stored JSON shapes after a native single-item model read.
+     *
+     * Joomla item models can convert Registry mappings to arrays before this
+     * adapter sees them. Only the already-readable, fixed Registry fields are
+     * restored from the selected native table, after matching item identity.
+     * List reads never load a table for each row.
+     *
+     * @param array<string, mixed> $source
+     * @return array<string, mixed>
+     */
+    private function storedJsonFields(array $source, ?object $model, ?int $id): array
+    {
+        $returnedId = $source[$this->entity->primaryKey] ?? $source['id'] ?? null;
+        $fields = array_intersect(
+            ['params', 'fieldparams', 'metadata', 'attribs', 'images', 'urls'],
+            $this->entity->readFields,
+            array_keys($source),
+        );
+
+        if ($model === null || $id === null
+            || (!is_int($returnedId) && !(is_string($returnedId) && ctype_digit($returnedId)))
+            || (int) $returnedId < 1 || (int) $returnedId !== $id
+            || $fields === [] || !method_exists($model, 'getTable')) {
+            return $source;
+        }
+
+        try {
+            $table = $model->getTable();
+
+            if (!is_object($table) || !method_exists($table, 'load') || $table->load($id) !== true) {
+                return $source;
+            }
+
+            foreach ($fields as $field) {
+                $raw = $table->{$field} ?? null;
+
+                if (!is_string($raw) || $raw === '' || strlen($raw) > 524_288) {
+                    continue;
+                }
+
+                try {
+                    $decoded = json_decode($raw, false, 64, JSON_THROW_ON_ERROR);
+                    $storedContent = json_decode($raw, true, 64, JSON_THROW_ON_ERROR);
+                    $modelContent = json_decode(
+                        json_encode($this->safeOutput($source[$field]), JSON_THROW_ON_ERROR),
+                        true,
+                        64,
+                        JSON_THROW_ON_ERROR,
+                    );
+                } catch (JsonException) {
+                    continue;
+                }
+
+                // Native models may redact or transform values. Recover only
+                // object/list shape when the bounded visible content matches.
+                if (($decoded instanceof stdClass || is_array($decoded))
+                    && $this->sameJsonContent($storedContent, $modelContent)) {
+                    $source[$field] = $decoded;
+                }
+            }
+        } catch (Throwable) {
+            // Keep the native evidence on failure. A write's strict read-back
+            // still reports uncertainty if that evidence disagrees with intent.
+        }
+
+        return $source;
+    }
+
+    /** Compare content strictly, ignoring only JSON container shape and key order. */
+    private function sameJsonContent(mixed $left, mixed $right): bool
+    {
+        if (!is_array($left) || !is_array($right)) {
+            return $left === $right;
+        }
+
+        if (count($left) !== count($right)) {
+            return false;
+        }
+
+        foreach ($left as $key => $value) {
+            if (!array_key_exists($key, $right) || !$this->sameJsonContent($value, $right[$key])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function safeOutput(mixed $value, int $depth = 0): mixed
@@ -453,7 +544,9 @@ final readonly class CoreEntityAction implements ActionInterface
             }
         }
 
-        if (is_object($value)) {
+        $object = is_object($value);
+
+        if ($object) {
             $value = get_object_vars($value);
         }
 
@@ -471,7 +564,7 @@ final readonly class CoreEntityAction implements ActionInterface
             $result[$key] = $this->safeOutput($nested, $depth + 1);
         }
 
-        return $result;
+        return $object && array_is_list($result) ? (object) $result : $result;
     }
 
     /** @param array<string, mixed> $payload */
@@ -591,7 +684,7 @@ final readonly class CoreEntityAction implements ActionInterface
         try {
             $item = $model->getItem($id);
 
-            return is_object($item) || is_array($item) ? $this->normalise($item) : null;
+            return is_object($item) || is_array($item) ? $this->normalise($item, $model, $id) : null;
         } catch (Throwable) {
             return null;
         }

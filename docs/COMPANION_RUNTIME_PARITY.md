@@ -41,3 +41,11 @@ from explicit plugin pages instead of the first unfiltered page. The selected
 identity and original state are retained for restoration; critical plugin
 folders and ambiguous/protected flags are excluded. Selector regressions cover
 later pages, bounded searches, exclusions, restoration identity and read failures.
+
+The Node companion catalogue and input normalizer expose the native
+`extensions.list` type enum, including the empty unfiltered value. The selector's
+`type: "plugin"` request must pass the real normalizer before dispatch over stdio
+or HTTP. Unknown properties and unsupported type values still fail closed.
+This correction is specific to the Node adapter: both the bundled companion and
+the [PHP component action](https://github.com/joomengine/mcp_component/blob/main/admin/src/Native/Action/ListExtensionsAction.php)
+already expose and validate the same type filter.

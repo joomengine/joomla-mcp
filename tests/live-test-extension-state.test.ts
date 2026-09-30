@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { normalizeCompanionReadInput } from '../src/catalog/companion-actions.js';
 import { selectExtensionStateFixture } from '../src/live-test/runner.js';
 
 const safePlugin = Object.freeze({
@@ -11,7 +12,7 @@ describe('live extension state fixture selection', () => {
   it('requests a filtered plugin collection instead of depending on the unfiltered first page', async () => {
     const requests: Readonly<Record<string, unknown>>[] = [];
     const fixture = await selectExtensionStateFixture(async (input) => {
-      requests.push(input);
+      requests.push(normalizeCompanionReadInput('extensions.list', input));
       return { mutation: { protocol: 'joomla-mcp/1', id: 'correlation', data: { items: [safePlugin] } } };
     });
     expect(requests).toEqual([{ type: 'plugin', offset: 0, limit: 100 }]);
@@ -24,7 +25,7 @@ describe('live extension state fixture selection', () => {
       ...safePlugin, extensionId: index + 1, enabled: true,
     }));
     const fixture = await selectExtensionStateFixture(async (input) => {
-      requests.push(input);
+      requests.push(normalizeCompanionReadInput('extensions.list', input));
       return { items: input['offset'] === 0 ? unavailable : [safePlugin] };
     });
     expect(requests).toEqual([
@@ -61,7 +62,7 @@ describe('live extension state fixture selection', () => {
     expect(fixture?.attributes['enabled']).toBe('0');
     const unavailable = Array.from({ length: 100 }, (_, index) => ({ ...safePlugin, extensionId: index + 1, enabled: true }));
     expect(await selectExtensionStateFixture(async (input) => {
-      requests.push(input);
+      requests.push(normalizeCompanionReadInput('extensions.list', input));
       return { items: unavailable };
     })).toBeUndefined();
     expect(requests).toHaveLength(10);

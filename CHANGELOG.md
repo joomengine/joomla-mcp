@@ -7,6 +7,9 @@ follow Semantic Versioning.
 
 ### Fixed
 
+- Publish and normalize the native `extensions.list` type filter in the Node
+  companion catalogue, allowing safe plugin selection through both MCP transports
+  while rejecting unsupported types and unknown properties.
 - Select a disabled, unprotected optional plugin from bounded explicit plugin pages in live extension-state validation, preserving its identity and original state for restoration when deterministic native ordering puts components on the first page.
 - Preserve object-valued native companion inputs and schema mappings, reject
   arrays/null/scalars where objects are required, and retain nested empty values.

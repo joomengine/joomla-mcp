@@ -7,6 +7,7 @@ follow Semantic Versioning.
 
 ### Fixed
 
+- Select a disabled, unprotected optional plugin from bounded explicit plugin pages in live extension-state validation, preserving its identity and original state for restoration when deterministic native ordering puts components on the first page.
 - Preserve object-valued native companion inputs and schema mappings, reject
   arrays/null/scalars where objects are required, and retain nested empty values.
   Keep exact zero-based native list pagination at partial/end boundaries and map

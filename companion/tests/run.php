@@ -1061,6 +1061,7 @@ test('manifests declare an installable package and Joomla console plugin', stati
 require __DIR__ . '/template-style-inheritance.php';
 require __DIR__ . '/field-default-value.php';
 require __DIR__ . '/json-shapes.php';
+require __DIR__ . '/readback-shapes.php';
 require __DIR__ . '/native-list-pagination.php';
 
 if ($GLOBALS['failures'] > 0) {

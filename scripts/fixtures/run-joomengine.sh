@@ -218,7 +218,7 @@ const helpDirectory = process.argv[7];
 const dispatch = JSON.parse(readFileSync(process.argv[8], 'utf8'));
 const names = new Set(Array.isArray(describe.actions) ? describe.actions.map((action) => action.name) : []);
 
-if (describe.protocol !== 'joomla-mcp/1' || describe.companion?.version !== '0.7.0') {
+if (describe.protocol !== 'joomla-mcp/1' || describe.companion?.version !== '0.8.0') {
   throw new Error('The installed companion returned an unexpected protocol or package version.');
 }
 
@@ -480,7 +480,7 @@ const evidence = {
   schema: 'vdm.joomla-mcp.fixture-evidence/v1',
   repositoryCommit: process.env.JOOMLA_FIXTURE_REPOSITORY_COMMIT,
   companionPackageSha256: process.env.JOOMLA_FIXTURE_PACKAGE_SHA256,
-  companionVersion: '0.7.0',
+  companionVersion: '0.8.0',
   joomlaVersion: dispatch.result.joomlaVersion,
   phpVersion: dispatch.result.phpVersion,
   databaseFamily: 'MariaDB',

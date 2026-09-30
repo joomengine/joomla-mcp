@@ -1,6 +1,6 @@
 {
   "name": "@joomengine/joomla-mcp",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Embeddable and self-hosted Model Context Protocol server for administering Joomla 6.x.",
   "homepage": "https://github.com/joomengine/joomla-mcp#readme",
   "bugs": {

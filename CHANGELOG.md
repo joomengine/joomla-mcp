@@ -5,6 +5,16 @@ follow Semantic Versioning.
 
 ## Unreleased
 
+## [0.8.0] - 2026-09-30
+
+### Changed
+
+- Align Docker images with the npm release version: retain commit-addressed and
+  v-prefixed tags and publish an immutable bare SemVer tag for the same digest.
+- Promote the Docker `latest` channel only after verified stable npm publication;
+  prereleases use `next` without changing `latest`. Reject channel regressions
+  and reconcile missing image aliases when recovering a partial release.
+
 ### Fixed
 
 - Publish and normalize the native `extensions.list` type filter in the Node
@@ -113,3 +123,4 @@ follow Semantic Versioning.
 
 [0.6.0]: https://github.com/joomengine/joomla-mcp/releases/tag/v0.6.0
 [0.7.0]: https://github.com/joomengine/joomla-mcp/releases/tag/v0.7.0
+[0.8.0]: https://github.com/joomengine/joomla-mcp/releases/tag/v0.8.0

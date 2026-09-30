@@ -38,6 +38,18 @@ const boundedListInputSchema: JsonSchema = Object.freeze({
   additionalProperties: false,
 });
 
+const extensionTypes: readonly string[] = Object.freeze([
+  '', 'component', 'module', 'plugin', 'template', 'library', 'file', 'package', 'language',
+]);
+
+const extensionListInputSchema: JsonSchema = Object.freeze({
+  ...boundedListInputSchema,
+  properties: Object.freeze({
+    ...boundedListInputSchema.properties,
+    type: Object.freeze({ type: 'string', enum: extensionTypes }),
+  }),
+});
+
 const articleListInputSchema: JsonSchema = Object.freeze({
   type: 'object',
   properties: Object.freeze({
@@ -140,7 +152,7 @@ const fixedReadActions: readonly CompanionActionDescriptor[] = Object.freeze([
   read('content.articles.get', 'Get an article locally', 'Get one article through Joomla’s administrator Article model.', 'content', 'content.read', articleGetInputSchema, {
     kind: 'administrator-model', component: 'com_content', model: 'Article', method: 'getItem',
   }),
-  read('extensions.list', 'List installed extensions locally', 'List installed extensions through Joomla’s Installer Manage model.', 'extensions', 'extensions.read', boundedListInputSchema, {
+  read('extensions.list', 'List installed extensions locally', 'List installed extensions through Joomla’s Installer Manage model.', 'extensions', 'extensions.read', extensionListInputSchema, {
     kind: 'administrator-model', component: 'com_installer', model: 'Manage', method: 'getItems',
   }),
   read('cache.groups.list', 'List cache groups', 'List bounded cache-group metadata through Joomla’s Cache model.', 'maintenance', 'maintenance.read', boundedListInputSchema, {
@@ -293,7 +305,9 @@ export function normalizeCompanionReadInput(actionId: string, value: unknown): R
 
   const allowed = actionId === 'content.articles.list'
     ? ['offset', 'limit', 'search', 'state', 'category', 'language']
-    : ['offset', 'limit', 'search'];
+    : actionId === 'extensions.list'
+      ? ['offset', 'limit', 'search', 'type']
+      : ['offset', 'limit', 'search'];
   rejectUnknown(input, allowed);
   const normalized: Record<string, unknown> = {
     offset: optionalInteger(input['offset'], 'offset', 0, 1_000_000, 0),
@@ -304,6 +318,12 @@ export function normalizeCompanionReadInput(actionId: string, value: unknown): R
   if (input['state'] !== undefined) normalized['state'] = boundedInteger(input['state'], 'state', -2, 2);
   if (input['category'] !== undefined) normalized['category'] = boundedInteger(input['category'], 'category', 1, 2_147_483_647);
   if (input['language'] !== undefined) normalized['language'] = boundedText(input['language'], 'language', 50);
+  if (input['type'] !== undefined) {
+    if (typeof input['type'] !== 'string' || !extensionTypes.includes(input['type'])) {
+      throw new Error('type must be a supported Joomla extension type.');
+    }
+    normalized['type'] = input['type'];
+  }
   return Object.freeze(normalized);
 }
 

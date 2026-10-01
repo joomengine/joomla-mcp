@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       strategy:
-        description: Auto releases an unpublished current version, otherwise suggests the next patch
+        description: Auto selects the version; current keeps package.json; exact requires exact_version
         required: true
         default: auto
         type: choice
@@ -18,7 +18,7 @@ on:
           - promote
           - exact
       exact_version:
-        description: SemVer without v; used only when strategy is exact
+        description: Leave blank unless strategy is exact; then enter SemVer without v
         required: false
         type: string
       prerelease_id:
@@ -101,6 +101,11 @@ jobs:
         with:
           node-version: '22.17.1'
           cache: npm
+      - name: Validate release inputs before registry access
+        env:
+          RELEASE_STRATEGY: ${{ inputs.strategy }}
+          RELEASE_EXACT_VERSION: ${{ inputs.exact_version }}
+        run: node scripts/release/plan-version.mjs --validate-inputs
       - uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4
         with:
           registry: ghcr.io

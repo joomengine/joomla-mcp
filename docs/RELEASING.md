@@ -29,11 +29,12 @@ immutable version tag.
 
 Open **Actions → Release → Run workflow** on `main`.
 
-After merging the 0.8.0 preparation, select **strategy** `current` to publish
-0.8.0 (`auto` also selects 0.8.0 while it is unreleased). Opening or merging the
-pull request does not publish a release.
+After merging the 0.8.0 preparation, select **strategy** `current` and leave
+**exact_version** blank to publish 0.8.0 (`auto` also selects 0.8.0 while it is
+unreleased). Opening or merging the pull request does not publish a release.
 
-For the normal path, leave **strategy** as `auto` and run the workflow:
+For the normal path, leave **strategy** as `auto`, keep **exact_version** blank,
+and run the workflow:
 
 - if the repository version has no completed release, `auto` proposes that
   current version;
@@ -78,6 +79,14 @@ npm, GHCR, or GitHub Releases.
 versions use SemVer without build metadata, and numeric identifiers may not
 exceed JavaScript's safe-integer limit. A release can never move behind either
 the repository version or an immutable version tag.
+
+The workflow validates these inputs before registry login or release-state
+inspection. If a run fails because `exact_version` was entered with `auto` or
+`current`, dispatch a **new** run with `strategy=current` and `exact_version`
+blank to publish the repository version. To request a different explicit
+version, select `strategy=exact` and supply `exact_version`. Conflicting inputs
+are never silently ignored or used to change the selected strategy. Do not use
+**Re-run jobs**, because it retains the invalid inputs.
 
 ## Release state machine
 

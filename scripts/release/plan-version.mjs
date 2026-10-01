@@ -22,6 +22,31 @@ const STRATEGIES = new Set([
 ]);
 const STATES = new Set(['unreleased', 'partial', 'released']);
 
+export function validateReleaseInputs({ strategy = 'auto', exactVersion = '' } = {}) {
+  const normalizedStrategy = String(strategy).trim();
+  const normalizedExact = String(exactVersion).trim();
+
+  if (!STRATEGIES.has(normalizedStrategy)) {
+    throw new Error(`Unsupported release strategy: ${normalizedStrategy || '(empty)'}.`);
+  }
+  if (normalizedStrategy !== 'exact' && normalizedExact !== '') {
+    throw new Error(
+      'exact_version may only be supplied when strategy is exact. '
+      + 'Dispatch a new run with exact_version blank (choose current to release the repository version), '
+      + 'or select strategy=exact to use the entered version. Do not use Re-run jobs.',
+    );
+  }
+  if (normalizedStrategy === 'exact') {
+    if (normalizedExact === '') {
+      throw new Error('strategy=exact requires exact_version. Enter a SemVer without v, '
+        + 'or choose current with exact_version blank to release the repository version.');
+    }
+    parseVersion(normalizedExact);
+  }
+
+  return { strategy: normalizedStrategy, exactVersion: normalizedExact };
+}
+
 export function resolveReleasePlan({
   currentVersion,
   strategy = 'auto',
@@ -33,17 +58,11 @@ export function resolveReleasePlan({
   currentTagSha = '',
 }) {
   const current = parseVersion(currentVersion).raw;
-  const normalizedStrategy = String(strategy).trim();
-  const normalizedExact = String(exactVersion).trim();
+  const { strategy: normalizedStrategy, exactVersion: normalizedExact } =
+    validateReleaseInputs({ strategy, exactVersion });
 
-  if (!STRATEGIES.has(normalizedStrategy)) {
-    throw new Error(`Unsupported release strategy: ${normalizedStrategy || '(empty)'}.`);
-  }
   if (!STATES.has(currentState)) {
     throw new Error(`Unsupported current release state: ${currentState || '(empty)'}.`);
-  }
-  if (normalizedStrategy !== 'exact' && normalizedExact !== '') {
-    throw new Error('exact_version may only be supplied when strategy is exact.');
   }
 
   let target;
@@ -107,12 +126,21 @@ export function resolveReleasePlan({
 }
 
 function run() {
+  const inputs = {
+    strategy: process.env['RELEASE_STRATEGY'] ?? 'auto',
+    exactVersion: process.env['RELEASE_EXACT_VERSION'] ?? '',
+  };
+  if (process.argv[2] === '--validate-inputs') {
+    validateReleaseInputs(inputs);
+    process.stdout.write('Release inputs are valid.\n');
+    return;
+  }
+
   const currentVersion = process.env['RELEASE_CURRENT_VERSION']
     ?? JSON.parse(readFileSync('package.json', 'utf8')).version;
   const plan = resolveReleasePlan({
     currentVersion,
-    strategy: process.env['RELEASE_STRATEGY'] ?? 'auto',
-    exactVersion: process.env['RELEASE_EXACT_VERSION'] ?? '',
+    ...inputs,
     prereleaseId: process.env['RELEASE_PRERELEASE_ID'] ?? 'rc',
     currentState: process.env['RELEASE_CURRENT_STATE'] ?? 'unreleased',
     existingVersions: (process.env['RELEASE_EXISTING_VERSIONS'] ?? '')

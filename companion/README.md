@@ -1,5 +1,13 @@
 # JoomEngine MCP for Joomla companion
 
+> **Current installation:** this page documents the TypeScript proof-of-concept
+> stack. For new installations, use the stable
+> [MCP package](https://github.com/joomengine/mcp_package/tags), then follow the
+> [Joomla setup guide](https://github.com/joomengine/mcp_component/blob/main/docs/GETTING-STARTED.md)
+> and [AI / direct client guide](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md).
+> The current PHP client is maintained in
+> [`mcp_client`](https://github.com/joomengine/mcp_client).
+
 This directory builds `pkg_joomlamcp`, an installable Joomla package containing
 the `console/joomlamcp` plugin. It requires Joomla 6.1 or later and PHP 8.3 or
 later.

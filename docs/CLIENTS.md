@@ -21,8 +21,7 @@ values in an AI client configuration.
 
 | Client | Local stdio | Streamable HTTP | Authentication |
 |---|---:|---:|---|
-| ChatGPT desktop app | Yes | Yes | Inherited environment for stdio; OAuth for HTTP |
-| ChatGPT web | No | Yes | OAuth through a developer-mode or published plugin |
+| ChatGPT remote apps | No | Yes | HTTPS remote connector; this predecessor requires its configured OAuth/OIDC flow |
 | Codex CLI/app/IDE | Yes | Yes | Inherited environment, bearer-token variable, or OAuth |
 | Claude Code | Yes | Yes | Inherited environment, headers, or OAuth |
 | Claude Desktop | Yes | Remote connector separately | Local process environment or connector OAuth |
@@ -38,46 +37,26 @@ The configurations below use:
 
 Change only those installation-specific paths and hostnames.
 
-## ChatGPT desktop app
+## ChatGPT
 
-Open **Settings → MCP servers → Add server**.
+Use a remote HTTPS MCP app connection. A local `mcpServers` stdio launcher
+configuration is for compatible local MCP hosts, including Codex and Claude;
+it is not a ChatGPT connection recipe.
 
-For a local installation:
+For this TypeScript predecessor, publish its authenticated Streamable HTTP
+endpoint as described in [remote HTTP](REMOTE_HTTP.md), configure the OAuth/OIDC
+flow required by that server, then follow
+[OpenAI's current ChatGPT connection instructions](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt).
+Select the remote HTTPS endpoint, complete authentication, inspect the
+discovered tools and start with a read-only request. Availability and settings
+depend on the ChatGPT account and workspace.
 
-- Name: `JoomEngine MCP for Joomla`
-- Transport: `STDIO`
-- Command: `/usr/bin/node`
-- Arguments: `/opt/joomla-mcp/dist/bin/joomla-mcp.js`
-- Environment: `JOOMLA_MCP_CONFIG=/etc/joomla-mcp/sites.json`
+For the actively maintained Joomla-native package and PHP client, follow the
+[current connection guide](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md);
+its transport and authentication requirements differ from this predecessor.
 
-Ensure the ChatGPT desktop process inherits every secret environment variable
-referenced by `sites.json`. Save, restart the app, and use `/mcp` to verify the
-connection.
-
-For a remote installation, choose **Streamable HTTP**, enter
-`https://mcp.company.example/mcp`, save, restart, and select **Authenticate**.
-
-OpenAI’s current MCP client instructions are maintained at
-<https://developers.openai.com/codex/mcp>.
-
-## ChatGPT web
-
-ChatGPT web does not read the local configuration. The server must be available
-through HTTPS Streamable HTTP and a standards-compliant OAuth flow.
-
-For an in-house beta:
-
-1. Enable Developer mode in **Settings → Security and login**.
-2. Open **Settings → Plugins**.
-3. Create a developer-mode app named **JoomEngine MCP for Joomla**.
-4. Enter `https://mcp.company.example/mcp`.
-5. Complete OAuth, inspect the discovered tools, and test in a new chat.
-
-ChatGPT has its own app-level confirmation policy. That client policy is
-additional to the MCP server’s principal-bound Joomla permission grant; it does
-not replace the server-side grant.
-
-See <https://developers.openai.com/apps-sdk/deploy/connect-chatgpt>.
+ChatGPT's app-level confirmation policy is additional to the server's Joomla
+permission grant; it does not replace the server-side grant.
 
 ## Codex CLI, app, and IDE extension
 

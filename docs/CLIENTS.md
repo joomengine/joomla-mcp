@@ -1,5 +1,13 @@
 # AI client connections
 
+> **Current installation:** this page documents the TypeScript proof-of-concept
+> stack. For new installations, use the stable
+> [MCP package](https://github.com/joomengine/mcp_package/tags), then follow the
+> [Joomla setup guide](https://github.com/joomengine/mcp_component/blob/main/docs/GETTING-STARTED.md)
+> and [AI / direct client guide](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md).
+> The current PHP client is maintained in
+> [`mcp_client`](https://github.com/joomengine/mcp_client).
+
 JoomEngine MCP for Joomla is model-independent. The server speaks standard MCP;
 the AI product is an MCP host. Use local stdio when the host can start the Node
 process, or authenticated Streamable HTTP when the host connects over a

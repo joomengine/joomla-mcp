@@ -2,6 +2,60 @@
 
 [![CI](https://github.com/joomengine/joomla-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/ci.yml) [![Release](https://github.com/joomengine/joomla-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/release.yml) [![Publish](https://github.com/joomengine/joomla-mcp/actions/workflows/publish-release.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/publish-release.yml) [![npm](https://img.shields.io/npm/v/%40joomengine%2Fjoomla-mcp?label=npm)](https://www.npmjs.com/package/@joomengine/joomla-mcp) [![Joomla](https://img.shields.io/badge/Joomla-6.1%2B-5091CD?logo=joomla&logoColor=white)](https://www.joomla.org/) [![Node](https://img.shields.io/badge/Node-22.12%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/) [![License](https://img.shields.io/badge/License-GPL--2.0%2B-blue)](LICENSE)
 
+## Project notice: use the Joomla-native MCP package
+
+This repository started as the **TypeScript proof of concept** for JoomEngine
+MCP. Active development has moved to the Joomla-native
+[`mcp_component`](https://github.com/joomengine/mcp_component) and its companion
+plugins. This is the **fourth iteration of the MCP implementation**, with broader
+functionality and native Joomla administration and Joomla Component Builder (JCB)
+integration. “Fourth iteration” describes the project's development history,
+not a `v4` release number.
+
+**For new installations, install the stable
+[`mcp_package`](https://github.com/joomengine/mcp_package) on your Joomla site.**
+It bundles the MCP component, the console plugin and the webservices plugin in
+one Joomla extension ZIP. The component release workflow rebuilds the package
+from the tagged extensions; use a published
+[package tag ZIP](https://github.com/joomengine/mcp_package/tags) and keep receiving
+updates through Joomla's extension updater.
+
+The current stack is distributed alongside JCB and designed to work with it.
+JCB itself is a separate installation; Joomla core operations also work without
+JCB.
+
+| Start here | Purpose |
+| --- | --- |
+| [Install and set up your Joomla site](https://github.com/joomengine/mcp_component/blob/main/docs/GETTING-STARTED.md) | Package installation, plugin enablement, component settings, API identity and permissions |
+| [Connect an AI or use the tools directly](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md) | PHP client setup, stdio connections, provider requirements and use without an AI |
+| [Component overview and documentation](https://github.com/joomengine/mcp_component#readme) | Current features, administrator areas, JCB integration and operational references |
+| [External PHP client and bridge](https://github.com/joomengine/mcp_client#readme) | Connect compatible MCP applications to your site's authenticated endpoint |
+
+The package contains:
+
+- [`mcp_component`](https://github.com/joomengine/mcp_component): the Joomla-native MCP server and administrator component.
+- [`mcp_plugin`](https://github.com/joomengine/mcp_plugin): the local Joomla console server.
+- [`mcp_webservices`](https://github.com/joomengine/mcp_webservices): authenticated Joomla API routing.
+
+[`mcp_client`](https://github.com/joomengine/mcp_client) is installed separately
+on the client machine. It exposes the site's MCP tools to applications that
+support a local stdio MCP process and can also be used directly as a PHP SDK.
+For ChatGPT and other applications that require a remote HTTPS MCP connector,
+see the [connection guide](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md)
+for the supported transport requirements.
+
+**Maintenance plan, October 2026:** this TypeScript predecessor will continue
+to receive maintenance for the next two months, through early December 2026.
+The recommended installation and ongoing development are the component,
+plugins, package and PHP client linked above.
+
+## Legacy TypeScript implementation
+
+The sections below document this repository's existing TypeScript server and
+companion. Their npm packages, Node.js requirements, configuration files and
+deployment instructions apply to this predecessor. Use the current guides
+above when installing the Joomla-native package.
+
 An embeddable library and self-hosted Model Context Protocol (MCP) server for
 administering Joomla 6.x through bounded, auditable semantic actions.
 
@@ -16,9 +70,11 @@ Joomla 6.1 is the implementation baseline, Joomla 6.2 is the compatibility targe
 
 > **Production status:** all 236 Joomla 6.1 core Web Services route templates are source-catalogued, but five are explicitly source-only and no family has completed the required live Joomla 6.1/6.2 success, denial, postcondition, and recovery matrix. Production certification remains gated on that evidence, deeper value/output contracts, privileged recovery tests, and shared coordination for multi-replica writes. See [coverage and release status](docs/COVERAGE.md).
 
-## Why this stack
+## Legacy technology choices
 
-TypeScript is a Tier 1 MCP SDK while PHP is Tier 3. For convenience, TypeScript is used and PHP where possible.
+This proof of concept uses TypeScript for the MCP server and PHP for its Joomla
+companion. The actively developed Joomla-native server and client are maintained
+in the repositories linked in the project notice above.
 
 ## Capabilities
 
@@ -261,7 +317,12 @@ One-operation grants are consumed by one apply attempt. Thirty-minute grants exp
 
 Do not enable destructive or privileged toolsets until their live and recovery gates in [docs/COVERAGE.md](docs/COVERAGE.md) have passed for your environment.
 
-## Documentation
+## Documentation for this predecessor
+
+For the current Joomla-native stack, use the
+[installation guide](https://github.com/joomengine/mcp_component/blob/main/docs/GETTING-STARTED.md)
+and [AI and direct client guide](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md).
+The references below describe this TypeScript implementation.
 
 - [Architecture and native-first rules](docs/ARCHITECTURE.md)
 - [Library and host-application integration](docs/LIBRARY.md)

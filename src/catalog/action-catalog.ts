@@ -128,6 +128,9 @@ function crudWriteAction(base: CrudBaseDescriptor, operation: CrudOperationDescr
             ? { type: 'string' } : {}),
           ...(base.id === 'content.articles' && field === 'articletext'
             ? { description: articleTextDescription } : {}),
+          ...(base.id.startsWith('fields.') && field === 'assigned_cat_ids'
+            ? { type: 'array', maxItems: 1_000, items: { type: 'integer', minimum: -1, maximum: 2_147_483_647 },
+              description: 'Native category selection: positive category IDs, [0] or [] for All, [-1] for None. Joomla forces None when only_use_in_subform is enabled; contexts without categories remain subject to native form validation.' } : {}),
         }),
       ]),
     );
@@ -378,7 +381,7 @@ export function completeJoomlaApiPatchBody(
     ? ['menutype', 'type', 'parent_id', 'link', 'params']
     : base.id === 'modules.site' || base.id === 'modules.administrator'
       ? ['params', 'assigned']
-      : [];
+      : base.id.startsWith('fields.') ? ['assigned_cat_ids'] : [];
   if (preservedKeys.length === 0) return changes;
 
   const derivedOrFixed = new Set([
@@ -392,7 +395,9 @@ export function completeJoomlaApiPatchBody(
   const preserved = Object.fromEntries(
     preservedKeys
       .filter((key) => !Object.hasOwn(requested, key) && Object.hasOwn(current, key))
-      .map((key) => [key, current[key]]),
+      .map((key) => [key, key === 'assigned_cat_ids' && Array.isArray(current[key])
+        ? current[key].map((id: unknown) => typeof id === 'string' && /^(?:-1|0|[1-9][0-9]*)$/.test(id) ? Number(id) : id)
+        : current[key]]),
   );
   return withFixedMutationDefaults(
     actionId,
@@ -404,7 +409,8 @@ export function requiresJoomlaApiPatchCompletion(actionId: string): boolean {
   return actionId === 'menus.site-items.update' ||
     actionId === 'menus.administrator-items.update' ||
     actionId === 'modules.site.update' ||
-    actionId === 'modules.administrator.update';
+    actionId === 'modules.administrator.update' ||
+    joomlaCrudBases.some((base) => base.id.startsWith('fields.') && actionId === `${base.id}.update`);
 }
 
 function withFixedMutationDefaults(

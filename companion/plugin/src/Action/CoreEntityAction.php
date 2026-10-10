@@ -351,6 +351,12 @@ final readonly class CoreEntityAction implements ActionInterface
         $result = [];
 
         foreach ($data as $field => $value) {
+            if ($field === 'assigned_cat_ids' && $this->entity->component === 'com_fields'
+                && $this->entity->itemModel === 'Field'
+                && (!is_array($value) || !array_is_list($value) || count($value) > 1_000
+                    || array_filter($value, static fn (mixed $id): bool => !is_int($id) || $id < -1 || $id > 2_147_483_647) !== [])) {
+                throw new ActionException('INVALID_INPUT', 'Category assignments must be a bounded list of integer category IDs, including 0 (All) and -1 (None).');
+            }
             if (in_array($field, $this->entity->sensitiveFields, true)
                 && (!is_string($value) || $value === '' || strlen($value) > 4_096 || str_contains($value, "\0"))) {
                 throw new ActionException('INVALID_INPUT', sprintf('Sensitive field "%s" has an invalid value.', $field));
@@ -818,6 +824,11 @@ final readonly class CoreEntityAction implements ActionInterface
                     'type' => ['string', 'integer', 'number', 'boolean', 'array', 'object', 'null'],
                     'writeOnly' => in_array($field, $this->entity->sensitiveFields, true),
                 ];
+                if ($field === 'assigned_cat_ids' && $this->entity->component === 'com_fields'
+                    && $this->entity->itemModel === 'Field') {
+                    $fieldSchemas[$field] = ['type' => 'array', 'maxItems' => 1_000,
+                        'items' => ['type' => 'integer', 'minimum' => -1, 'maximum' => 2_147_483_647]];
+                }
             }
 
             $properties['data'] = [

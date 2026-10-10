@@ -358,10 +358,8 @@ export async function runLiveTest(
         transport: kind,
         message: 'MCP transport is ready.',
       });
-    }
-
-    for (const session of sessions) {
-      activeTransport = session.kind;
+      // Connect immediately before executing this transport's lanes: a preceding
+      // lane can take longer than the HTTP gateway's idle session lifetime.
       await withProgressOperation(
         progress,
         {

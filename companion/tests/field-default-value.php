@@ -6,6 +6,7 @@ use VDM\Plugin\Console\JoomlaMcp\Action\CoreEntityAction;
 use VDM\Plugin\Console\JoomlaMcp\Contract\ModelProviderInterface;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 use VDM\Plugin\Console\JoomlaMcp\Domain\CoreEntityDefinition;
+use VDM\Plugin\Console\JoomlaMcp\Domain\FieldCreateDefaults;
 use VDM\Plugin\Console\JoomlaMcp\Joomla\CoreEntityCatalogue;
 
 /** The model preserves submitted values, including NULL, like Joomla's field table. */
@@ -100,8 +101,11 @@ foreach ($fieldEntities as $entity) {
         $data = ['title' => 'New field', 'type' => 'text'];
         $preview = $action->execute(['data' => $data]);
         expect(in_array('default_value', $preview['fields'], true), 'The planned fields omit the derived empty default.');
+        expect(in_array('description', $preview['fields'], true) && in_array('params', $preview['fields'], true),
+            'The field plan omits completed native form values.');
         expect($model->saved === [], 'A field preview invoked persistence.');
         expect(!array_key_exists('default_value', $data), 'Planning mutated the caller data.');
+        expect(!array_key_exists('description', $data) && !array_key_exists('params', $data), 'Planning mutated caller form values.');
 
         try {
             $action->execute(['data' => $data, 'dryRun' => false]);
@@ -115,6 +119,9 @@ foreach ($fieldEntities as $entity) {
         expect($model->saved['default_value'] === '', 'The native save payload omitted the empty default.');
         expect($result['item']['default_value'] === '', 'Read-back did not retain the empty default.');
         expect($model->saved['context'] === $entity->defaults['context'], 'The fixed field context changed.');
+        expect($model->saved['description'] === '' && $model->saved['params'] === [
+            'show_on' => '', 'showlabel' => '1', 'display' => '2', 'display_readonly' => '2', 'searchindex' => '0',
+        ], 'Native save omitted the approved field form defaults.');
 
         foreach (['', '0', 'Chosen default', '["one","two"]', 'one,two', null, 0, false, ['one', 'two']] as $value) {
             $action->execute([
@@ -125,6 +132,18 @@ foreach ($fieldEntities as $entity) {
             expect(array_key_exists('default_value', $model->saved), 'An explicit default key was removed.');
             expect($model->saved['default_value'] === $value, 'An explicit default value was replaced.');
         }
+
+        foreach ([['description' => 'Explicit description', 'params' => ['display' => '0']],
+            ['description' => '', 'params' => new stdClass()], ['description' => null, 'params' => null]] as $explicit) {
+            $completed = FieldCreateDefaults::complete($data + $explicit);
+            expect($completed['description'] === $explicit['description'] && $completed['params'] === $explicit['params'],
+                'Field completion replaced caller-supplied form values.');
+            $action->execute(['data' => $data + $explicit, 'dryRun' => false, '_edgeConfirmed' => true]);
+            // JSON objects become native arrays only at the model-save boundary.
+            $nativeParams = $explicit['params'] instanceof stdClass ? [] : $explicit['params'];
+            expect($model->saved['description'] === $explicit['description'] && $model->saved['params'] === $nativeParams,
+                'Native create replaced caller-supplied form values.');
+        }
     });
 
     test($entity->id . ' updates preserve omitted defaults and explicit clearing', static function () use ($entity): void {
@@ -133,12 +152,18 @@ foreach ($fieldEntities as $entity) {
         $input = ['id' => 41, 'data' => ['title' => 'Renamed field']];
         $preview = $action->execute($input);
         expect(!in_array('default_value', $preview['fields'], true), 'A partial update gained an unintended default.');
+        expect(!in_array('description', $preview['fields'], true) && !in_array('params', $preview['fields'], true),
+            'A partial update gained create-only form defaults.');
         expect($model->saved === [], 'An update preview persisted a field.');
 
         foreach (['Existing default', null] as $existing) {
             $model->stored['default_value'] = $existing;
+            $model->stored['description'] = 'Existing description';
+            $model->stored['params'] = ['display' => '0'];
             $action->execute($input + ['dryRun' => false, '_edgeConfirmed' => true]);
             expect($model->saved['default_value'] === $existing, 'A partial update overwrote the stored default.');
+            expect($model->saved['description'] === 'Existing description' && $model->saved['params'] === ['display' => '0'],
+                'A partial update overwrote existing native form values.');
         }
         $action->execute([
             'id' => 41,
@@ -158,7 +183,9 @@ test('field default creation fallback does not affect groups or unrelated entiti
         $model = fieldDefaultModel();
         $action = fieldDefaultAction($entity, 'create', $model);
         $action->execute(['data' => ['title' => 'New item'], 'dryRun' => false, '_edgeConfirmed' => true]);
-        expect(!array_key_exists('default_value', $model->saved), 'A non-field entity gained a default value.');
+        foreach (['default_value', 'description', 'params'] as $field) {
+            expect(!array_key_exists($field, $model->saved), 'A non-field entity gained field-create defaults.');
+        }
     }
 });
 

@@ -423,13 +423,13 @@ function withFixedMutationDefaults(
 ): Readonly<Record<string, unknown>> {
   const base = joomlaCrudBases.find((candidate) => actionId.startsWith(`${candidate.id}.`));
   if (base === undefined) return body;
-  // The administrator field form submits an empty default for a new field.
-  // Omitting it leaves SQL NULL, which Joomla later passes to DOMCdataSection.
-  // This is a fallback, not fixed controller state: explicit values must win,
-  // and partial updates must never reset an existing field's default.
-  const createBody = base.id.startsWith('fields.') && actionId === `${base.id}.create` &&
-    !Object.hasOwn(body, 'default_value')
-    ? Object.freeze({ ...body, default_value: '' })
+  // Joomla's field controller does not complete these omitted non-null columns.
+  // The params group must contain field.xml defaults: an empty object disappears
+  // during native form filtering. Explicit values always retain native validation.
+  const createBody = actionId === `${base.id}.create` && base.controllerDefaults['component'] === 'com_fields' &&
+    Object.hasOwn(nativeFieldCreateContexts, base.basePath) &&
+    nativeFieldCreateContexts[base.basePath] === base.controllerDefaults['context']
+    ? Object.freeze({ ...nativeFieldCreateDefaults, ...body })
     : body;
   const normalized = withJoomlaDerivedMutationFields(base.id, createBody);
   const fixed = Object.fromEntries(
@@ -444,6 +444,23 @@ function withFixedMutationDefaults(
     ? normalized
     : Object.freeze({ ...normalized, ...fixed });
 }
+
+/** Exact Joomla 6 native field routes and controller-owned contexts. */
+const nativeFieldCreateContexts: Readonly<Record<string, string>> = Object.freeze({
+  'v1/fields/content/articles': 'com_content.article',
+  'v1/fields/content/categories': 'com_content.categories',
+  'v1/fields/contacts/contact': 'com_contact.contact',
+  'v1/fields/contacts/categories': 'com_contact.categories',
+  'v1/fields/contacts/mail': 'com_contact.mail',
+  'v1/fields/users': 'com_users.user',
+});
+
+/** Joomla 6.1.4 administrator/components/com_fields/forms/field.xml defaults. */
+const nativeFieldCreateDefaults = Object.freeze({
+  default_value: '',
+  description: '',
+  params: Object.freeze({ show_on: '', showlabel: '1', display: '2', display_readonly: '2', searchindex: '0' }),
+});
 
 function withFixedReadDefaults(
   actionId: string,

@@ -2,6 +2,7 @@ import { getJoomlaReadAction, resolveJoomlaReadRequest, validateJoomlaMutationJs
 import { crudWriteFields } from '../catalog/crud-write-fields.js';
 import type { ApiConfig, Toolset } from '../config/schema.js';
 import type { JoomlaApiTransport } from '../infrastructure/api/joomla-api-client.js';
+import { equalSubformJson } from '../contracts/subform-json.js';
 
 export interface ResolvedCustomField {
   readonly name: string;
@@ -154,6 +155,24 @@ export function encodeCustomFieldBody(
   result['com_fields'] = values;
   validateJoomlaMutationJson(result);
   return result;
+}
+
+/** Apply JSON meaning only to the approved native subform field and context. */
+export function compareSubformCustomField(
+  actionId: string,
+  fields: readonly ResolvedCustomField[],
+  name: string,
+  desired: unknown,
+  observed: unknown,
+): boolean | undefined {
+  const target = customFieldTarget(actionId);
+  if (target === undefined) return undefined;
+  const definitions = fields.filter((field) => field.name === name);
+  if (definitions.length === 0) return undefined;
+  if (definitions.length !== 1) return false;
+  const field = definitions[0]!;
+  if (field.type !== 'subform' || field.context !== target.context) return undefined;
+  return equalSubformJson(desired, observed);
 }
 
 function safeName(name: string, core: ReadonlySet<string>): boolean {

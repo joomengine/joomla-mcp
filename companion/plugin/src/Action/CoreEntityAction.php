@@ -14,6 +14,7 @@ use VDM\Plugin\Console\JoomlaMcp\Contract\ModelProviderInterface;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionDescriptor;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 use VDM\Plugin\Console\JoomlaMcp\Domain\CoreEntityDefinition;
+use VDM\Plugin\Console\JoomlaMcp\Domain\FieldCreateDefaults;
 use VDM\Plugin\Console\JoomlaMcp\Domain\Input;
 use VDM\Plugin\Console\JoomlaMcp\Joomla\ModelListPage;
 use VDM\Plugin\Console\JoomlaMcp\Joomla\TemplateStyleInheritance;
@@ -192,12 +193,14 @@ final readonly class CoreEntityAction implements ActionInterface
             throw new ActionException('INVALID_INPUT', 'Create data must contain at least one allowed field.');
         }
 
-        // Joomla's administrator field form submits an empty default value.
-        // Supply it only for a new field with an omitted key; updates and
-        // explicit values retain their native model semantics.
+        // Complete omitted field form values before the native model validates
+        // them. Explicit values and updates retain their native semantics.
         if ($this->entity->component === 'com_fields' && $this->entity->itemModel === 'Field'
-            && !array_key_exists('default_value', $data)) {
-            $data['default_value'] = '';
+            && in_array($this->entity->defaults['context'] ?? null, [
+                'com_content.article', 'com_content.categories', 'com_contact.contact',
+                'com_contact.categories', 'com_contact.mail', 'com_users.user',
+            ], true)) {
+            $data = FieldCreateDefaults::complete($data);
         }
 
         $inheritance = in_array($this->entity->id, ['templates.site-styles', 'templates.administrator-styles'], true)

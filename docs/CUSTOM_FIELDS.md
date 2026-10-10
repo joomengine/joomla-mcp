@@ -19,6 +19,16 @@ The fallback is part of the approved create payload. Explicit caller values are
 preserved for Joomla's native validation, and `fields.*.update` does not receive
 a default when the property is omitted. Field-group actions are unaffected.
 
+These same native field-create actions complete an omitted `description` with
+`""` and an omitted `params` with the administrator form defaults:
+`show_on: ""`, `showlabel: "1"`, `display: "2"`, `display_readonly: "2"`,
+`searchindex: "0"`. An empty params object disappears during Joomla form
+filtering and does not provide the non-null database column. The populated
+default group prevents the reported missing-description/params SQL failure.
+The values come from [Joomla 6.1.4 field.xml](https://github.com/joomla/joomla-cms/blob/6.1.4/administrator/components/com_fields/forms/field.xml).
+Explicit descriptions and parameter values remain unchanged, including null
+or empty groups for Joomla to validate. Partial updates receive no defaults.
+
 Existing fields are not rewritten automatically. To repair an affected field,
 read its ID through the matching `fields.*.list` action, then plan and approve a
 matching `fields.*.update` with `data.default_value` set to an empty string.
@@ -112,6 +122,46 @@ editor, particularly for subforms. Live site testing remains necessary.
 This addition supports the API transport. The local companion does not gain
 custom-field write support in this change. Select `transport: "api"` when using
 the generic tool on a site with both adapters.
+
+## Subform JSON read-back
+
+An approved field of type `subform` is compared by its decoded outer JSON
+serialization. Formatting, escaped slashes, Unicode escape spelling and object
+key order may change without changing the field value. List order and length,
+object/list shape, nested text and scalar types remain significant. Native JSON
+numbers such as `1` and `1.0` compare equally. Raw numeric tokens must round-trip
+through native JSON decoding without changing their decimal value; rounding,
+underflow, non-finite numbers and values beyond the safe integer range cannot
+establish a match. Quoted numeric text stays text. Inputs remain bounded to 1 MiB
+and 64 nesting levels. An explicit empty-string clear operation is preserved.
+
+The TypeScript API write result retains its existing `verification.status`,
+`headers` and raw `data`. For approved subform values it also supplies
+`verification.customFieldVerification`, with `scope: "subform-custom-fields"`,
+`status`, `matchedFields`, `differentFields` and `unobservableFields`. Its status
+is `verified` only for matched subform values, `partial` when a matching resource
+does not expose a requested value, and `uncertain` for an actual mismatch or
+wrong read-back identity. This evidence does not certify other requested fields.
+Uncertain field evidence emits a failed write audit event. The accepted mutation
+and its read-back evidence remain cached under the idempotency key, so another
+plan with the same key returns the existing outcome without resubmitting it.
+
+Configured live-test writes use their approved plan's field metadata for the same
+comparison, including category `com_fields` aliases. Text fields retain their
+ordinary comparisons even when their contents resemble JSON. No field discovery
+is repeated during production apply.
+
+The PHP component reports matched subform saves as `verification.status:
+"verified"` and releases their durable write lease. Existing uncertain executions
+still require administrator inspection and reconciliation; installing the fix
+does not retry an old write or automatically clear its lease. The TypeScript
+server does not have the PHP component's persistent `WRITE_BUSY` store.
+
+A generic HTTP 400 response does not prove there were no effects. Joomla 6.1.4
+[saves before check-in](https://github.com/joomla/joomla-cms/blob/6.1.4/libraries/src/MVC/Controller/ApiController.php),
+and a later failure is [returned as HTTP 400](https://github.com/joomla/joomla-cms/blob/6.1.4/libraries/src/Error/JsonApi/CheckinCheckoutExceptionHandler.php).
+Inspect ambiguous failures before retrying; the PHP component retains its
+uncertain execution and lease when the mutation outcome cannot be established.
 
 ## Acceptance testing
 

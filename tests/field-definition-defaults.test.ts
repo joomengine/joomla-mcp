@@ -9,13 +9,14 @@ import type { JoomlaApiRequest } from '../src/infrastructure/api/joomla-api-clie
 
 const fields = joomlaCrudBases.filter((base) => base.id.startsWith('fields.'));
 const fieldData = Object.freeze({ title: 'Default test', name: 'default-test', label: 'Default test', type: 'text' });
+const nativeParams = Object.freeze({ show_on: '', showlabel: '1', display: '2', display_readonly: '2', searchindex: '0' });
 
 it('covers every reviewed field context', () => {
   expect(fields).toHaveLength(6);
 });
 
 describe.each(fields)('$id field defaults', (base) => {
-  it('sends the approved empty default on create and preserves it during a partial update', async () => {
+  it('sends approved native defaults only for omitted create values', async () => {
     const configuration: Configuration = {
       defaultSite: 'test', approval: { secret: 'a-secret-that-is-at-least-32-bytes-long', ttlMs: 60_000 },
       sites: new Map([['test', { id: 'test', toolsets: new Set(['structure.write', 'users.admin']),
@@ -38,10 +39,13 @@ describe.each(fields)('$id field defaults', (base) => {
       transport: 'api', idempotencyKey: randomUUID() });
     expect(api.request).not.toHaveBeenCalled();
     expect(fieldData).not.toHaveProperty('default_value');
+    expect(fieldData).not.toHaveProperty('description');
+    expect(fieldData).not.toHaveProperty('params');
     if (!('confirmationToken' in create)) throw new Error('Missing create confirmation.');
     await service.apply(create.confirmationToken);
     expect(api.request).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.objectContaining({
-      method: 'POST', body: { ...fieldData, context: base.controllerDefaults['context'], default_value: '' },
+      method: 'POST', body: { ...fieldData, context: base.controllerDefaults['context'], default_value: '',
+        description: '', params: nativeParams },
     }));
 
     // Model a pre-existing deliberate default; title-only PATCH must preserve it.
@@ -52,6 +56,8 @@ describe.each(fields)('$id field defaults', (base) => {
     await service.apply(update.confirmationToken);
     expect(api.request.mock.calls[1]![1]).toMatchObject({ method: 'PATCH', body: { title: 'Renamed' } });
     expect(api.request.mock.calls[1]![1].body).not.toHaveProperty('default_value');
+    expect(api.request.mock.calls[1]![1].body).not.toHaveProperty('description');
+    expect(api.request.mock.calls[1]![1].body).not.toHaveProperty('params');
     expect(stored['default_value']).toBe('Keep this default');
   });
 
@@ -61,10 +67,30 @@ describe.each(fields)('$id field defaults', (base) => {
       expect(resolveJoomlaWriteRequest(`${base.id}.create`, { data }).body?.['default_value']).toEqual(value);
       expect(resolveJoomlaWriteRequest(`${base.id}.update`, { id: 41, data }).body?.['default_value']).toEqual(value);
     });
+
+  it.each([
+    { description: 'Explicit description', params: { display: '0' } },
+    { description: '', params: {} },
+    { description: null, params: null },
+  ])('preserves explicitly supplied description and params %j for native validation', (explicit) => {
+    const data = Object.freeze({ ...fieldData, ...explicit });
+    for (const operation of ['create', 'update']) {
+      const request = resolveJoomlaWriteRequest(`${base.id}.${operation}`, { ...(operation === 'update' ? { id: 41 } : {}), data });
+      expect(request.body?.['description']).toEqual(explicit.description);
+      expect(request.body?.['params']).toEqual(explicit.params);
+    }
+  });
+
+  it('completes independently omitted values without filling explicit parameter groups', () => {
+    expect(resolveJoomlaWriteRequest(`${base.id}.create`, { data: { ...fieldData, description: 'Keep description' } }).body)
+      .toMatchObject({ description: 'Keep description', params: nativeParams, default_value: '' });
+    expect(resolveJoomlaWriteRequest(`${base.id}.create`, { data: { ...fieldData, params: { display: '0' } } }).body)
+      .toMatchObject({ description: '', params: { display: '0' }, default_value: '' });
+  });
 });
 
-it.each(joomlaCrudBases.filter((base) => base.id.startsWith('field-groups.')))(
-  'does not add a field default to $id', (base) => {
-    expect(resolveJoomlaWriteRequest(`${base.id}.create`, { data: { title: 'Group' } }).body)
-      .not.toHaveProperty('default_value');
+it.each(joomlaCrudBases.filter((base) => base.id.startsWith('field-groups.') || base.id === 'content.articles'))(
+  'does not add native field defaults to $id', (base) => {
+    const body = resolveJoomlaWriteRequest(`${base.id}.create`, { data: { title: 'Unrelated entity' } }).body;
+    for (const field of ['default_value', 'description', 'params']) expect(body).not.toHaveProperty(field);
   });

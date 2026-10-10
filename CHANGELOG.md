@@ -7,6 +7,8 @@ follow Semantic Versioning.
 
 ### Fixed
 
+- Verify approved native subform custom field values by their bounded decoded JSON structure, preserving list order, object/list shape, scalar types, independent read-back and idempotent replay. Keep the raw API verification response and add scoped field evidence; use the same metadata-bound comparison in configured live tests ([#57](https://github.com/joomengine/joomla-mcp/issues/57), [PHP #39](https://github.com/joomengine/mcp_component/issues/39)).
+- Complete omitted native field-create descriptions and parameter groups with administrator form defaults through the API and companion. Preserve explicit values and partial updates; prevent the missing non-null SQL payload failure reported in [#57](https://github.com/joomengine/joomla-mcp/issues/57) without assuming every HTTP 400 is effect-free.
 - Accept category assignments on create and update for all six native custom-field contexts. Preserve omitted assignments during API and companion updates, expose assignment read-back, and retain Joomla's All, None and subform-only behavior.
 
 ## [0.8.0] - 2026-09-30

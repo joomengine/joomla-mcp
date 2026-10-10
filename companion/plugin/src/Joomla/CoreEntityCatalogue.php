@@ -31,13 +31,13 @@ final class CoreEntityCatalogue
         'id', 'asset_id', 'context', 'group_id', 'title', 'name', 'label', 'default_value',
         'type', 'note', 'description', 'state', 'required', 'only_use_in_subform', 'language',
         'created_time', 'created_user_id', 'modified_time', 'modified_by', 'access', 'ordering',
-        'params', 'fieldparams',
+        'params', 'fieldparams', 'assigned_cat_ids',
     ];
 
     private const FIELD_WRITE = [
         'group_id', 'title', 'name', 'label', 'default_value', 'type', 'note', 'description',
         'state', 'required', 'only_use_in_subform', 'language', 'access', 'ordering', 'params',
-        'fieldparams',
+        'fieldparams', 'assigned_cat_ids',
     ];
 
     private const GROUP_READ = [

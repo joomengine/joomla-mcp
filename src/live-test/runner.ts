@@ -3327,6 +3327,16 @@ export function assertChangedFields(
   const mismatches: string[] = [];
   for (const [key, expected] of Object.entries(changes)) {
     if (key === 'password' || key === 'password2') continue;
+    if (key === 'assigned_cat_ids' && joomlaCrudBases.some((base) => base.id === baseId && base.id.startsWith('fields.'))) {
+      const submitted = categoryMemberships(expected, true);
+      const actual = categoryMemberships(attributes[key], false);
+      const desired = [1, '1', true].includes(changes['only_use_in_subform'] as 1 | '1' | true) ? [-1] : submitted;
+      if (submitted === undefined || desired === undefined || actual === undefined
+        || desired.length !== actual.length || desired.some((id, index) => id !== actual[index])) {
+        mismatches.push(fieldMismatch(key, expected, attributes[key]));
+      }
+      continue;
+    }
     if (baseId.startsWith('fields.') && key === 'default_value') {
       // NULL and missing are not an empty string: both hide the field XML/DOM regression.
       if (!Object.hasOwn(attributes, key) || attributes[key] !== expected) {
@@ -3360,6 +3370,20 @@ export function assertChangedFields(
     );
   }
   return attributes;
+}
+
+/** Reviewed FieldModel semantics; no coercion for arbitrary JSON fields. */
+function categoryMemberships(value: unknown, submitted: boolean): readonly number[] | undefined {
+  if (!Array.isArray(value) || value.length > 1_000) return undefined;
+  const ids = new Set<number>();
+  for (const valueId of value) {
+    const id = typeof valueId === 'string' && /^(?:-1|0|[1-9][0-9]*)$/.test(valueId) ? Number(valueId) : valueId;
+    if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < -1 || id > 2_147_483_647) return undefined;
+    ids.add(id);
+  }
+  if (ids.has(-1)) return submitted || ids.size === 1 ? [-1] : undefined;
+  ids.delete(0);
+  return [...ids].sort((left, right) => left - right);
 }
 
 function entityMatchesFields(

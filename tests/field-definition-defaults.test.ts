@@ -25,7 +25,7 @@ describe.each(fields)('$id field defaults', (base) => {
     let stored: Record<string, unknown> = {};
     const api = {
       request: vi.fn(async (_config: ApiConfig, request: JoomlaApiRequest) => {
-        stored = request.method === 'POST' ? { ...request.body } : { ...stored, ...request.body };
+        stored = request.method === 'POST' ? { assigned_cat_ids: [0], ...request.body } : { ...stored, ...request.body };
         return { status: 200, headers: {}, data: { data: { id: '41', attributes: stored } } };
       }),
       get: vi.fn(async () => ({ status: 200, headers: {}, data: { data: { id: '41', attributes: stored } } })),

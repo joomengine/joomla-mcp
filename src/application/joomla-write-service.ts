@@ -47,6 +47,7 @@ import {
 } from '../security/permission-grant-service.js';
 import { SiteRegistry } from './site-registry.js';
 import {
+  compareSubformCustomField,
   customFieldInput,
   customFieldTarget,
   encodeCustomFieldBody,
@@ -581,15 +582,18 @@ export class JoomlaWriteService {
           if (oldest !== undefined) this.completed.delete(oldest);
         }
         this.completed.set(cacheKey, { fingerprint, value, completedAt: Date.now() });
+        const fieldVerification = asRecord(asRecord(verification)['customFieldVerification']);
+        const fieldMismatch = fieldVerification['status'] === 'uncertain';
         await this.audit?.write({
           timestamp: new Date().toISOString(),
-          event: 'write.applied',
+          event: fieldMismatch ? 'write.failed' : 'write.applied',
           site: operation.site,
           action: operation.action,
           idempotencyKey: operation.idempotencyKey,
           principalFingerprint: principalFingerprint(principal),
           transport,
-          outcome: 'success',
+          outcome: fieldMismatch ? 'failure' : 'success',
+          ...(fieldMismatch ? { detail: 'The accepted write has an uncertain subform custom field read-back; inspect before another write.' } : {}),
         });
         return value;
       } catch (error) {
@@ -737,7 +741,13 @@ export class JoomlaWriteService {
     operation: PlannedOperation,
     mutation: JoomlaApiResponse,
   ): Promise<
-    JoomlaApiResponse
+    (JoomlaApiResponse & { readonly customFieldVerification?: {
+      readonly scope: 'subform-custom-fields';
+      readonly status: 'verified' | 'partial' | 'uncertain';
+      readonly matchedFields: readonly string[];
+      readonly differentFields: readonly string[];
+      readonly unobservableFields: readonly string[];
+    } })
     | { readonly acknowledgedBy: 'joomla-api'; readonly postcondition: 'not-verified'; readonly reason: string }
     | { readonly notPerformed: true; readonly reason: string }
   > {
@@ -758,7 +768,41 @@ export class JoomlaWriteService {
 
     const basePath = operation.method === 'PATCH' ? operation.path.split('/').slice(0, -1).join('/') : operation.path;
     const id = operation.method === 'PATCH' ? operation.path.split('/').at(-1) : responseId(mutation.data);
-    return id === undefined ? mutation : this.api.get(api, `${basePath}/${positiveId(Number(id))}`);
+    if (id === undefined) return mutation;
+    const response = await this.api.get(api, `${basePath}/${positiveId(Number(id))}`);
+    const target = customFieldTarget(operation.action);
+    const desired = { ...asRecord(operation.body?.['com_fields']), ...operation.body };
+    const fields = (operation.customFields ?? []).filter((field) => field.type === 'subform'
+      && field.context === target?.context && Object.hasOwn(desired, field.name));
+    if (fields.length === 0) return response;
+    const attributes = asRecord(asRecord(asRecord(response.data)['data'])['attributes']);
+    const nested = asRecord(attributes['com_fields']);
+    const matchedFields: string[] = [];
+    const differentFields: string[] = [];
+    const unobservableFields: string[] = [];
+    const identified = responseId(response.data) === String(positiveId(Number(id)));
+    for (const field of fields) {
+      if (!Object.hasOwn(desired, field.name)) continue;
+      if (!identified) {
+        unobservableFields.push(field.name);
+        continue;
+      }
+      if (!Object.hasOwn(attributes, field.name) && !Object.hasOwn(nested, field.name)) {
+        unobservableFields.push(field.name);
+        continue;
+      }
+      const observed = Object.hasOwn(attributes, field.name) ? attributes[field.name] : nested[field.name];
+      const matched = compareSubformCustomField(operation.action, fields, field.name, desired[field.name], observed);
+      if (matched === undefined) unobservableFields.push(field.name);
+      else (matched ? matchedFields : differentFields).push(field.name);
+    }
+    // Retain the raw read response. This narrow evidence makes no claim about
+    // other approved fields or the PHP component's durable execution lease.
+    return { ...response, customFieldVerification: {
+      scope: 'subform-custom-fields',
+      status: !identified || differentFields.length > 0 ? 'uncertain' : unobservableFields.length > 0 ? 'partial' : 'verified',
+      matchedFields, differentFields, unobservableFields,
+    } };
   }
 
   private requireConfirmation(): ConfirmationService {

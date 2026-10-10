@@ -36,6 +36,8 @@ function harness(options: {
   readonly structureRead?: boolean;
   readonly usersRead?: boolean;
   readonly maxPageSize?: number;
+  readonly readBack?: (stored: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
+  readonly readBackId?: string;
   readonly page?: (request: { path: string; offset: number; limit: number }) => unknown;
 } = {}) {
   const toolsets = new Set<Toolset>([
@@ -65,7 +67,7 @@ function harness(options: {
           links: { next: offset + limit < fields.length ? 'https://untrusted.invalid/ignore-this-url' : null },
         } };
       }
-      return { status: 200, headers: {}, data: { data: { id: '41', attributes: { ...stored } } } };
+      return { status: 200, headers: {}, data: { data: { id: options.readBackId ?? '41', attributes: options.readBack?.(stored) ?? { ...stored } } } };
     }),
     request: vi.fn(async (_config: ApiConfig, request: JoomlaApiRequest): Promise<JoomlaApiResponse> => {
       stored = { ...stored, ...request.body };
@@ -73,10 +75,11 @@ function harness(options: {
     }),
   };
   const registry = new SiteRegistry(configuration);
+  const audit = { write: vi.fn() };
   return {
-    api, configuration,
+    api, configuration, audit,
     service: new JoomlaService(registry, api),
-    writes: new JoomlaWriteService(configuration, registry, api),
+    writes: new JoomlaWriteService(configuration, registry, api, audit),
   };
 }
 
@@ -106,6 +109,63 @@ function preview(writes: JoomlaWriteService, data: Readonly<Record<string, unkno
 }
 
 const metadata = { name: 'colour', type: 'text', context: 'com_content.article' };
+
+describe.each(resources)('$action subform JSON verification', (resource) => {
+  it.each(['create', 'update'] as const)('compares %s JSON meaning while retaining the raw independent response', async (operation) => {
+    const desired = '{"row0": {"text": "équipe / 团队", "media": {"imagefile": "images/a.png#joomlaImage://local-images/a.png", "alt_text": "a"}}}';
+    const observed = '{"row0":{"media":{"alt_text":"a","imagefile":"images\\/a.png#joomlaImage:\\/\\/local-images\\/a.png"},"text":"\\u00e9quipe \\/ \\u56e2\\u961f"}}';
+    const { writes, api, audit } = harness({
+      fields: [field('modals', resource.context, { type: 'subform' })],
+      readBack: (stored) => ({ ...stored, modals: observed }),
+    });
+    await grant(writes);
+    const planned = await plan(writes, `${resource.action}.${operation}`, { ...resource.core, com_fields: { modals: desired } });
+    const result = await writes.apply(planned.confirmationToken);
+    expect(result['verification']).toMatchObject({ status: 200, data: { data: { id: '41', attributes: { modals: observed } } },
+      customFieldVerification: { scope: 'subform-custom-fields', status: 'verified', matchedFields: ['modals'], differentFields: [], unobservableFields: [] } });
+    expect(api.request.mock.calls[0]?.[1].body).toMatchObject(resource.action === 'content.categories'
+      ? { com_fields: { modals: desired } } : { modals: desired });
+    expect(api.get.mock.calls.filter((call) => call[1].startsWith('v1/fields/'))).toHaveLength(1);
+    expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ event: 'write.applied', outcome: 'success' }));
+  });
+
+  it.each(['changed', 'malformed', 'missing', 'wrong-identity', 'numeric-rounding'] as const)('reports %s read-back without claiming verification', async (mode) => {
+    const { writes, api, audit } = harness({
+      fields: [field('modals', resource.context, { type: 'subform' })],
+      readBackId: mode === 'wrong-identity' ? '99' : '41',
+      readBack: (stored) => {
+        const { modals: _ignored, com_fields: _nested, ...core } = stored;
+        return mode === 'missing' ? core : { ...core, modals: mode === 'malformed' ? '{"row0":'
+          : mode === 'numeric-rounding' ? '{"row0":{"value":1}}'
+          : mode === 'wrong-identity' ? '{"row0":{"text":"approved"}}' : '{"row0":{"text":"changed"}}' };
+      },
+    });
+    await grant(writes);
+    const desired = mode === 'numeric-rounding' ? '{"row0":{"value":1.00000000000000001}}' : '{"row0":{"text":"approved"}}';
+    const planned = await plan(writes, `${resource.action}.create`, { ...resource.core, modals: desired });
+    const result = await writes.apply(planned.confirmationToken);
+    expect(result['verification']).toMatchObject({ customFieldVerification: { status: mode === 'missing' ? 'partial' : 'uncertain',
+      matchedFields: [], differentFields: mode === 'missing' || mode === 'wrong-identity' ? [] : ['modals'],
+      unobservableFields: mode === 'missing' || mode === 'wrong-identity' ? ['modals'] : [] } });
+    const replanned = await writes.planAction({ action: `${resource.action}.create`, input: { data: { ...resource.core, modals: desired } },
+      transport: 'api', idempotencyKey: planned.operation.idempotencyKey });
+    if (!('confirmationToken' in replanned)) throw new Error('Expected executable plan.');
+    const replay = await writes.apply(replanned.confirmationToken);
+    expect(replay['idempotentReplay']).toBe(true);
+    expect(replay['verification']).toEqual(result['verification']);
+    expect(api.request).toHaveBeenCalledTimes(1);
+    expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ event: mode === 'missing' ? 'write.applied' : 'write.failed',
+      outcome: mode === 'missing' ? 'success' : 'failure' }));
+  });
+});
+
+it('retains raw read-back for ordinary text even when it looks like subform JSON', async () => {
+  const { writes } = harness({ fields: [field('modals')], readBack: (stored) => ({ ...stored, modals: '{"row0":{}}' }) });
+  await grant(writes);
+  const planned = await plan(writes, 'content.articles.update', { modals: '{"row0": {}}' });
+  const result = await writes.apply(planned.confirmationToken);
+  expect(result['verification']).not.toHaveProperty('customFieldVerification');
+});
 
 describe.each(resources)('$action custom field writes', (resource) => {
   it.each(['create', 'update'] as const)('discovers the exact context and persists %s fields through native Joomla payloads', async (operation) => {

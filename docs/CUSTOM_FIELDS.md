@@ -1,5 +1,11 @@
 # Custom field definitions and values
 
+## Assigning field definitions to categories
+
+All six field contexts accept `assigned_cat_ids` on create and update through API and companion transports. Supply up to 1,000 integer category IDs. `[0]` or `[]` means All; `[-1]` means None. Joomla ignores zero when positive IDs are selected and makes None override other selections. `only_use_in_subform: 1` makes Joomla save `[-1]` regardless of the submitted assignment. This is the native field form contract; Joomla decides whether an installed context supports categories.
+
+Omitted assignments survive a partial update. API updates recover this separate relation from the authorized item read; companion updates retain it from the native field model. Explicit selections, including clearing with `[]`, take precedence. Item read-back includes `assigned_cat_ids`; category assignments are not returned by Joomla's stock list response.
+
 ## Creating field definitions
 
 All six `fields.*.create` actions supply `default_value: ""` when that property is

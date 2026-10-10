@@ -68,6 +68,32 @@ test('all six native custom-field contexts are covered', static function () use 
 });
 
 foreach ($fieldEntities as $entity) {
+    test($entity->id . ' saves and reads category assignments while preserving omitted updates', static function () use ($entity): void {
+        $model = fieldDefaultModel();
+        $model->stored['assigned_cat_ids'] = ['12', '8'];
+        expect(in_array('assigned_cat_ids', $entity->readFields, true), 'Assignments are absent from native read-back.');
+        foreach (['create', 'update'] as $operation) {
+            $action = fieldDefaultAction($entity, $operation, $model);
+            foreach ([[8], [12, 8], [], [0], [-1]] as $selection) {
+                $input = ['data' => ['title' => 'Assigned field', 'assigned_cat_ids' => $selection]];
+                if ($operation === 'update') { $input['id'] = 41; }
+                $result = $action->execute($input + ['dryRun' => false, '_edgeConfirmed' => true]);
+                expect($model->saved['assigned_cat_ids'] === $selection && $result['item']['assigned_cat_ids'] === $selection, 'Native category selection changed.');
+            }
+            foreach ([null, '8', ['8'], [true], [-2], ['bad' => 8]] as $bad) {
+                try {
+                    $action->execute(['data' => ['assigned_cat_ids' => $bad]] + ($operation === 'update' ? ['id' => 41] : []));
+                    throw new RuntimeException('Invalid category selection was accepted.');
+                } catch (ActionException $error) {
+                    expect($error->errorCode === 'INVALID_INPUT', 'Invalid selection returned the wrong error.');
+                }
+            }
+        }
+        $model->stored['assigned_cat_ids'] = ['12', '8'];
+        fieldDefaultAction($entity, 'update', $model)->execute(['id' => 41, 'data' => ['title' => 'Renamed'], 'dryRun' => false, '_edgeConfirmed' => true]);
+        expect($model->saved['assigned_cat_ids'] === ['12', '8'], 'A title-only update erased category assignments.');
+    });
+
     test($entity->id . ' creates use an empty omitted default and preserve explicit values', static function () use ($entity): void {
         $model = fieldDefaultModel();
         $action = fieldDefaultAction($entity, 'create', $model);

@@ -14,7 +14,7 @@ const category = [
 const field = [
   'group_id', 'title', 'name', 'label', 'default_value', 'type', 'note', 'description',
   'state', 'required', 'only_use_in_subform', 'language', 'access', 'ordering', 'params',
-  'fieldparams',
+  'fieldparams', 'assigned_cat_ids',
 ] as const;
 
 const fieldGroup = [

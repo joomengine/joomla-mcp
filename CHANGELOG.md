@@ -5,6 +5,10 @@ follow Semantic Versioning.
 
 ## Unreleased
 
+### Fixed
+
+- Accept category assignments on create and update for all six native custom-field contexts. Preserve omitted assignments during API and companion updates, expose assignment read-back, and retain Joomla's All, None and subform-only behavior.
+
 ## [0.8.0] - 2026-09-30
 
 ### Changed

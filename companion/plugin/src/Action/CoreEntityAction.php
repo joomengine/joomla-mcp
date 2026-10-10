@@ -354,7 +354,8 @@ final readonly class CoreEntityAction implements ActionInterface
             if ($field === 'assigned_cat_ids' && $this->entity->component === 'com_fields'
                 && $this->entity->itemModel === 'Field'
                 && (!is_array($value) || !array_is_list($value) || count($value) > 1_000
-                    || array_filter($value, static fn (mixed $id): bool => !is_int($id) || $id < -1 || $id > 2_147_483_647) !== [])) {
+                    || array_filter($value, static fn (mixed $id): bool => (!is_int($id)
+                        && !(is_float($id) && is_finite($id) && floor($id) === $id)) || $id < -1 || $id > 2_147_483_647) !== [])) {
                 throw new ActionException('INVALID_INPUT', 'Category assignments must be a bounded list of integer category IDs, including 0 (All) and -1 (None).');
             }
             if (in_array($field, $this->entity->sensitiveFields, true)

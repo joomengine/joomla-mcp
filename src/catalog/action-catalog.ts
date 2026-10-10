@@ -383,6 +383,10 @@ export function completeJoomlaApiPatchBody(
       ? ['params', 'assigned']
       : base.id.startsWith('fields.') ? ['assigned_cat_ids'] : [];
   if (preservedKeys.length === 0) return changes;
+  if (base.id.startsWith('fields.') && !Object.hasOwn(changes, 'assigned_cat_ids')
+    && !Object.hasOwn(current, 'assigned_cat_ids')) {
+    throw new Error('The native field item read omitted category assignments; a partial update cannot safely preserve them.');
+  }
 
   const derivedOrFixed = new Set([
     'request',

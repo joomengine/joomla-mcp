@@ -7,6 +7,7 @@ import {
   resolveJoomlaWriteRequest,
 } from '../src/catalog/action-catalog.js';
 import { joomlaCrudBases } from '../src/catalog/crud-bases.js';
+import { assertChangedFields } from '../src/live-test/runner.js';
 
 const fields = joomlaCrudBases.filter((base) => base.id.startsWith('fields.'));
 
@@ -19,6 +20,20 @@ describe('native field category assignment contracts', () => {
   });
 
   for (const base of fields) {
+    it(base.id + ' live verification retains native sentinel and membership semantics', () => {
+      for (const [desired, actual] of [[[8], ['8']], [[8, 12], ['12', '8']], [[], [0]], [[0], [0]], [[0, 8], [8]], [[-1, 8], [-1]]]) {
+        expect(() => assertChangedFields({ data: { id: '41', attributes: { assigned_cat_ids: actual } } },
+          { assigned_cat_ids: desired }, base.id)).not.toThrow();
+      }
+      expect(() => assertChangedFields({ data: { id: '41', attributes: { assigned_cat_ids: [-1] } } },
+        { assigned_cat_ids: [8], only_use_in_subform: 1 }, base.id)).not.toThrow();
+      for (const actual of [undefined, null, [9], [8, 9], [true], { a: 8 }, [-1, 8]]) {
+        expect(() => assertChangedFields({ data: { id: '41', attributes: { assigned_cat_ids: actual } } },
+          { assigned_cat_ids: [8] }, base.id)).toThrow(/assigned_cat_ids/);
+      }
+      expect(() => assertChangedFields({ data: { id: '41', attributes: { assigned_cat_ids: [-1] } } },
+        { assigned_cat_ids: [8] }, base.id)).toThrow(/assigned_cat_ids/);
+    });
     for (const operation of ['create', 'update'] as const) {
       it(base.id + '.' + operation + ' accepts bounded native selections with fixed context', () => {
         const action = base.id + '.' + operation;
@@ -51,6 +66,7 @@ describe('native field category assignment contracts', () => {
       }
       expect(completeJoomlaApiPatchBody(action, current, { title: 'Renamed' })).not.toHaveProperty('unknown');
       expect(() => completeJoomlaApiPatchBody(action, { assigned_cat_ids: ['invalid'] }, { title: 'Renamed' })).toThrow();
+      expect(() => completeJoomlaApiPatchBody(action, {}, { title: 'Renamed' })).toThrow(/omitted category assignments/);
     });
   }
 });

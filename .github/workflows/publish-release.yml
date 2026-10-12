@@ -443,10 +443,6 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.18.0
       - name: Install bounded npm registry visibility check
-        env:
-          NPM_REGISTRY_ATTEMPTS: '8'
-          NPM_REGISTRY_INITIAL_DELAY_SECONDS: '2'
-          NPM_REGISTRY_MAX_DELAY_SECONDS: '30'
         run: |
           helper="${RUNNER_TEMP}/npm-registry-view"
           cat > "${helper}" <<'NPM_REGISTRY_VIEW'
@@ -457,7 +453,9 @@ jobs:
           field="${2:?npm view field is required}"
           expected="${3-}"
           mode="${4:-eventual}"
-          attempts="${NPM_REGISTRY_ATTEMPTS:-8}"
+          # npm can accept publication before asynchronous processing completes.
+          # Allow ten minutes of backoff; preflight overrides this to four reads.
+          attempts="${NPM_REGISTRY_ATTEMPTS:-24}"
           delay="${NPM_REGISTRY_INITIAL_DELAY_SECONDS:-2}"
           maximum_delay="${NPM_REGISTRY_MAX_DELAY_SECONDS:-30}"
           registry="${NPM_REGISTRY_URL:-https://registry.npmjs.org}"
@@ -480,9 +478,10 @@ jobs:
             value=''
             if value="$(
               npm view "${spec}" "${field}" \
+                --fetch-retries=0 --fetch-timeout=15000 \
                 --registry="${registry}" 2>"${error_file}"
             )"; then
-              if [[ -z "${expected}" || "${value}" == "${expected}" ]]; then
+              if [[ -n "${value}" && ( -z "${expected}" || "${value}" == "${expected}" ) ]]; then
                 printf '%s\n' "${value}"
                 exit 0
               fi
@@ -522,6 +521,7 @@ jobs:
           echo \
             "npm ${spec} ${field} did not reach ${expected:-a visible value} " \
             "after ${attempts} attempts." >&2
+          echo 'npm may still be processing an accepted publication. Once visible, dispatch Release with strategy=current and exact_version blank to reconcile it.' >&2
           exit 1
           NPM_REGISTRY_VIEW
           chmod 0755 "${helper}"
@@ -811,7 +811,7 @@ jobs:
             integrity \
             >/dev/null
 
-          if ! "${RUNNER_TEMP}/npm-registry-view" \
+          if ! NPM_REGISTRY_ATTEMPTS=8 "${RUNNER_TEMP}/npm-registry-view" \
             "@joomengine/joomla-mcp@${NPM_TAG}" \
             version \
             "${RELEASE_VERSION}" \
@@ -828,7 +828,7 @@ jobs:
               --registry=https://registry.npmjs.org
           fi
 
-          "${RUNNER_TEMP}/npm-registry-view" \
+          NPM_REGISTRY_ATTEMPTS=8 "${RUNNER_TEMP}/npm-registry-view" \
             "@joomengine/joomla-mcp@${NPM_TAG}" \
             version \
             "${RELEASE_VERSION}" \

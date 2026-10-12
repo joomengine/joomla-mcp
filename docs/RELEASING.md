@@ -230,6 +230,30 @@ when the requested version is already current.
 
 ## Recovery
 
+### npm accepted publication but verification returned 404
+
+`npm publish` can report success together with “Your package is being processed
+and may take a few minutes to become available.” During that processing window,
+`npm view` may return `E404` for the accepted version. This does not by itself
+indicate an authentication failure.
+
+Post-publication integrity verification allows 24 reads with backoff capped at
+30 seconds: ten minutes of scheduled waiting. Each registry request has a
+15-second timeout and npm's internal retries are disabled, so a single helper
+invocation has a nominal maximum of 16 minutes plus process overhead. Preflight
+still uses four reads, and each subsequent channel check uses eight. A visible
+but conflicting SHA-512 integrity fails
+immediately; Docker channel promotion and GitHub publication remain gated on
+the exact npm integrity and channel.
+
+If processing outlasts that window, keep the existing tag and draft. Once the
+version becomes visible, dispatch **Release** on `main` with **strategy**
+`current` and **exact_version** blank. Recovery verifies the existing package
+and completes the remaining publication steps without republishing it or
+incrementing the version. Do not use **Re-run jobs**.
+
+### Reconcile a partial release
+
 Dispatch a new run with `auto` or `current` while the current version is
 partial. Do not use GitHub's **Re-run jobs** button: every dispatch persists a
 fresh release intent and artifact namespace. The workflow resumes from the

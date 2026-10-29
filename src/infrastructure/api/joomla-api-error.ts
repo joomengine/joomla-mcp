@@ -50,7 +50,10 @@ function safeText(value: string, credentials: readonly string[]): string {
       text = text.split(secret).join('[redacted]');
     }
   }
-  return text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 500);
+  // Error renderers can put SQL, secrets or a stack frame in the first line.
+  // These are not public form diagnostics, even when wrapped in JSON:API.
+  if (/[\u0000-\u001f\u007f]|\b(?:authorization|bearer|token|password|passwd|secret|credential|SQLSTATE|PDOException|stack trace|thrown in)\b|\b(?:SELECT\s.+\sFROM|INSERT\s+INTO|UPDATE\s.+\sSET|DELETE\s+FROM)\b|(?:https?|file):\/\/|(?:^|\s|["'(])(?:\/[A-Za-z0-9_.-]+\/|[A-Za-z]:[\\/])|^\s*#\d+\s/i.test(text)) return '';
+  return text.trim().slice(0, 500);
 }
 
 function record(value: unknown): Record<string, unknown> {

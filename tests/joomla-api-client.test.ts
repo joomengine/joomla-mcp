@@ -67,6 +67,30 @@ describe('JoomlaApiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    '#0 /var/www/private/configuration.php(12): sensitive argument',
+    '/var/www/private/configuration.php: secret diagnostic',
+    'C:\\private\\configuration.php: sensitive argument',
+    'SQLSTATE[23000]: SELECT email FROM private_users',
+    'PDOException: database account credentials',
+    'password=another-secret-value',
+    'Authorization: Bearer another-token',
+    'Unexpected https://user:password@example.test/private',
+  ])('omits unsafe first-line JSON:API diagnostics: %s', (detail) => {
+    const failure = new JoomlaApiError(500, { errors: [{ title: 'Invalid field: Source String', detail }] });
+    expect(failure.errors).toEqual([{ title: 'Invalid field: Source String' }]);
+    expect(failure.message).toBe('Joomla API returned HTTP 500: Invalid field: Source String');
+  });
+
+  it('preserves HTTP rejection status when the error JSON is malformed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{ invalid json', {
+      status: 500, headers: { 'content-type': 'application/json' },
+    })));
+    await expect(new JoomlaApiClient().get(config, 'v1/extensions')).rejects.toMatchObject({
+      code: 'JOOMLA_API_ERROR', httpStatus: 500, errors: [],
+    });
+  });
+
   it('uses a configured origin, bearer token, JSON:API accept header, and no redirects', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ data: [] }), {

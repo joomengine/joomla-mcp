@@ -82,7 +82,14 @@ export class JoomlaApiClient implements JoomlaApiTransport {
     });
 
     const body = await boundedBody(response, config.maxResponseBytes);
-    const data = decodeBody(body, response.headers.get('content-type'));
+    let data: unknown;
+    try {
+      data = decodeBody(body, response.headers.get('content-type'));
+    } catch (error) {
+      if (response.ok) throw error;
+      // Keep the actual rejection status without exposing malformed error bodies.
+      throw new JoomlaApiError(response.status, null);
+    }
 
     if (!response.ok) {
       throw new JoomlaApiError(response.status, data, [config.token, config.updateToken ?? '']);

@@ -67,7 +67,7 @@ Super Users.
 `code: "JOOMLA_API_ERROR"`, the actual `httpStatus`, and at most three bounded
 JSON:API `errors` containing `code`, `title`, and `detail`. Embedders can import
 the class from `@joomengine/joomla-mcp/adapters`. Diagnostics omit debug stack
-frames and raw HTML pages and redact the configured API/update tokens. Treat
+frames, SQL/credential diagnostics and raw HTML pages, and redact the configured API/update tokens. Treat
 the remaining remote messages as untrusted diagnostic text.
 
 An `Invalid field: ...` message can indicate a native Joomla form constraint,

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { JoomlaApiClient } from '../src/infrastructure/api/joomla-api-client.js';
 
 import {
   knownUpstreamLimitation,
@@ -27,7 +28,40 @@ const options: LiveTestOptions = {
   fixtureDigests: { 'joomla-image': pinnedImage },
 };
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('reviewed live-test limitations', () => {
+  it.each([
+    { scenarioId: 'messages.messages.create', phase: 'create-primary', status: 404, title: 'Resource not found', shape: 'array', matcher: verifiedPartialMutationLimitation, code: 'joomla-6.1.2-message-create-response-404' },
+    { scenarioId: 'contacts.contacts.get', phase: 'verify-deleted', status: 500, title: 'Internal server error', shape: 'object', matcher: verifiedDeletionLimitation, code: 'joomla-6.1.2-contact-get-after-delete-500' },
+    { scenarioId: 'newsfeeds.feeds.get', phase: 'verify-deleted', status: 500, title: 'Internal server error', shape: 'object', matcher: verifiedDeletionLimitation, code: 'joomla-6.1.2-newsfeed-get-after-delete-500' },
+    { scenarioId: 'content.categories.get', phase: 'verify-deleted', status: 500, title: 'Internal server error', shape: 'object', matcher: verifiedDeletionLimitation, code: 'joomla-6.1.2-category-get-after-delete-500' },
+    { scenarioId: 'languages.overrides.refresh', phase: 'write', status: 500, title: 'Internal server error', shape: 'array', matcher: knownUpstreamLimitation, code: 'joomla-6.1.2-language-override-refresh-500' },
+    { scenarioId: 'languages.overrides.site.delete', phase: 'write', status: 500, title: 'Internal server error', shape: 'object', matcher: knownUpstreamLimitation, code: 'joomla-6.1.2-language-override-delete-500' },
+  ])('recognizes actual bounded API diagnostics only within the reviewed $scenarioId contract', async ({ scenarioId, phase, status, title, shape, matcher, code }) => {
+    const nativeError = { code: status, title };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ errors: shape === 'array' ? [nativeError] : nativeError }), {
+      status, headers: { 'content-type': 'application/vnd.api+json' },
+    })));
+    const failure = await new JoomlaApiClient().get({
+      baseUrl: 'https://example.test', tokenEnv: 'TOKEN', token: 'test-credential',
+      timeoutMs: 30_000, maxResponseBytes: 1024, maxPageSize: 100,
+    }, 'v1/extensions').catch((error: unknown) => error) as Error;
+    const context = { options, joomlaPath: 'api' as const, scenarioId, phase, error: `MCP tool failed: ${failure.message}` };
+    expect(matcher(context)?.code).toBe(code);
+    expect(matcher({ ...context, joomlaPath: 'cli' })).toBeUndefined();
+    expect(matcher({ ...context, phase: 'unreviewed' })).toBeUndefined();
+    expect(matcher({ ...context, scenarioId: 'content.articles.create' })).toBeUndefined();
+    expect(matcher({ ...context, options: { ...options, fixtureDigests: {} } })).toBeUndefined();
+    for (const error of [
+      'Joomla API returned HTTP 500',
+      'Joomla API returned HTTP 500: No public JSON:API error details were returned.',
+      'Joomla API returned HTTP 500: Invalid field: Source String',
+      `Joomla API returned HTTP ${status}: ${title}; another independent error`,
+    ]) expect(matcher({ ...context, error })).toBeUndefined();
+    if (matcher !== knownUpstreamLimitation) expect(knownUpstreamLimitation(context)).toBeUndefined();
+  });
+
   it('matches only an exact pinned action, phase, path, and error signature', () => {
     const exact = {
       options,

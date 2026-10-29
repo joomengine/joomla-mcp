@@ -18,6 +18,15 @@ afterEach(() => {
 });
 
 describe('JoomlaApiClient', () => {
+  it('normalizes Joomla fallback single-object errors with the same diagnostic filtering', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ errors: {
+      code: 500, title: 'Internal server error', detail: '#0 /private/site/configuration.php(12): password=private',
+    } }), { status: 500, headers: { 'content-type': 'application/vnd.api+json' } })));
+    await expect(new JoomlaApiClient().get(config, 'v1/extensions')).rejects.toMatchObject({
+      httpStatus: 500, errors: [{ code: '500', title: 'Internal server error' }],
+      message: 'Joomla API returned HTTP 500: Internal server error',
+    });
+  });
   it.each([400, 422, 500])('preserves structured native validation diagnostics for HTTP %s without inferring a write outcome', async (status) => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ errors: [{
       code: status, title: 'Invalid field: Source String',

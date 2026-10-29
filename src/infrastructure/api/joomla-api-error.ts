@@ -24,8 +24,10 @@ export class JoomlaApiError extends Error {
 }
 
 function errorDetails(data: unknown, credentials: readonly string[]): readonly JoomlaApiErrorDetail[] {
-  const errors = record(data)['errors'];
-  if (!Array.isArray(errors)) return Object.freeze([]);
+  const rawErrors = record(data)['errors'];
+  // Joomla's fallback renderer sometimes emits one error object, not an array.
+  const errors = Array.isArray(rawErrors) ? rawErrors
+    : Object.keys(record(rawErrors)).length > 0 ? [rawErrors] : [];
 
   return Object.freeze(errors.slice(0, 3).map((value) => {
     const error = record(value);

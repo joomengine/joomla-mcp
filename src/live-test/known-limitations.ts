@@ -7,6 +7,11 @@ import type {
 const joomla612Fixture =
   'octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372';
 
+// Accept the bounded adapter diagnostics as well as prior recorded JSON errors.
+// The exact status/message and fixture/action/phase guards remain mandatory.
+const internalServerError = /Joomla API returned HTTP 500: (?:Internal server error|\{"errors":(?:\[\{"code":500,"title":"Internal server error"\}\]|\{"code":500,"title":"Internal server error"\})\})$/u;
+const resourceNotFound = /Joomla API returned HTTP 404: (?:Resource not found|\{"errors":\[\{"title":"Resource not found","code":404\}\]\})$/u;
+
 interface KnownLimitationContext {
   readonly options: LiveTestOptions;
   readonly joomlaPath: LiveJoomlaPath;
@@ -85,7 +90,7 @@ const directFailureRules: readonly KnownLimitationRule[] = Object.freeze([
     code: 'joomla-6.1.2-language-override-refresh-500',
     scenarioIds: Object.freeze(['languages.overrides.refresh']),
     phases: Object.freeze(['write']),
-    error: /Joomla API returned HTTP 500: \{"errors":\[\{"code":500,"title":"Internal server error"\}\]\}/u,
+    error: internalServerError,
     explanation:
       'The pinned Joomla 6.1.2 language override cache-refresh API route returns an internal-server error after dispatch.',
     reference:
@@ -98,7 +103,7 @@ const directFailureRules: readonly KnownLimitationRule[] = Object.freeze([
       'languages.overrides.administrator.delete',
     ]),
     phases: Object.freeze(['write']),
-    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    error: internalServerError,
     explanation:
       'The pinned Joomla 6.1.2 override controller delegates file-backed override deletion to the generic model deletion path and returns HTTP 500.',
     reference:
@@ -122,7 +127,7 @@ const verifiedDeletionRules: readonly KnownLimitationRule[] = Object.freeze([
     code: 'joomla-6.1.2-contact-get-after-delete-500',
     scenarioIds: Object.freeze(['contacts.contacts.get']),
     phases: Object.freeze(['verify-deleted']),
-    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    error: internalServerError,
     explanation:
       'Joomla 6.1.2 returns HTTP 500 when the contact item route reads a contact after deletion; the live test accepted this only after the contact disappeared from the active collection.',
     reference:
@@ -132,7 +137,7 @@ const verifiedDeletionRules: readonly KnownLimitationRule[] = Object.freeze([
     code: 'joomla-6.1.2-message-get-after-delete-500',
     scenarioIds: Object.freeze(['messages.messages.get']),
     phases: Object.freeze(['verify-deleted']),
-    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    error: internalServerError,
     explanation:
       'Joomla 6.1.2 returns HTTP 500 when the private-message item route reads a deleted message; the live test accepted this only after the message disappeared from the active collection.',
     reference:
@@ -142,7 +147,7 @@ const verifiedDeletionRules: readonly KnownLimitationRule[] = Object.freeze([
     code: 'joomla-6.1.2-newsfeed-get-after-delete-500',
     scenarioIds: Object.freeze(['newsfeeds.feeds.get']),
     phases: Object.freeze(['verify-deleted']),
-    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    error: internalServerError,
     explanation:
       'Joomla 6.1.2 returns HTTP 500 when the newsfeed item route reads a deleted feed; the live test accepted this only after the feed disappeared from the active collection.',
     reference:
@@ -157,7 +162,7 @@ const verifiedDeletionRules: readonly KnownLimitationRule[] = Object.freeze([
       'newsfeeds.categories.get',
     ]),
     phases: Object.freeze(['verify-deleted']),
-    error: /Joomla API returned HTTP 500: \{"errors":\{"code":500,"title":"Internal server error"\}\}/u,
+    error: internalServerError,
     explanation:
       'Joomla 6.1.2 returns HTTP 500 when a category item route reads a deleted category; the live test accepted this only after the category disappeared from the active collection.',
     reference:
@@ -175,7 +180,7 @@ const verifiedPartialRules: readonly KnownLimitationRule[] = Object.freeze([
       'create-primary',
       'create-secondary',
     ]),
-    error: /Joomla API returned HTTP 404: \{"errors":\[\{"title":"Resource not found","code":404\}\]\}/u,
+    error: resourceNotFound,
     explanation:
       'Joomla 6.1.2 persists the private message but its generic API add path returns HTTP 404 while rendering the newly created record; the live test accepted this only after listing the exact submitted subject.',
     reference:

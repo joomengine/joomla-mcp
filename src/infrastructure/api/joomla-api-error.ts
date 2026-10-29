@@ -17,8 +17,10 @@ export class JoomlaApiError extends Error {
     credentials: readonly string[] = [],
   ) {
     const { errors, omitted } = errorDetails(data, credentials);
-    const summary = errors.map((error) => error.detail ?? error.title ?? error.code).filter(Boolean).join('; ');
-    super(`Joomla API returned HTTP ${httpStatus}: ${summary || 'No public JSON:API error details were returned.'}${omitted ? ' [additional diagnostics omitted]' : ''}`);
+    // Keep all public fields: choosing detail over title/code can collapse a
+    // different native error into an apparently identical generic signature.
+    const summary = errors.length === 0 ? 'No public JSON:API error details were returned.' : JSON.stringify({ errors });
+    super(`Joomla API returned HTTP ${httpStatus}: ${summary}${omitted ? ' [additional diagnostics omitted]' : ''}`);
     this.name = 'JoomlaApiError';
     this.errors = errors;
     this.diagnosticsOmitted = omitted;

@@ -9,8 +9,8 @@ const joomla612Fixture =
 
 // Accept the bounded adapter diagnostics as well as prior recorded JSON errors.
 // The exact status/message and fixture/action/phase guards remain mandatory.
-const internalServerError = /Joomla API returned HTTP 500: (?:Internal server error|\{"errors":(?:\[\{"code":500,"title":"Internal server error"\}\]|\{"code":500,"title":"Internal server error"\})\})$/u;
-const resourceNotFound = /Joomla API returned HTTP 404: (?:Resource not found|\{"errors":\[\{"title":"Resource not found","code":404\}\]\})$/u;
+const internalServerError = /Joomla API returned HTTP 500: \{"errors":(?:\[\{"code":(?:"500"|500),"title":"Internal server error"\}\]|\{"code":(?:"500"|500),"title":"Internal server error"\})\}$/u;
+const resourceNotFound = /Joomla API returned HTTP 404: \{"errors":\[(?:\{"title":"Resource not found","code":(?:"404"|404)\}|\{"code":(?:"404"|404),"title":"Resource not found"\})\]\}$/u;
 
 interface KnownLimitationContext {
   readonly options: LiveTestOptions;

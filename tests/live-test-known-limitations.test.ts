@@ -63,6 +63,16 @@ describe('reviewed live-test limitations', () => {
     if (matcher !== knownUpstreamLimitation) expect(knownUpstreamLimitation(context)).toBeUndefined();
     const privateDetail = new JoomlaApiError(status, { errors: { ...nativeError, detail: 'SQLSTATE[23000]: private query' } });
     expect(matcher({ ...context, error: privateDetail.message })).toBeUndefined();
+    for (const nativeError of [
+      { code: 409, title: 'Unexpected conflicting mutation', detail: title },
+      { code: 409, title },
+      { code: status, detail: title },
+      { code: status, title, detail: title },
+      { title },
+    ]) {
+      const different = new JoomlaApiError(status, { errors: nativeError });
+      expect(matcher({ ...context, error: different.message })).toBeUndefined();
+    }
   });
 
   it('matches only an exact pinned action, phase, path, and error signature', () => {

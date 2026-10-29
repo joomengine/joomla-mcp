@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JoomlaApiClient } from '../src/infrastructure/api/joomla-api-client.js';
+import { JoomlaApiError } from '../src/infrastructure/api/joomla-api-error.js';
 
 import {
   knownUpstreamLimitation,
@@ -60,6 +61,8 @@ describe('reviewed live-test limitations', () => {
       `Joomla API returned HTTP ${status}: ${title}; another independent error`,
     ]) expect(matcher({ ...context, error })).toBeUndefined();
     if (matcher !== knownUpstreamLimitation) expect(knownUpstreamLimitation(context)).toBeUndefined();
+    const privateDetail = new JoomlaApiError(status, { errors: { ...nativeError, detail: 'SQLSTATE[23000]: private query' } });
+    expect(matcher({ ...context, error: privateDetail.message })).toBeUndefined();
   });
 
   it('matches only an exact pinned action, phase, path, and error signature', () => {
@@ -76,6 +79,8 @@ describe('reviewed live-test limitations', () => {
     expect(knownUpstreamLimitation({ ...exact, joomlaPath: 'cli' })).toBeUndefined();
     expect(knownUpstreamLimitation({ ...exact, phase: 'write' })).toBeUndefined();
     expect(knownUpstreamLimitation({ ...exact, error: 'Joomla API returned HTTP 500' }))
+      .toBeUndefined();
+    expect(knownUpstreamLimitation({ ...exact, error: `${exact.error} [additional diagnostics omitted]` }))
       .toBeUndefined();
     expect(knownUpstreamLimitation({
       ...exact,

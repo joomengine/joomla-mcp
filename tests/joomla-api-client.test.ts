@@ -24,7 +24,8 @@ describe('JoomlaApiClient', () => {
     } }), { status: 500, headers: { 'content-type': 'application/vnd.api+json' } })));
     await expect(new JoomlaApiClient().get(config, 'v1/extensions')).rejects.toMatchObject({
       httpStatus: 500, errors: [{ code: '500', title: 'Internal server error' }],
-      message: 'Joomla API returned HTTP 500: Internal server error',
+      diagnosticsOmitted: true,
+      message: 'Joomla API returned HTTP 500: Internal server error [additional diagnostics omitted]',
     });
   });
   it.each([400, 422, 500])('preserves structured native validation diagnostics for HTTP %s without inferring a write outcome', async (status) => {
@@ -88,7 +89,8 @@ describe('JoomlaApiClient', () => {
   ])('omits unsafe first-line JSON:API diagnostics: %s', (detail) => {
     const failure = new JoomlaApiError(500, { errors: [{ title: 'Invalid field: Source String', detail }] });
     expect(failure.errors).toEqual([{ title: 'Invalid field: Source String' }]);
-    expect(failure.message).toBe('Joomla API returned HTTP 500: Invalid field: Source String');
+    expect(failure.diagnosticsOmitted).toBe(true);
+    expect(failure.message).toBe('Joomla API returned HTTP 500: Invalid field: Source String [additional diagnostics omitted]');
   });
 
   it('preserves HTTP rejection status when the error JSON is malformed', async () => {

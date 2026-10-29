@@ -9,37 +9,47 @@ export interface JoomlaApiErrorDetail {
 export class JoomlaApiError extends Error {
   public readonly code = 'JOOMLA_API_ERROR';
   public readonly errors: readonly JoomlaApiErrorDetail[];
+  public readonly diagnosticsOmitted: boolean;
 
   public constructor(
     public readonly httpStatus: number,
     data: unknown,
     credentials: readonly string[] = [],
   ) {
-    const errors = errorDetails(data, credentials);
+    const { errors, omitted } = errorDetails(data, credentials);
     const summary = errors.map((error) => error.detail ?? error.title ?? error.code).filter(Boolean).join('; ');
-    super(`Joomla API returned HTTP ${httpStatus}: ${summary || 'No public JSON:API error details were returned.'}`);
+    super(`Joomla API returned HTTP ${httpStatus}: ${summary || 'No public JSON:API error details were returned.'}${omitted ? ' [additional diagnostics omitted]' : ''}`);
     this.name = 'JoomlaApiError';
     this.errors = errors;
+    this.diagnosticsOmitted = omitted;
   }
 }
 
-function errorDetails(data: unknown, credentials: readonly string[]): readonly JoomlaApiErrorDetail[] {
+function errorDetails(data: unknown, credentials: readonly string[]): { errors: readonly JoomlaApiErrorDetail[]; omitted: boolean } {
   const rawErrors = record(data)['errors'];
   // Joomla's fallback renderer sometimes emits one error object, not an array.
   const errors = Array.isArray(rawErrors) ? rawErrors
     : Object.keys(record(rawErrors)).length > 0 ? [rawErrors] : [];
+  let omitted = errors.length > 3 || Object.keys(record(data)).some((key) => key !== 'errors');
 
-  return Object.freeze(errors.slice(0, 3).map((value) => {
+  const details = Object.freeze(errors.slice(0, 3).map((value) => {
     const error = record(value);
+    if (Object.keys(error).length === 0 || Object.keys(error).some((key) => !['code', 'title', 'detail'].includes(key))) omitted = true;
     const result: { code?: string; title?: string; detail?: string } = {};
     for (const key of ['code', 'title', 'detail'] as const) {
       const raw = error[key];
-      if (typeof raw !== 'string' && !(key === 'code' && typeof raw === 'number' && Number.isFinite(raw))) continue;
+      if (raw === undefined) continue;
+      if (typeof raw !== 'string' && !(key === 'code' && typeof raw === 'number' && Number.isFinite(raw))) {
+        omitted = true;
+        continue;
+      }
       const text = safeText(String(raw), credentials);
+      if (text === '' || text !== String(raw)) omitted = true;
       if (text !== '') result[key] = text;
     }
     return Object.freeze(result);
   }).filter((error) => Object.keys(error).length > 0));
+  return { errors: details, omitted };
 }
 
 function safeText(value: string, credentials: readonly string[]): string {

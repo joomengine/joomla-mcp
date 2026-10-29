@@ -69,6 +69,9 @@ JSON:API `errors` containing `code`, `title`, and `detail`. Embedders can import
 the class from `@joomengine/joomla-mcp/adapters`. Diagnostics omit debug stack
 frames, SQL/credential diagnostics and raw HTML pages, and redact the configured API/update tokens. Treat
 the remaining remote messages as untrusted diagnostic text.
+`diagnosticsOmitted` and an omission marker in the message indicate filtered or
+truncated diagnostic data; the fixture never treats such a reduced message as
+an exact known-upstream error signature.
 
 An `Invalid field: ...` message can indicate a native Joomla form constraint,
 including a disabled field. A plan checks this server's reviewed input schema;

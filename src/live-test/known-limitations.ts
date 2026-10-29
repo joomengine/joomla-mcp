@@ -241,6 +241,7 @@ function matchRule(
   context: KnownLimitationContext,
   rules: readonly KnownLimitationRule[],
 ): LiveKnownUpstreamLimitation | undefined {
+  if (context.error.includes('[additional diagnostics omitted]')) return undefined;
   const fixture = context.options.fixtureDigests?.['joomla-image'];
   if (fixture !== joomla612Fixture) return undefined;
   const rule = rules.find((candidate) =>

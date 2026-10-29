@@ -7,6 +7,7 @@ import { JoomlaWriteService } from '../src/application/joomla-write-service.js';
 import { SiteRegistry } from '../src/application/site-registry.js';
 import type { ApiConfig, Configuration } from '../src/config/schema.js';
 import type { JoomlaApiRequest, JoomlaApiResponse } from '../src/infrastructure/api/joomla-api-client.js';
+import { JoomlaApiError } from '../src/infrastructure/api/joomla-api-error.js';
 import type { CompanionEnvelope, JoomlaCliTransport } from '../src/infrastructure/cli/joomla-cli-client.js';
 import type { ConfirmationPlan } from '../src/security/confirmation-service.js';
 
@@ -230,6 +231,19 @@ describe('menu write failure reporting and replay safety', () => {
     expect(persisted().attributes['component_id']).toBe(0);
     expect(result).toMatchObject({ outcome: 'partial', mutation: { status: 201 },
       verification: { postcondition: 'failed', expectedComponentId: 22, storedComponentId: 0 } });
+  });
+
+  it.each([400, 500])('keeps HTTP %s form-validation messages uncertain and prevents duplicate menu writes', async (status) => {
+    const { service, api } = harness();
+    api.request.mockRejectedValueOnce(new JoomlaApiError(status, { errors: [{ title: 'Invalid field: Source String' }] }));
+    await grant(service);
+    const key = randomUUID();
+    const first = await plan(service, 'site', 'create', {}, key);
+    const result = await service.apply(first.confirmationToken);
+    expect(result).toMatchObject({ outcome: 'uncertain', verification: { possiblyApplied: true, postcondition: 'not-verified' } });
+    const retry = await plan(service, 'site', 'create', {}, key);
+    expect(await service.apply(retry.confirmationToken)).toMatchObject({ outcome: 'uncertain', idempotentReplay: true });
+    expect(api.request).toHaveBeenCalledOnce();
   });
 
   it.each([

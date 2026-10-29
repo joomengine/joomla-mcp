@@ -1,3 +1,4 @@
+export { JoomlaApiError, type JoomlaApiErrorDetail } from './api/joomla-api-error.js';
 export {
   JoomlaApiClient,
   type JoomlaApiMethod,

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ApiConfig } from '../src/config/schema.js';
 import { JoomlaApiClient } from '../src/infrastructure/api/joomla-api-client.js';
+import { JoomlaApiError } from '../src/infrastructure/index.js';
 
 const config: ApiConfig = {
   baseUrl: 'https://example.test',
@@ -17,6 +18,55 @@ afterEach(() => {
 });
 
 describe('JoomlaApiClient', () => {
+  it.each([400, 422, 500])('preserves structured native validation diagnostics for HTTP %s without inferring a write outcome', async (status) => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ errors: [{
+      code: status, title: 'Invalid field: Source String',
+      detail: 'RuntimeException: Invalid field: Source String in /var/www/html/libraries/src/Form/Form.php:1004\n#0 private debug frame',
+      trace: [{ args: ['downstream-secret'] }],
+    }] }), { status, headers: { 'content-type': 'application/vnd.api+json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const failure = await new JoomlaApiClient().request(config, {
+      method: 'PATCH', path: 'v1/content/articles/2', body: { title: 'Updated' },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(JoomlaApiError);
+    expect(failure).toMatchObject({ code: 'JOOMLA_API_ERROR', httpStatus: status, errors: [{
+      code: String(status), title: 'Invalid field: Source String', detail: 'RuntimeException: Invalid field: Source String',
+    }] });
+    expect(String(failure)).not.toMatch(/private|var\/www|downstream-secret/);
+    expect(failure).not.toHaveProperty('applied');
+    expect(failure).not.toHaveProperty('retryable');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('bounds error records and redacts configured API and update tokens from diagnostics', async () => {
+    const token = 'bearer/secret';
+    const updateToken = 'update-token';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ errors: Array.from({ length: 10 }, () => ({
+      title: `${token} ${encodeURIComponent(token)} ${updateToken} ${'x'.repeat(5_000)}`,
+    })) }), { status: 500, headers: { 'content-type': 'application/json' } })));
+    const failure = await new JoomlaApiClient().get({ ...config, token, updateToken, maxResponseBytes: 100_000 }, 'v1/extensions')
+      .catch((error: unknown) => error) as JoomlaApiError;
+
+    expect(failure.errors).toHaveLength(3);
+    expect(failure.errors.every((error) => (error.title?.length ?? 0) <= 500)).toBe(true);
+    expect(failure.message).toContain('[redacted]');
+    expect(failure.message).not.toMatch(/bearer|update-token/);
+    expect(Object.isFrozen(failure.errors)).toBe(true);
+  });
+
+  it('does not expose HTML error pages or misclassify transport failures as HTTP rejections', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response('<html>private proxy credentials</html>', { status: 502 }))
+      .mockRejectedValueOnce(new TypeError('fetch failed'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(new JoomlaApiClient().get(config, 'v1/extensions')).rejects.toMatchObject({
+      httpStatus: 502, errors: [], message: 'Joomla API returned HTTP 502: No public JSON:API error details were returned.',
+    });
+    await expect(new JoomlaApiClient().get(config, 'v1/extensions')).rejects.toBeInstanceOf(TypeError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('uses a configured origin, bearer token, JSON:API accept header, and no redirects', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ data: [] }), {

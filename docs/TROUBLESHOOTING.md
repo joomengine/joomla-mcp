@@ -61,6 +61,37 @@ Super Users.
 | Malformed JSON or response-size error | Joomla/proxy returned unexpected or excessive content | Inspect redacted downstream response/proxy errors and keep the bound; do not increase it blindly |
 | Redirect rejected | `baseUrl` or proxy redirects API traffic | Configure the canonical HTTPS site origin; redirects are intentionally not followed |
 
+## Native form validation errors and JCB language translations
+
+`JoomlaApiClient` throws an exported `JoomlaApiError` for HTTP rejections, with
+`code: "JOOMLA_API_ERROR"`, the actual `httpStatus`, and at most three bounded
+JSON:API `errors` containing `code`, `title`, and `detail`. Embedders can import
+the class from `@joomengine/joomla-mcp/adapters`. Diagnostics omit debug stack
+frames, SQL/credential diagnostics and raw HTML pages, and redact the configured API/update tokens. Treat
+the remaining remote messages as untrusted diagnostic text.
+`diagnosticsOmitted` and an omission marker in the message indicate filtered or
+truncated diagnostic data; the fixture never treats such a reduced message as
+an exact known-upstream error signature.
+
+An `Invalid field: ...` message can indicate a native Joomla form constraint,
+including a disabled field. A plan checks this server's reviewed input schema;
+it does not prove that the installed Joomla form will accept the write.
+[Joomla's API save controller](https://github.com/joomla/joomla-cms/blob/6.2-dev/libraries/src/MVC/Controller/ApiController.php)
+also restores omitted stored fields before validating PATCH data. Merely removing
+such a field from a request therefore does not resolve every native form error.
+
+Neither an HTTP status nor the words `Invalid field` prove that no effect
+occurred. No automatic retry is added, and menu writes retain their uncertain
+outcome and same-key replay protection. Check native state and the installed
+extension's form/controller before preparing another write.
+
+The JCB `jcb.api.language_translation.*` actions and the Operations screen in
+[component issue #46](https://github.com/joomengine/mcp_component/issues/46)
+belong to the Joomla-native PHP component. This TypeScript predecessor does not
+implement JCB actions and rejects these IDs before planning or network access;
+install the current [MCP package](https://github.com/joomengine/mcp_package) for
+JCB integration. Optional JCB CLI inventory in fixture logs is discovery only.
+
 ## Companion and CLI
 
 | Symptom | Cause | Corrective action |

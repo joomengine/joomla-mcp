@@ -1,5 +1,6 @@
 import type { ApiConfig } from '../../config/schema.js';
 import { JOOMLA_MCP_VERSION } from '../../version.js';
+import { JoomlaApiError } from './joomla-api-error.js';
 
 export interface JoomlaApiResponse {
   readonly status: number;
@@ -81,10 +82,17 @@ export class JoomlaApiClient implements JoomlaApiTransport {
     });
 
     const body = await boundedBody(response, config.maxResponseBytes);
-    const data = decodeBody(body, response.headers.get('content-type'));
+    let data: unknown;
+    try {
+      data = decodeBody(body, response.headers.get('content-type'));
+    } catch (error) {
+      if (response.ok) throw error;
+      // Keep the actual rejection status without exposing malformed error bodies.
+      throw new JoomlaApiError(response.status, null);
+    }
 
     if (!response.ok) {
-      throw new Error(`Joomla API returned HTTP ${response.status}: ${safeErrorSummary(data)}`);
+      throw new JoomlaApiError(response.status, data, [config.token, config.updateToken ?? '']);
     }
 
     return {
@@ -202,9 +210,4 @@ function selectedHeaders(headers: Headers): Readonly<Record<string, string>> {
   }
 
   return result;
-}
-
-function safeErrorSummary(data: unknown): string {
-  const serialized = typeof data === 'string' ? data : (JSON.stringify(data) ?? String(data));
-  return serialized.slice(0, 2_000);
 }

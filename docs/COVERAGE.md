@@ -53,7 +53,10 @@ not mean arbitrary stock CLI execution.
 - The reviewed Joomla CLI target map covers all 38 stock commands: 19 are
   implemented, six expose a bounded subset, and 13 remain non-executable and
   recovery-gated. Live inventory/help also records the fixture's 111 optional
-  Joomla Component Builder commands separately.
+  Joomla Component Builder commands separately. These optional JCB commands are
+  inventory only: this TypeScript server has no executable JCB API/CLI actions.
+  JCB integration, including language translation writes, belongs to the
+  [Joomla-native component](https://github.com/joomengine/mcp_component).
 
 ## Action-family matrix
 

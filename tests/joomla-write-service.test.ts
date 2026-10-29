@@ -4,6 +4,7 @@ import { JoomlaWriteService } from '../src/application/joomla-write-service.js';
 import { SiteRegistry } from '../src/application/site-registry.js';
 import type { Configuration } from '../src/config/schema.js';
 import type { JoomlaApiClient } from '../src/infrastructure/api/joomla-api-client.js';
+import { JoomlaApiError } from '../src/infrastructure/api/joomla-api-error.js';
 import type { WritePermissionToolset } from '../src/security/permission-grant-service.js';
 
 const configuration: Configuration = {
@@ -29,6 +30,34 @@ const configuration: Configuration = {
 };
 
 describe('JoomlaWriteService', () => {
+  it('propagates native validation diagnostics without recording success or automatically retrying', async () => {
+    const failure = new JoomlaApiError(500, { errors: [{ title: 'Invalid field: Source String' }] });
+    const api = { get: vi.fn(), request: vi.fn().mockRejectedValue(failure) } as unknown as JoomlaApiClient;
+    const audit = { write: vi.fn() };
+    const service = new JoomlaWriteService(configuration, new SiteRegistry(configuration), api, audit);
+    await grant(service);
+    const plan = await service.planArticle({ operation: 'create', data: { title: 'Example', catid: 2 },
+      idempotencyKey: '9782a1c5-f86f-4d05-a4f4-a21e175faa70' });
+
+    await expect(service.apply(plan.confirmationToken)).rejects.toBe(failure);
+    await expect(service.apply(plan.confirmationToken)).rejects.toThrow(/unknown|used/i);
+    expect(api.request).toHaveBeenCalledOnce();
+    expect(api.get).not.toHaveBeenCalled();
+    expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ event: 'write.failed', outcome: 'failure' }));
+    expect(audit.write.mock.calls.some(([event]) => event.event === 'write.applied')).toBe(false);
+  });
+
+  it.each(['jcb.api.language_translation.add.post', 'jcb.api.language_translation.edit.patch'])(
+    'rejects unsupported JCB action %s before creating a plan or calling Joomla', async (action) => {
+      const api = { get: vi.fn(), request: vi.fn() } as unknown as JoomlaApiClient;
+      const service = new JoomlaWriteService(configuration, new SiteRegistry(configuration), api);
+      await expect(service.planAction({ action, input: { id: 6126, data: { source: 'Sent to %s' } },
+        idempotencyKey: '9782a1c5-f86f-4d05-a4f4-a21e175faa70', dryRun: true })).rejects.toThrow(/unknown/i);
+      expect(api.get).not.toHaveBeenCalled();
+      expect(api.request).not.toHaveBeenCalled();
+    },
+  );
+
   it('plans, applies, and verifies a typed flat-form article create', async () => {
     const api = {
       request: vi.fn(async () => ({ status: 201, headers: {}, data: { data: { id: '41' } } })),

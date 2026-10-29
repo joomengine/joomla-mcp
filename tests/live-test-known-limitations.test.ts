@@ -32,6 +32,27 @@ const options: LiveTestOptions = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('reviewed live-test limitations', () => {
+  it('preserves the native title-only check-in response including its trailing space', async () => {
+    // Joomla 6.1.2 CheckinCheckoutExceptionHandler has no code/detail field.
+    const nativeError = { title: 'Check-in failed with the following error: ' };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ errors: [nativeError] }), {
+      status: 400, headers: { 'content-type': 'application/vnd.api+json' },
+    })));
+    const failure = await new JoomlaApiClient().get({
+      baseUrl: 'https://example.test', tokenEnv: 'TOKEN', token: 'test-credential',
+      timeoutMs: 30_000, maxResponseBytes: 1024, maxPageSize: 100,
+    }, 'v1/extensions').catch((error: unknown) => error) as JoomlaApiError;
+    expect(failure.errors).toEqual([nativeError]);
+    expect(failure.diagnosticsOmitted).toBe(false);
+    const context = { options, joomlaPath: 'api' as const, scenarioId: 'languages.content.update',
+      phase: 'update-primary-generated-update', error: failure.message };
+    expect(verifiedPartialMutationLimitation(context)?.code).toBe('joomla-6.1.2-content-language-update-response-400');
+    expect(knownUpstreamLimitation(context)).toBeUndefined();
+    const filtered = new JoomlaApiError(400, { errors: [{ ...nativeError, detail: 'password=private' }] });
+    expect(verifiedPartialMutationLimitation({ ...context, error: filtered.message })).toBeUndefined();
+    expect(verifiedPartialMutationLimitation({ ...context, phase: 'read' })).toBeUndefined();
+  });
+
   it.each([
     { scenarioId: 'messages.messages.create', phase: 'create-primary', status: 404, title: 'Resource not found', shape: 'array', matcher: verifiedPartialMutationLimitation, code: 'joomla-6.1.2-message-create-response-404' },
     { scenarioId: 'contacts.contacts.get', phase: 'verify-deleted', status: 500, title: 'Internal server error', shape: 'object', matcher: verifiedDeletionLimitation, code: 'joomla-6.1.2-contact-get-after-delete-500' },

@@ -67,7 +67,9 @@ function safeText(value: string, credentials: readonly string[]): string {
   // Error renderers can put SQL, secrets or a stack frame in the first line.
   // These are not public form diagnostics, even when wrapped in JSON:API.
   if (/[\u0000-\u001f\u007f]|\b(?:authorization|bearer|token|password|passwd|secret|credential|SQLSTATE|PDOException|stack trace|thrown in)\b|\b(?:SELECT\s.+\sFROM|INSERT\s+INTO|UPDATE\s.+\sSET|DELETE\s+FROM)\b|(?:https?|file):\/\/|(?:^|\s|["'(])(?:\/[A-Za-z0-9_.-]+\/|[A-Za-z]:[\\/])|^\s*#\d+\s/i.test(text)) return '';
-  return text.trim().slice(0, 500);
+  // Preserve public whitespace too: trimming a native message is not evidence
+  // that private or otherwise significant diagnostic information was omitted.
+  return text.slice(0, 500);
 }
 
 function record(value: unknown): Record<string, unknown> {

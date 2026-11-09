@@ -126,6 +126,11 @@ function crudWriteAction(base: CrudBaseDescriptor, operation: CrudOperationDescr
           ...(sensitiveFields.has(field) ? { type: 'string', maxLength: 4_096, writeOnly: true } : {}),
           ...(base.id === 'content.articles' && ['articletext', 'introtext', 'fulltext'].includes(field)
             ? { type: 'string' } : {}),
+          ...((['content.articles', 'modules.site', 'modules.administrator'].includes(base.id) && ['created', 'publish_up', 'publish_down'].includes(field))
+            ? { type: field === 'created' ? 'string' : ['string', 'null'], maxLength: 64,
+              description: 'Native Joomla user_utc date. A date without an explicit offset uses the authenticated API user timezone; the API reads it back in UTC.' } : {}),
+          ...(base.id === 'content.articles' && field === 'created_by'
+            ? { type: 'integer', minimum: 1, description: 'Existing Joomla author user ID, subject to the native article form and ACL.' } : {}),
           ...(base.id === 'content.articles' && field === 'articletext'
             ? { description: articleTextDescription } : {}),
           ...(base.id.startsWith('fields.') && field === 'assigned_cat_ids'
@@ -609,7 +614,21 @@ function validateMutationProperty(
 ): void {
   const type = schema['type'];
 
-  if (type === 'string') {
+  if (Array.isArray(type)) {
+    for (const alternative of type) {
+      try {
+        validateMutationProperty(value, { ...schema, type: alternative }, path);
+        return;
+      } catch {
+        // A union accepts a value only when one complete alternative matches.
+      }
+    }
+    throw new Error(`${path} does not match its permitted types.`);
+  }
+
+  if (type === 'null') {
+    if (value !== null) throw new Error(`${path} must be null.`);
+  } else if (type === 'string') {
     if (typeof value !== 'string') throw new Error(`${path} must be a string.`);
     if (typeof schema['minLength'] === 'number' && value.length < schema['minLength']) {
       throw new Error(`${path} is shorter than the permitted minimum.`);

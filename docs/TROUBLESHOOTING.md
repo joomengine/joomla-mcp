@@ -61,6 +61,21 @@ Super Users.
 | Malformed JSON or response-size error | Joomla/proxy returned unexpected or excessive content | Inspect redacted downstream response/proxy errors and keep the bound; do not increase it blindly |
 | Redirect rejected | `baseUrl` or proxy redirects API traffic | Configure the canonical HTTPS site origin; redirects are intentionally not followed |
 
+An API user who can read articles or banners still needs **Access Administration
+Interface** (`core.manage`) on `com_content` or `com_banners` and **Create**
+(`core.create`) for the selected category. Check the group's effective component
+and category permissions in Joomla; explicit inherited Denied rules still apply.
+Allow the dedicated group in **User - Joomla API Token → Allowed User Groups**
+and grant **Web Services Login** (`core.login.api`). Super Users membership and
+**Configure ACL & Options** (`core.admin`) are not required. Add Edit State only
+when publication changes are needed.
+
+The TypeScript server's OAuth/operator identity can differ from the configured
+Joomla API token identity. Its local grants therefore cannot preflight Joomla
+ACL. The API authenticates and authorizes that token on every request. Preserve
+a 403 as an HTTP diagnostic, not proof of no effects: Joomla can reject a
+follow-up read after saving a record. Inspect the existing record before retrying.
+
 ## Native form validation errors and JCB language translations
 
 `JoomlaApiClient` throws an exported `JoomlaApiError` for HTTP rejections, with

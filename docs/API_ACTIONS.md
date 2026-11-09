@@ -64,11 +64,11 @@ The table lists static reviewed fields. API create/update plans for `content.art
 
 | Semantic action | Method and Joomla route | Input contract | Toolset / risk | Paths | Status |
 |---|---|---|---|---|---|
-| `content.articles.create` | `POST v1/content/articles` | data: `access`, `alias`, `articletext`, `attribs`, `catid`, `created_by_alias`, `featured`, `fulltext`, `images`, `introtext`, `language`, `metadata`, `metadesc`, `metakey`, `note`, `ordering`, `publish_down`, `publish_up`, `state`, `tags`, `title`, `urls` | `content.write` / write | API, companion | Executable; live certification pending |
+| `content.articles.create` | `POST v1/content/articles` | data: `access`, `alias`, `articletext`, `attribs`, `catid`, `created`, `created_by`, `created_by_alias`, `featured`, `fulltext`, `images`, `introtext`, `language`, `metadata`, `metadesc`, `metakey`, `note`, `ordering`, `publish_down`, `publish_up`, `state`, `tags`, `title`, `urls` | `content.write` / write | API, companion | Executable; live certification pending |
 | `content.articles.delete` | `DELETE v1/content/articles/:id` | `id`; optional `etag` | `content.write` / destructive | API, companion | Executable; live certification pending |
 | `content.articles.get` | `GET v1/content/articles/:id` | `id` | `content.read` / read | API, companion | Executable; live certification pending |
 | `content.articles.list` | `GET v1/content/articles` | bounded `offset`, `limit` | `content.read` / read | API, companion | Executable; live certification pending |
-| `content.articles.update` | `PATCH v1/content/articles/:id` | `id`; data: `access`, `alias`, `articletext`, `attribs`, `catid`, `created_by_alias`, `featured`, `fulltext`, `images`, `introtext`, `language`, `metadata`, `metadesc`, `metakey`, `note`, `ordering`, `publish_down`, `publish_up`, `state`, `tags`, `title`, `urls`; optional `etag` | `content.write` / write | API, companion | Executable; live certification pending |
+| `content.articles.update` | `PATCH v1/content/articles/:id` | `id`; data: `access`, `alias`, `articletext`, `attribs`, `catid`, `created`, `created_by`, `created_by_alias`, `featured`, `fulltext`, `images`, `introtext`, `language`, `metadata`, `metadesc`, `metakey`, `note`, `ordering`, `publish_down`, `publish_up`, `state`, `tags`, `title`, `urls`; optional `etag` | `content.write` / write | API, companion | Executable; live certification pending |
 | `content.categories.create` | `POST v1/content/categories` | data: `access`, `alias`, `description`, `language`, `metadata`, `metadesc`, `metakey`, `note`, `ordering`, `params`, `parent_id`, `published`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
 | `content.categories.delete` | `DELETE v1/content/categories/:id` | `id`; optional `etag` | `structure.write` / destructive | API, companion | Executable; live certification pending |
 | `content.categories.get` | `GET v1/content/categories/:id` | `id` | `structure.read` / read | API, companion | Executable; live certification pending |
@@ -250,17 +250,17 @@ The table lists static reviewed fields. API create/update plans for `content.art
 | Semantic action | Method and Joomla route | Input contract | Toolset / risk | Paths | Status |
 |---|---|---|---|---|---|
 | `modules.administrator-types.list` | `GET v1/modules/types/administrator` | No input | `structure.read` / read | API | Executable; live certification pending |
-| `modules.administrator.create` | `POST v1/modules/administrator` | data: `access`, `assigned`, `content`, `language`, `module`, `note`, `ordering`, `params`, `position`, `published`, `showtitle`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
+| `modules.administrator.create` | `POST v1/modules/administrator` | data: `access`, `assigned`, `content`, `language`, `module`, `note`, `ordering`, `params`, `position`, `publish_down`, `publish_up`, `published`, `showtitle`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
 | `modules.administrator.delete` | `DELETE v1/modules/administrator/:id` | `id`; optional `etag` | `structure.write` / destructive | API, companion | Executable; live certification pending |
 | `modules.administrator.get` | `GET v1/modules/administrator/:id` | `id` | `structure.read` / read | API, companion | Executable; live certification pending |
 | `modules.administrator.list` | `GET v1/modules/administrator` | bounded `offset`, `limit` | `structure.read` / read | API, companion | Executable; live certification pending |
-| `modules.administrator.update` | `PATCH v1/modules/administrator/:id` | `id`; data: `access`, `assigned`, `content`, `language`, `module`, `note`, `ordering`, `params`, `position`, `published`, `showtitle`, `title`; optional `etag` | `structure.write` / write | API, companion | Executable; live certification pending |
+| `modules.administrator.update` | `PATCH v1/modules/administrator/:id` | `id`; data: `access`, `assigned`, `content`, `language`, `module`, `note`, `ordering`, `params`, `position`, `publish_down`, `publish_up`, `published`, `showtitle`, `title`; optional `etag` | `structure.write` / write | API, companion | Executable; live certification pending |
 | `modules.site-types.list` | `GET v1/modules/types/site` | No input | `structure.read` / read | API | Executable; live certification pending |
-| `modules.site.create` | `POST v1/modules/site` | data: `access`, `assigned`, `content`, `language`, `module`, `note`, `ordering`, `params`, `position`, `published`, `showtitle`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
+| `modules.site.create` | `POST v1/modules/site` | data: `access`, `assigned`, `content`, `language`, `module`, `note`, `ordering`, `params`, `position`, `publish_down`, `publish_up`, `published`, `showtitle`, `title` | `structure.write` / write | API, companion | Executable; live certification pending |
 | `modules.site.delete` | `DELETE v1/modules/site/:id` | `id`; optional `etag` | `structure.write` / destructive | API, companion | Executable; live certification pending |
 | `modules.site.get` | `GET v1/modules/site/:id` | `id` | `structure.read` / read | API, companion | Executable; live certification pending |
 | `modules.site.list` | `GET v1/modules/site` | bounded `offset`, `limit` | `structure.read` / read | API, companion | Executable; live certification pending |
-| `modules.site.update` | `PATCH v1/modules/site/:id` | `id`; data: `access`, `assigned`, `content`, `language`, `module`, `note`, `ordering`, `params`, `position`, `published`, `showtitle`, `title`; optional `etag` | `structure.write` / write | API, companion | Executable; live certification pending |
+| `modules.site.update` | `PATCH v1/modules/site/:id` | `id`; data: `access`, `assigned`, `content`, `language`, `module`, `note`, `ordering`, `params`, `position`, `publish_down`, `publish_up`, `published`, `showtitle`, `title`; optional `etag` | `structure.write` / write | API, companion | Executable; live certification pending |
 
 ## Newsfeeds
 

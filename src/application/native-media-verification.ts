@@ -62,7 +62,7 @@ function mediaBag(value: unknown, media: readonly string[], baseUrl: string): Re
     // installation directory, query and fragment. Never infer a root from data.
     if (typeof path !== 'string' || !path.startsWith(root)) continue;
     const relative = path.slice(root.length);
-    if (relative !== '' && !/^[\/#?]|^[a-z][a-z0-9+.-]*:|[\\\u0000-\u0020\u007f]/i.test(relative)
+    if (relative !== '' && !/^[\/#?]|^[a-z][a-z0-9+.-]*:|[\\\u0000-\u001f\u007f]/i.test(relative)
       && !/(?:^|\/)\.{1,2}(?:\/|$)/.test(relative.split(/[?#]/, 1)[0]!)) {
       result[field] = relative;
     }

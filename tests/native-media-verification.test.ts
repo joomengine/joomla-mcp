@@ -51,7 +51,7 @@ describe('native media representation contract', () => {
   });
 
   it.each(['', '/images/a.jpg', '//cdn.test/a.jpg', 'https://cdn.test/a.jpg', 'data:image/png;base64,AA',
-    '../images/a.jpg', 'images/../a.jpg', './images/a.jpg', 'images/./a.jpg', 'images\\a.jpg', 'images/a b.jpg'])
+    '../images/a.jpg', 'images/../a.jpg', './images/a.jpg', 'images/./a.jpg', 'images\\a.jpg'])
     ('does not strip the site root before an ambiguous value %j', (path) => {
       expect(compare({ image_intro: path }, { image_intro: root + path })).toMatchObject({ status: 'uncertain' });
     });
@@ -63,6 +63,13 @@ describe('native media representation contract', () => {
     expect(compare({ ...imageBag, values: [1, 2] }, { ...actualBag, values: [2, 1] })).toMatchObject({ status: 'uncertain' });
     expect(compare(imageBag, { ...actualBag, extra: true })).toMatchObject({ status: 'uncertain' });
     expect(compare(imageBag, [actualBag])).toMatchObject({ status: 'uncertain' });
+  });
+
+  it('accepts ordinary spaces in native media filenames without URL decoding', () => {
+    expect(compare({ image_intro: 'images/a b.jpg' }, { image_intro: `${root}images/a b.jpg` }))
+      .toMatchObject({ status: 'verified', matchedFields: ['images'] });
+    expect(compare({ image_intro: 'images/a b.jpg' }, { image_intro: `${root}images/a%20b.jpg` }))
+      .toMatchObject({ status: 'uncertain', differentFields: ['images'] });
   });
 
   it('accepts native JSON registries and empty registry representation without numeric rounding', () => {

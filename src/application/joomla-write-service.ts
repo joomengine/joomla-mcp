@@ -56,6 +56,7 @@ import {
 } from './custom-fields.js';
 import { isTemplateStyleCreate, templateStyleInheritance } from './template-style-inheritance.js';
 import { executeMenuComponentBinding, isMenuItemWrite, prepareMenuComponentBinding } from './menu-component-binding.js';
+import { verifyNativeMedia, type NativeMediaVerification } from './native-media-verification.js';
 
 const idempotencyKeySchema = z.uuid();
 const crudWriteActionIds = new Set(joomlaCrudWriteActions.map((action) => action.id));
@@ -73,6 +74,8 @@ const articleFields = {
   language: z.string().max(50).optional(),
   metadesc: z.string().max(1_000).optional(),
   metakey: z.string().max(1_000).optional(),
+  created: z.string().max(64).optional().describe('Native Joomla user_utc date; dates without an offset use the API user timezone.'),
+  created_by: z.int().positive().optional(),
   publish_up: z.iso.datetime({ local: true }).nullable().optional(),
   publish_down: z.iso.datetime({ local: true }).nullable().optional(),
 } as const;
@@ -583,7 +586,8 @@ export class JoomlaWriteService {
         }
         this.completed.set(cacheKey, { fingerprint, value, completedAt: Date.now() });
         const fieldVerification = asRecord(asRecord(verification)['customFieldVerification']);
-        const fieldMismatch = fieldVerification['status'] === 'uncertain';
+        const mediaVerification = asRecord(asRecord(verification)['nativeMediaVerification']);
+        const fieldMismatch = fieldVerification['status'] === 'uncertain' || mediaVerification['status'] === 'uncertain';
         await this.audit?.write({
           timestamp: new Date().toISOString(),
           event: fieldMismatch ? 'write.failed' : 'write.applied',
@@ -593,7 +597,7 @@ export class JoomlaWriteService {
           principalFingerprint: principalFingerprint(principal),
           transport,
           outcome: fieldMismatch ? 'failure' : 'success',
-          ...(fieldMismatch ? { detail: 'The accepted write has an uncertain subform custom field read-back; inspect before another write.' } : {}),
+          ...(fieldMismatch ? { detail: 'The accepted write has an uncertain field read-back; inspect before another write.' } : {}),
         });
         return value;
       } catch (error) {
@@ -741,7 +745,7 @@ export class JoomlaWriteService {
     operation: PlannedOperation,
     mutation: JoomlaApiResponse,
   ): Promise<
-    (JoomlaApiResponse & { readonly customFieldVerification?: {
+    (JoomlaApiResponse & { readonly nativeMediaVerification?: NativeMediaVerification; readonly customFieldVerification?: {
       readonly scope: 'subform-custom-fields';
       readonly status: 'verified' | 'partial' | 'uncertain';
       readonly matchedFields: readonly string[];
@@ -774,13 +778,15 @@ export class JoomlaWriteService {
     const desired = { ...asRecord(operation.body?.['com_fields']), ...operation.body };
     const fields = (operation.customFields ?? []).filter((field) => field.type === 'subform'
       && field.context === target?.context && Object.hasOwn(desired, field.name));
-    if (fields.length === 0) return response;
     const attributes = asRecord(asRecord(asRecord(response.data)['data'])['attributes']);
+    const identified = responseId(response.data) === String(positiveId(Number(id)));
+    const nativeMediaVerification = verifyNativeMedia(operation.action, operation.body ?? {}, attributes, identified, api.baseUrl);
+    const evidence = nativeMediaVerification === undefined ? response : { ...response, nativeMediaVerification };
+    if (fields.length === 0) return evidence;
     const nested = asRecord(attributes['com_fields']);
     const matchedFields: string[] = [];
     const differentFields: string[] = [];
     const unobservableFields: string[] = [];
-    const identified = responseId(response.data) === String(positiveId(Number(id)));
     for (const field of fields) {
       if (!Object.hasOwn(desired, field.name)) continue;
       if (!identified) {
@@ -798,7 +804,7 @@ export class JoomlaWriteService {
     }
     // Retain the raw read response. This narrow evidence makes no claim about
     // other approved fields or the PHP component's durable execution lease.
-    return { ...response, customFieldVerification: {
+    return { ...evidence, customFieldVerification: {
       scope: 'subform-custom-fields',
       status: !identified || differentFields.length > 0 ? 'uncertain' : unobservableFields.length > 0 ? 'partial' : 'verified',
       matchedFields, differentFields, unobservableFields,

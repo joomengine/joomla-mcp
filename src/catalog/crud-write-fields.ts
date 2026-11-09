@@ -28,12 +28,12 @@ const menuItem = [
 
 const moduleFields = [
   'title', 'note', 'content', 'ordering', 'position', 'published', 'module', 'access',
-  'showtitle', 'params', 'language', 'assigned',
+  'showtitle', 'params', 'language', 'assigned', 'publish_up', 'publish_down',
 ] as const;
 
 export const crudWriteFieldsByBaseId: Readonly<Record<string, readonly string[]>> = Object.freeze({
   'content.articles': Object.freeze([
-    'title', 'alias', 'articletext', 'introtext', 'fulltext', 'state', 'catid', 'created_by_alias',
+    'title', 'alias', 'articletext', 'introtext', 'fulltext', 'state', 'catid', 'created', 'created_by', 'created_by_alias',
     'publish_up', 'publish_down', 'images', 'urls', 'attribs', 'ordering', 'metakey',
     'metadesc', 'access', 'metadata', 'featured', 'language', 'note', 'tags',
   ]),

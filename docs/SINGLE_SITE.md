@@ -43,7 +43,11 @@ In Joomla:
 6. Enable only the required Web Services plugins.
 7. Generate the user’s Joomla API token.
 
-Do not use a human Super User token.
+Do not use a human Super User token. Article/banner creation requires **Access
+Administration Interface** (`core.manage`) on the target component as well as
+**Create** (`core.create`) on the selected category. Configure these through
+the component's Options → Permissions; read success alone does not establish
+write access. **Configure ACL & Options** (`core.admin`) is not required.
 
 ## 3. Install the read-only site configuration
 

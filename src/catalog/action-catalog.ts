@@ -128,7 +128,7 @@ function crudWriteAction(base: CrudBaseDescriptor, operation: CrudOperationDescr
             ? { type: 'string' } : {}),
           ...((['content.articles', 'modules.site', 'modules.administrator'].includes(base.id) && ['created', 'publish_up', 'publish_down'].includes(field))
             ? { type: field === 'created' ? 'string' : ['string', 'null'], maxLength: 64,
-              description: 'Native Joomla user_utc date. A date without an explicit offset uses the authenticated API user timezone; the API reads it back in UTC.' } : {}),
+              description: 'Native calendar value. API writes use the form language format (for en-GB: YYYY-MM-DD HH:mm:ss) in the authenticated user timezone; API reads return UTC. CLI writes use native model UTC SQL dates.' } : {}),
           ...(base.id === 'content.articles' && field === 'created_by'
             ? { type: 'integer', minimum: 1, description: 'Existing Joomla author user ID, subject to the native article form and ACL.' } : {}),
           ...(base.id === 'content.articles' && field === 'articletext'

@@ -38,7 +38,8 @@ describe('native publishing and authorship fields', () => {
   });
 
   it.each(['create', 'update'] as const)('allows article %s to set its creation date and author', async (operation) => {
-    const data = { title: 'Weekly promotion', catid: 2, created: '2026-11-09 08:30:00', created_by: 42 };
+    const data = { title: 'Weekly promotion', catid: 2, created: '2026-11-09 08:30:00', created_by: 42,
+      publish_up: '2026-11-09 08:30:00', publish_down: '2026-11-16 08:30:00' };
     const api = {
       request: vi.fn(async () => ({ status: 200, headers: {}, data: { data: { id: '41' } } })),
       get: vi.fn(async () => ({ status: 200, headers: {}, data: { data: { id: '41', attributes: data } } })),

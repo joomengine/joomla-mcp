@@ -74,10 +74,10 @@ const articleFields = {
   language: z.string().max(50).optional(),
   metadesc: z.string().max(1_000).optional(),
   metakey: z.string().max(1_000).optional(),
-  created: z.string().max(64).optional().describe('Native Joomla user_utc date; dates without an offset use the API user timezone.'),
+  created: z.string().max(64).optional().describe('Native calendar date in the API user timezone and form language format (en-GB: YYYY-MM-DD HH:mm:ss); CLI uses native model UTC SQL dates.'),
   created_by: z.int().positive().optional(),
-  publish_up: z.iso.datetime({ local: true }).nullable().optional(),
-  publish_down: z.iso.datetime({ local: true }).nullable().optional(),
+  publish_up: z.string().max(64).nullable().optional(),
+  publish_down: z.string().max(64).nullable().optional(),
 } as const;
 
 export const ArticleCreateSchema = z.object(articleFields).catchall(z.unknown());

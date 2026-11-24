@@ -1,18 +1,38 @@
 # JoomEngine MCP for Joomla companion
 
-> **Current installation:** this page documents the TypeScript proof-of-concept
-> stack. For new installations, use the stable
-> [MCP package](https://github.com/joomengine/mcp_package/tags), then follow the
-> [Joomla setup guide](https://github.com/joomengine/mcp_component/blob/main/docs/GETTING-STARTED.md)
-> and [AI / direct client guide](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md).
-> The current PHP client is maintained in
-> [`mcp_client`](https://github.com/joomengine/mcp_client).
+Install the companion when the [Node.js MCP server](../README.md) can run PHP
+on the Joomla host and needs local Joomla actions or CLI discovery. Sites
+connected only through the Joomla Web Services API can skip this package.
 
 This directory builds `pkg_joomlamcp`, an installable Joomla package containing
 the `console/joomlamcp` plugin. It requires Joomla 6.1 or later and PHP 8.3 or
 later.
 
-The plugin adds four Joomla console commands:
+## Install and verify
+
+1. Get the `pkg_joomlamcp-0.8.0.zip` asset from the [matching server release](https://github.com/joomengine/joomla-mcp/releases/tag/v0.8.0).
+2. In Joomla Administrator, open **System → Install → Extensions** and upload
+   the ZIP. Open **System → Manage → Plugins**, select **Console - JoomEngine
+   MCP for Joomla Companion**, and set **MCP actor user** to the dedicated
+   Joomla account whose permissions the server should use. Save and confirm
+   the plugin is enabled. A fresh installation enables it automatically.
+3. From the Joomla root, run the probe as the operating-system account that
+   will run the MCP server. A successful probe returns JSON with `ok: true`.
+
+   ```bash
+   php cli/joomla.php joomla:mcp:self-test --format=json --no-interaction --no-ansi
+   ```
+
+4. In the server's site configuration, set `cli.root` to the absolute Joomla
+   root and `cli.phpBinary` to the absolute PHP executable available to that
+   account. Enable the toolsets needed for this site. For example,
+   `cli.discovery` exposes the installed command inventory. See the
+   [site configuration example](../config/sites.example.json) and the
+   [JCB discovery walkthrough](../docs/JCB.md).
+
+## Console commands
+
+The plugin registers four Joomla console commands.
 
 ```text
 --quiet joomla:mcp:describe --format=json
@@ -41,7 +61,7 @@ from the TypeScript edge before execution. High-risk actions return pre/post
 state, verification, and recovery metadata wherever Joomla exposes a reliable
 read-back.
 
-The production operations available in companion 0.8.0 are:
+Companion 0.8.0 includes the following native operations.
 
 | Action | Native Joomla 6.1+ capability |
 |---|---|
@@ -65,21 +85,25 @@ generic Joomla command execution are not exposed.
 See [`docs/COVERAGE.md`](../docs/COVERAGE.md) for the exact MCP connection status
 and remaining live-validation gates.
 
-Build and test:
+## Build from source
+
+Run these commands from the repository root with PHP 8.3 or newer and the PHP
+`zip` extension.
 
 ```bash
 php companion/tests/run.php
 php companion/build.php
 ```
 
-The package ZIP is written to `companion/dist/`. See
-[`docs/PHP_COMPANION.md`](../docs/PHP_COMPANION.md) for installation and protocol examples.
+The build writes `companion/dist/pkg_joomlamcp-0.8.0.zip`. Install it through
+the same Joomla extension installer. The [companion reference](../docs/PHP_COMPANION.md)
+covers the protocol and includes a read-only dispatch example.
 
-Install or upgrade the generated `pkg_joomlamcp-0.8.0.zip` with Joomla's native
-Extensions installer. First installation enables the console plugin through
-Joomla's native extension lifecycle; upgrades preserve its current enabled
-state. Then confirm that the dedicated MCP actor still has only
-the intended ACL permissions. Before upgrading, retain the previous package ZIP
-and a normal Joomla backup. To roll back, reinstall the previous package version;
-site and extension state changes are separate Joomla state transitions and must
-be reversed using the recovery input returned by the action that applied them.
+## Upgrade and rollback
+
+Keep the previous ZIP and a Joomla backup before upgrading. Upload the new
+ZIP through the extension installer. Upgrades preserve the plugin's enabled
+state. Recheck the MCP actor's permissions and rerun the probe after upgrading.
+To roll back the companion, reinstall the previous ZIP. Undo Joomla state
+changes separately using the recovery input returned by the action that applied
+them.

@@ -2,294 +2,185 @@
 
 [![CI](https://github.com/joomengine/joomla-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/ci.yml) [![Release](https://github.com/joomengine/joomla-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/release.yml) [![Publish](https://github.com/joomengine/joomla-mcp/actions/workflows/publish-release.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/publish-release.yml) [![npm](https://img.shields.io/npm/v/%40joomengine%2Fjoomla-mcp?label=npm)](https://www.npmjs.com/package/@joomengine/joomla-mcp) [![Joomla](https://img.shields.io/badge/Joomla-6.1%2B-5091CD?logo=joomla&logoColor=white)](https://www.joomla.org/) [![Node](https://img.shields.io/badge/Node-22.12%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/) [![License](https://img.shields.io/badge/License-GPL--2.0%2B-blue)](LICENSE)
 
-An embeddable library and self-hosted Model Context Protocol (MCP) server for
-administering Joomla 6.x through bounded, auditable semantic actions.
+Connect an MCP client to a Joomla site to read articles, inspect menus and
+extensions, and plan and apply changes with operator approval. The
+`@joomengine/joomla-mcp` npm package provides the Node.js server and an
+embeddable TypeScript library. One server can address several sites by alias,
+each with its own credentials and enabled tools.
 
-The server has two Joomla integration paths:
+| I want to… | Where to start |
+| --- | --- |
+| Connect a desktop or terminal client to a Joomla site | Follow the read-only setup below, then the [client guide](docs/CLIENTS.md). |
+| Connect a hosted MCP client such as ChatGPT | Deploy the [Streamable HTTP server](docs/REMOTE_HTTP.md) with HTTPS and OAuth. [Docker Compose and systemd instructions](docs/DEPLOYMENT.md) |
+| Use Joomla's native models or inspect the local CLI | Install the [PHP console companion](docs/PHP_COMPANION.md) on the Joomla host. |
+| Work with a site that uses Joomla Component Builder (JCB) | Use Joomla actions on the site and inspect installed JCB commands. [JCB setup and worked example](docs/JCB.md) |
+| Embed Joomla tools in a Node.js application | Use the [library API and runnable examples](docs/LIBRARY.md). |
 
-- **Joomla Web Services API:** remote HTTPS access with a dedicated Joomla API identity.
-- **Joomla-native companion:** local access through an installable console plugin, Joomla dependency injection, ACL checks, and core models.
+## Connect your first Joomla site
 
-Native Joomla capabilities are the authority. The companion adapts native Joomla services and models to a structured JSON contract; it does not replace or reimplement Joomla functionality. There is no generic HTTP, CLI, shell, PHP, SQL, filesystem, model, method, or URL passthrough.
+This example uses local **stdio** between your MCP client and the Node server.
+The server connects to Joomla over **HTTPS**. Only the client machine needs
+Node.js (22.12 or newer). Joomla needs the core Web Services plugins for the
+resources you want to access. The example uses Joomla 6.x and a site alias
+named `company`.
 
-Joomla 6.1 is the implementation baseline, Joomla 6.2 is the compatibility target, and Joomla 7 is tested as a canary.
+### 1. Prepare the Joomla API user
 
-> **Production status:** all 236 Joomla 6.1 core Web Services route templates are source-catalogued, but five are explicitly source-only and no family has completed the required live Joomla 6.1/6.2 success, denial, postcondition, and recovery matrix. Production certification remains gated on that evidence, deeper value/output contracts, privileged recovery tests, and shared coordination for multi-replica writes. See [coverage and release status](docs/COVERAGE.md).
+In Joomla Administrator, enable **API Authentication - Web Services Joomla
+Token**, **User - Joomla API Token**, and **Web Services - Content**. Create a
+dedicated user and group for this connection. Include the group in the user
+token plugin's allowed groups and grant it **Web Services Login**
+(`core.login.api`) and the component permissions needed for your reads. Get
+the user's token from the **Joomla API Token** tab in that user's profile.
+The [single-site guide](docs/SINGLE_SITE.md) covers permissions and enabling
+additional toolsets.
 
-## Capabilities
+### 2. Install the server and configure the site
 
-- Source-backed semantic catalogue for all 236 Joomla 6.1 core Web Services route templates.
-- CRUD actions for the 36 core resource bases, including articles, banners, users, contacts, categories, menus, modules, tags, redirects, fields, templates, languages, messages, and newsfeeds.
-- Reviewed field allowlists for every CRUD mutation family and exact schemas for fixed-shape media, privacy, plugin, language-override, application-configuration, and Joomla Update mutations.
-- Explicit source-only gates for routes that are defective in Joomla 6.1 or require unimplemented runtime secret/schema discovery.
-- Joomla-native local actions through a fixed companion allowlist.
-- Read-only discovery, safe configuration filtering, and immutable multi-site aliases.
-- Guarded writes using explicit principal-bound operator grants (`once`, `30-minutes`, or `indefinite`), preview, signed one-time plans, idempotency, locks, audit events, and verification where supported.
-- MCP over stdio or authenticated Streamable HTTP.
-- Versioned ESM package with typed root and subpath exports for host applications.
-- OCI image, Docker Compose, and systemd deployment foundations.
-- Interactive and unattended catalogue-complete live validation with
-  deterministic Joomla fixtures, safety confirmation, and redacted
-  Markdown/JSON/JUnit failure evidence.
-
-The generated [API action reference](docs/API_ACTIONS.md) lists every route, semantic ID, accepted field set, transport, risk, and source-only gate. The release truth table is in [docs/COVERAGE.md](docs/COVERAGE.md). An implemented action is not described as production-verified until it has passed the corresponding live Joomla matrix.
-
-For article creation and updates, see [Writing article text](docs/ARTICLE_TEXT.md).
-MCP converts `articletext` into Joomla's native `introtext` and `fulltext` fields,
-including Read More splitting and clearing old full text when replacing the body.
-
-For site-specific custom fields, see [Writing custom field values](docs/CUSTOM_FIELDS.md).
-API write plans resolve published fields on the selected site and retain the
-normal permission and confirmation flow.
-
-## Requirements
-
-- Node.js 22.12 or newer.
-- Joomla 6.1 or newer for companion use; a Joomla 6.x site for API use.
-- PHP 8.3 or newer on a host using the companion.
-- HTTPS and a dedicated least-privilege Joomla API user for remote API access.
-- An OAuth/OIDC authorization server with a HTTPS JWKS endpoint for remote MCP access.
-
-## Use as a library dependency
-
-Install the public, versioned package:
+Run these commands in Bash on the machine that will launch the MCP client.
 
 ```bash
-npm install @joomengine/joomla-mcp@^0.8.0
+mkdir -p "$HOME/joomla-mcp"
+cd "$HOME/joomla-mcp"
+npm install --prefix . @joomengine/joomla-mcp@0.8.0
+cp node_modules/@joomengine/joomla-mcp/config/sites.single-site-readonly.example.json sites.json
 ```
 
-Create a transport-neutral application without starting a process or binding a
-port:
+Edit `sites.json`. Set `sites.company.api.baseUrl` to the HTTPS address of your
+Joomla installation, including its subdirectory if applicable. The server
+appends `/api/index.php/v1/…`. For an articles-only connection, set
+`sites.company.toolsets` to `["discovery", "content.read"]`. Leave `tokenEnv`
+set to `JOOMLA_COMPANY_TOKEN`. It names the environment variable that holds
+the token.
 
-```js
-import {
-  createJoomlaMcp,
-  loadConfiguration,
-} from '@joomengine/joomla-mcp';
-
-const configuration = await loadConfiguration('/etc/joomla-mcp/sites.json');
-const application = createJoomlaMcp({ configuration });
-const mcpServer = application.createServer();
+```bash
+read -rsp 'Joomla API token: ' JOOMLA_COMPANY_TOKEN
+echo
+export JOOMLA_COMPANY_TOKEN
 ```
 
-The package retains the complete catalogue, reads, guarded writes,
-administration actions, grant workflow, Joomla API and companion transports,
-stdio and authenticated HTTP support. Host applications may inject secret
-resolution, audit, API, and CLI adapters while the action and security
-boundaries remain controlled by this package.
+### 3. Register the stdio server in your MCP client
 
-See [library integration](docs/LIBRARY.md) for every public entry point,
-configuration and secret-manager integration, stdio/HTTP lifecycle, adapter
-contracts, isolation rules, executable examples, and compatibility policy.
+For clients that use `mcpServers` JSON, the following command prints a server
+entry with the absolute paths from your installation. Run it in the same
+`$HOME/joomla-mcp` directory and add the entry to your client's configuration.
 
-## Docker release images
+```bash
+node --input-type=module <<'NODE'
+import { resolve } from 'node:path';
 
-Docker and npm use the same release version. For the 0.8.0 stable release,
-`ghcr.io/joomengine/joomla-mcp:0.8.0`, `:v0.8.0`, and `:latest` resolve to
-the same image digest. Commit-addressed `:sha-<commit>` images remain available.
-Version tags are immutable; `latest` advances only after verified stable npm
-publication. Prereleases use `next` and never change `latest`.
+console.log(JSON.stringify({
+  mcpServers: {
+    joomla: {
+      command: process.execPath,
+      args: [resolve('node_modules/@joomengine/joomla-mcp/dist/bin/joomla-mcp.js')],
+      env: { JOOMLA_MCP_CONFIG: resolve('sites.json') }
+    }
+  }
+}, null, 2));
+NODE
+```
 
-See [deployment](docs/DEPLOYMENT.md) for configuration and digest-pinned
-production rollout, and [releasing](docs/RELEASING.md) for publication and
-recovery.
+Launch or restart the client with `JOOMLA_COMPANY_TOKEN` available to its
+server process. Clients that filter the environment need to forward this
+variable explicitly. Each client starts the stdio server itself. For Codex
+TOML, Claude Code, Gemini CLI, desktop apps and remote connections, see
+[client-specific configuration](docs/CLIENTS.md).
 
-## Install and validate
+### 4. Verify a read
+
+| MCP tool | Arguments | What it verifies |
+| --- | --- | --- |
+| `joomla_sites_list` | `{}` | The server loaded the `company` alias and its configured adapters. |
+| `joomla_content_articles_list` | `{"site":"company","limit":1}` | The server can reach Joomla and read content with this user's token. An empty list is valid on a site with no visible articles. |
+
+In a chat client, you can ask “List at most one Joomla article on the
+`company` site.” If discovery succeeds and the article read fails, check the
+site URL, token, Joomla permissions and Content Web Services plugin.
+[Troubleshooting](docs/TROUBLESHOOTING.md)
+
+## Joomla and JCB actions
+
+Use `joomla_actions_search` to find what the site enables and
+`joomla_action_describe` to inspect an action's inputs and available
+transports. The catalogue covers 236 Joomla 6.1 core Web Services route
+templates. Five entries are source-only. Joomla 6.1 is the baseline, 6.2 is
+the compatibility target, and Joomla 7 has a canary check. The live success,
+denial and recovery matrix is still incomplete. Review the [action
+reference](docs/API_ACTIONS.md) and [coverage status](docs/COVERAGE.md)
+before enabling writes in production.
+
+With JCB installed, the same core tools work for articles, menus and other
+Joomla resources. To discover the `componentbuilder:` commands available on
+that particular site, configure the local companion and enable `cli.discovery`.
+Use `joomla_cli_inventory` to find a command and `joomla_cli_command_help`
+to inspect its arguments. For component authoring and compilation options,
+see [Using Joomla MCP with JCB](docs/JCB.md).
+
+### Apply a change with operator approval
+
+1. Enable the specific write toolset for the site and configure the approval
+   secret. The Joomla identity also needs permission for the operation.
+2. Describe the action and call `joomla_action_write_plan` with its inputs, a
+   UUID idempotency key and `dryRun: true`. Review the target and proposed change.
+3. Call `joomla_permission_request` for the site, toolset, reason and duration.
+   Show the acknowledgement phrase to the operator. After the operator supplies
+   the exact phrase, submit it to `joomla_permission_approve`.
+4. Repeat the plan with `dryRun: false`. Pass its signed confirmation token to
+   `joomla_write_apply`, then read the resource back and check the audit result.
+
+The [usage guide](docs/USAGE.md) explains the tools and grant workflow.
+For content-specific examples, see [article text](docs/ARTICLE_TEXT.md),
+[custom field values](docs/CUSTOM_FIELDS.md) and [menu component
+binding](docs/MENU_COMPONENT_BINDING.md).
+
+## Deploy and operate the server
+
+- **Remote API sites.** Run the published `ghcr.io/joomengine/joomla-mcp`
+  image with Compose for an API-only server, or run Node under systemd.
+  Configure the `http` block and an OAuth/OIDC issuer with a reachable HTTPS
+  JWKS endpoint. The reverse proxy terminates TLS. The MCP client sends its
+  access token to the server, which uses a separate Joomla credential for
+  each site. [Deployment, upgrades and rollback](docs/DEPLOYMENT.md)
+- **Local Joomla access.** Run Node on the Joomla host with access to PHP
+  8.3+ and the Joomla root. Install the matching `pkg_joomlamcp` ZIP, select
+  a dedicated MCP actor in the console plugin and run its self-test. A site
+  can configure the API adapter, the local companion, or both.
+  [Companion installation](companion/README.md)
+- **Operational checks.** `/healthz` reports HTTP process liveness and
+  `/readyz` checks the JWKS dependency. Use a bounded Joomla read to verify
+  site access. Run a single server replica for writes. [Operations and
+  monitoring](docs/OPERATIONS.md) · [Security model](docs/SECURITY.md)
+
+## Build and test from source
 
 ```bash
 git clone https://github.com/joomengine/joomla-mcp.git
 cd joomla-mcp
 npm ci
-cp config/sites.example.json config/sites.json
 npm run validate
 ```
 
-Edit `config/sites.json`, then export every secret named by `tokenEnv`, `updateTokenEnv`, and `approval.secretEnv`. Tokens and approval secrets are never stored in the site file.
+The built stdio executable is `dist/bin/joomla-mcp.js`. Set
+`JOOMLA_MCP_CONFIG` to the absolute path of your site file before launching it
+from your client. See the [changelog](CHANGELOG.md) for changes since the
+published package.
 
-For write-enabled sites, generate an approval secret of at least 32 random characters:
-
-```bash
-export JOOMLA_MCP_APPROVAL_SECRET="$(openssl rand -hex 32)"
-```
-
-Do not put production secrets in shell history, source control, client configuration, or command arguments. Use the operating-system service manager or a secret store.
-
-To build the companion and prove a fresh installation plus the complete live
-MCP matrix against the repository's disposable Joomla 6.1/JoomEngine fixture:
+To build the installable companion and exercise it against the disposable
+JoomEngine fixture, use PHP 8.3+ with the ZIP extension and Docker Compose v2.
 
 ```bash
+php companion/tests/run.php
 php companion/build.php
 npm run test:fixture:joomengine
 ```
 
-This requires Docker with Compose v2. The fixture uses fresh isolated volumes,
-publishes Joomla only on a random loopback port, generates throwaway
-credentials and an ephemeral API token, inventories installed CLI contracts,
-then exercises the full action catalogue through API/companion and
-stdio/Streamable HTTP before removing the site and database. Failures upload
-redacted Markdown, JSON, JUnit, per-action evidence, and runtime logs before
-teardown. See [live validation](docs/LIVE_TESTING.md).
-
-The packaged declarative scenario is `config/live-test.default.json`. It
-creates and independently verifies several categories, articles, user groups,
-users, banner categories, banners, menus, article menu items, and custom HTML
-modules. Relationships use named references in JSON; Joomla IDs are resolved
-only after the referenced record has been created and independently observed.
-Private-message tests likewise resolve each path's authenticated account from
-the human-readable `target.actorUsernames` scenario setting before sending.
-Pass `--scenario /path/to/override.json` to replace the packaged scenario, or
-omit a resource family from the override to skip that family.
-
-To retain every created record for inspection in Joomla without issuing any
-delete or trash operation:
-
-```bash
-npm run test:live -- \
-  --scenario ./config/live-test.default.json \
-  --config /absolute/path/to/config/sites.json \
-  --site demo \
-  --profile crud \
-  --non-interactive \
-  --confirm-mutations \
-  --cleanup never
-```
-
-The runner writes `START`, `WAIT`, and terminal status lines to standard output
-as each phase runs, while preserving the full Markdown, JSON, JUnit, per-action,
-and fixture-log artifacts.
-
-To select a live demo site interactively:
-
-```bash
-npm run build
-npx joomla-mcp-live-test
-```
-
-Mutation profiles print the exact target and require a typed hostname/run-seed
-acknowledgement. Unattended mutation runs require explicit
-`--confirm-mutations`; the full privileged profile additionally requires
-`--disposable`.
-
-## Use over stdio
-
-Build and start the server:
-
-```bash
-npm run build
-JOOMLA_MCP_CONFIG=/absolute/path/to/config/sites.json npm start
-```
-
-Example MCP client entry:
-
-```json
-{
-  "mcpServers": {
-    "joomla": {
-      "command": "node",
-      "args": ["/opt/joomla-mcp/dist/bin/joomla-mcp.js"],
-      "env": {
-        "JOOMLA_MCP_CONFIG": "/etc/joomla-mcp/sites.json"
-      }
-    }
-  }
-}
-```
-
-The process environment must also contain the token and approval-secret variables referenced by the site file. Stdio inherits the permissions of the local MCP client, so use a dedicated operating-system account for production.
-
-## Use over Streamable HTTP
-
-Add the `http` block shown in `config/sites.example.json`, then run:
-
-```bash
-npm run build
-JOOMLA_MCP_CONFIG=/etc/joomla-mcp/sites.json npm run start:http
-```
-
-The HTTP entry point requires cryptographically verified JWTs and validates issuer, audience, scopes, exact `Host`, optional `Origin`, request limits, and principal-bound sessions. `/healthz` is shallow process liveness; `/readyz` warms and validates the configured JWKS dependency before the instance receives MCP traffic. Graceful shutdown stops new admission, closes idle connections, waits for active connections up to `shutdownGraceMs`, and then force-closes them. Terminate TLS at a trusted reverse proxy and keep the Node listener on a private interface. See [remote HTTP](docs/REMOTE_HTTP.md) and [deployment](docs/DEPLOYMENT.md).
-
-## Use the Joomla companion
-
-Build and test the installable package:
-
-```bash
-php companion/tests/run.php
-php companion/build.php
-```
-
-Install the generated `companion/dist/pkg_joomlamcp-*.zip` with Joomla's extension installer. A first installation enables **Console - JoomEngine MCP for Joomla Companion** through Joomla's native installer lifecycle; package updates preserve the operator's enabled/disabled state. Select a dedicated least-privilege **MCP actor user**, and configure the site's fixed Joomla root and PHP executable in `config/sites.json`.
-
-Verify from the Joomla root:
-
-```bash
-php cli/joomla.php joomla:mcp:describe --format=json --no-interaction --no-ansi
-```
-
-The edge invokes only the companion's named, schema-validated actions over JSON stdin. See [PHP companion](docs/PHP_COMPANION.md).
-
-## Joomla API setup
-
-For each site:
-
-1. Enable **API Authentication - Web Services Joomla Token**.
-2. Enable **User - Joomla API Token** and permit a dedicated automation group.
-3. Give the automation group `core.login.api` and only the component permissions required by its enabled toolsets.
-4. Enable only the Web Services plugins needed by those toolsets.
-5. Create the user's Joomla API token and place it in the environment variable named by `tokenEnv`.
-6. Confirm that `https://your-site.example/api/index.php/v1/content/articles` responds using that token.
-
-Joomla Update uses a separate token referenced by `updateTokenEnv`. Do not reuse or expose either token to MCP clients.
-
-## Writes
-
-Writes are disabled unless the relevant site toolset and approval configuration are enabled. The normal flow is:
-
-1. Search the catalogue and select a fixed semantic action.
-2. Call `joomla_action_describe` to inspect its complete schema, source, configured transport availability, and certification state.
-3. Call `joomla_action_write_plan` with a UUID idempotency key and `dryRun: true` to inspect the operation. Companion plans execute Joomla's native non-mutating preflight and bind its redacted result into the plan.
-4. Call `joomla_permission_request` for the exact site, write/administration toolsets, reason, and duration.
-5. Show the returned acknowledgement phrase to the operator. Submit it to `joomla_permission_approve` only after the operator supplies it exactly.
-6. Repeat the write plan with `dryRun: false`; an active matching grant is required and the returned token is bound to that grant.
-7. Call `joomla_write_apply` with the token. Apply rechecks the authenticated principal, site/toolset scopes, grant, stored plan, and Joomla preconditions before executing.
-8. Verify the resulting resource and the permission/plan/apply audit events.
-
-One-operation grants are consumed by one apply attempt. Thirty-minute grants expire exactly 30 minutes after approval. Indefinite grants are disabled by default, require an integrity-protected persistent store, and remain active only until explicitly revoked. Grants never override site configuration, OAuth scopes, Joomla token permissions, or Joomla ACL.
-
-Do not enable destructive or privileged toolsets until their live and recovery gates in [docs/COVERAGE.md](docs/COVERAGE.md) have passed for your environment.
-
-## Documentation
-
-- [Architecture and native-first rules](docs/ARCHITECTURE.md)
-- [Library and host-application integration](docs/LIBRARY.md)
-- [Versioning and coordinated package releases](docs/RELEASING.md)
-- [Single-company, single-site deployment](docs/SINGLE_SITE.md)
-- [ChatGPT, Codex, Claude, Gemini, and Grok connections](docs/CLIENTS.md)
-- [Generated Joomla API action reference](docs/API_ACTIONS.md)
-- [Menu component binding and partial-write recovery](docs/MENU_COMPONENT_BINDING.md)
-- [Action coverage and release status](docs/COVERAGE.md)
-- [Deployment, upgrades, and rollback](docs/DEPLOYMENT.md)
-- [Fixture setup and live verification](docs/FIXTURES.md)
-- [Interactive, unattended, and CI live validation](docs/LIVE_TESTING.md)
-- [Operations and monitoring](docs/OPERATIONS.md)
-- [PHP companion](docs/PHP_COMPANION.md)
-- [Remote Streamable HTTP](docs/REMOTE_HTTP.md)
-- [Security model](docs/SECURITY.md)
-- [Testing](docs/TESTING.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [MCP tools and use cases](docs/USAGE.md)
-- [Joomla CLI inventory and integration mapping](docs/CLI.md)
-
-## Development and contribution
-
-```bash
-npm run check
-npm test
-npm run build
-php companion/tests/run.php
-php companion/build.php
-```
-
-`npm run validate` runs TypeScript checking, the offline test suite, and the production build. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements and [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+See [live testing](docs/LIVE_TESTING.md) for the fixture, interactive site
+selection, unattended runs and cleanup controls. Developer references include
+[architecture](docs/ARCHITECTURE.md), [CLI mapping](docs/CLI.md),
+[testing](docs/TESTING.md), [release procedures](docs/RELEASING.md) and
+[contributing](CONTRIBUTING.md). Report vulnerabilities using the
+[private reporting instructions](SECURITY.md).
 
 ## License
 

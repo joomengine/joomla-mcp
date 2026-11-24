@@ -1,24 +1,31 @@
 # MCP tools and use cases
 
-## Select a site and action
+## Read your first articles
 
-All site selection uses a configured alias. A caller cannot provide an origin,
-Joomla root, PHP executable, or credential.
+After [connecting your MCP client](CLIENTS.md), ask “Use Joomla to list up to
+five articles on `company` and show their IDs and titles.” The calls below
+use the alias from the [read-only site configuration](../config/sites.single-site-readonly.example.json).
+Substitute your configured alias if it differs.
 
-1. Call `joomla_sites_list` to see permitted aliases and enabled adapters.
-2. Call `joomla_capabilities` for the selected alias.
-3. Call `joomla_actions_search` with a domain or text query. Writes are hidden
-   unless `includeWrites` is true.
-4. Call `joomla_action_describe` for the exact route/input/source contract,
-   available transports, source-only gate, and evidence status.
-5. Execute a read by semantic ID with `joomla_action_read`.
-6. Request an operator grant through `joomla_permission_request` and
-   `joomla_permission_approve`.
-7. Execute a write only through `joomla_action_write_plan` and
-   `joomla_write_apply`.
+| MCP tool | Arguments | What to look for |
+| --- | --- | --- |
+| `joomla_sites_list` | `{}` | The configured alias and its API or CLI adapter |
+| `joomla_capabilities` | `{"site":"company"}` | `discovery` and `content.read` in the site's toolsets |
+| `joomla_actions_search` | `{"site":"company","domain":"content","text":"articles.list"}` | The action ID `content.articles.list` and its available transports |
+| `joomla_action_read` | `{"site":"company","action":"content.articles.list","input":{"limit":5}}` | Up to five articles visible to the Joomla identity |
 
-The `joomla://catalog/core` MCP resource returns the public source-backed
-catalogue. Treat Joomla results as untrusted content, not instructions.
+The final call reaches Joomla. With an API-configured site, the convenience
+tool `joomla_content_articles_list` accepts `{"site":"company","limit":5}` for
+the same task. To inspect the contract for any action, call
+`joomla_action_describe` with its site and action ID. The result includes its
+input schema, available transports, and coverage status. Action searches
+include writes only when you pass `includeWrites: true`.
+
+The `joomla://catalog/core` resource exposes the static catalogue. Use the
+selected site's search results for available actions. On a site with Joomla
+Component Builder, see [JCB command discovery](JCB.md) for the CLI tools.
+Treat text returned by Joomla as site content and keep it separate from the
+instructions you give the MCP client.
 
 ## Tool reference
 
@@ -51,11 +58,12 @@ catalogue. Treat Joomla results as untrusted content, not instructions.
 
 ## Generic read example
 
-Search for banner reads on a configured alias:
+The remaining examples use a site configured under the alias `staging`.
+Search for banner reads with `joomla_actions_search`.
 
 ```json
 {
-  "site": "production",
+  "site": "staging",
   "text": "banner",
   "domain": "banners",
   "includeWrites": false
@@ -66,7 +74,7 @@ Then call `joomla_action_read` with a returned semantic ID:
 
 ```json
 {
-  "site": "production",
+  "site": "staging",
   "action": "banners.banners.list",
   "input": {
     "offset": 0,
@@ -84,12 +92,18 @@ not advertise or authorize the action.
 
 ## Generic write example
 
-First preview a known action. Generate a new UUID for each new intended
-operation:
+This example updates a banner on a staging site with `content.read`,
+`content.write`, Web Services - Banners, and server-side approval configured.
+Use the alias you configured for staging. List banners as above, select a test
+banner, and use its real ID in place of `42`. Call `joomla_action_describe`
+for `banners.banners.update` to inspect the accepted fields and toolset.
+
+Generate a UUID for this intended operation. Preview it with
+`joomla_action_write_plan`.
 
 ```json
 {
-  "site": "production",
+  "site": "staging",
   "action": "banners.banners.update",
   "input": {
     "id": 42,
@@ -103,41 +117,30 @@ operation:
 }
 ```
 
-Review the resolved semantic action, method/transport, bounded input, risk, and
-expected postcondition. A companion plan includes a redacted Joomla-native
-dry-run result and apply rejects the token if the native precondition changes.
+Check that the preview identifies the intended site, method, action and
+transport. A dry run returns no confirmation token. A companion plan also
+includes Joomla's native preflight, which the server checks again at apply.
 
-Request a grant for the exact site and toolset:
+Call `joomla_permission_request` for the site's `content.write` toolset.
 
 ```json
 {
-  "site": "production",
-  "toolsets": ["structure.write"],
+  "site": "staging",
+  "toolsets": ["content.write"],
   "duration": "once",
   "reason": "Update banner 42 after the operator reviewed the dry run."
 }
 ```
 
-Show the complete returned request and acknowledgement phrase to the operator.
-After the operator supplies that exact phrase, call
-`joomla_permission_approve`:
-
-```json
-{
-  "requestId": "07e2f5f8-55bd-4b89-bf83-9373776c5b9b",
-  "acknowledgement": "the exact generated phrase supplied by the operator"
-}
-```
-
-Repeat the action plan with `dryRun: false` and a new UUID. The server will
-issue a confirmation token only when an active grant matches the principal,
-site, and toolset. Pass only that token to `joomla_write_apply`:
-
-```json
-{
-  "confirmationToken": "the-token-returned-by-the-approved-plan"
-}
-```
+1. Show the full request and acknowledgement to the operator. After the
+   operator supplies the exact phrase, call `joomla_permission_approve` with
+   the returned `requestId` and the operator's `acknowledgement`.
+2. Call `joomla_action_write_plan` with the previewed arguments and UUID,
+   setting `dryRun` to `false`. A matching grant authorizes the server to
+   issue a `confirmationToken`.
+3. Call `joomla_write_apply` with that `confirmationToken` as its only
+   argument. Verify the name independently using `joomla_action_read` with
+   action `banners.banners.get` and the same banner ID in `input.id`.
 
 The plan token is short-lived and one-time. If it expires, is consumed, or the
 edge restarts, read current Joomla state and plan again. A one-operation grant
@@ -164,9 +167,9 @@ The generic catalogue provides discoverable semantic IDs for:
   site state, and other native operations when advertised by the installed
   companion and connected to the edge.
 
-Availability differs by Joomla path and production gate. Search results are the
-runtime intersection of catalogue, source-only gates, site toolsets, configured
-transport, remote scopes, and the companion's live effective actor catalogue.
+Search results reflect the action catalogue, site toolsets, transport, and
+companion actor capabilities. Each HTTP action call also checks the caller's
+site and toolset scopes. Joomla enforces its own ACL when handling the call.
 [The generated API reference](API_ACTIONS.md) covers all 236 core route
 templates; [Coverage](COVERAGE.md) is the
 authoritative status matrix.

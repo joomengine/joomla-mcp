@@ -43,7 +43,7 @@ Run these commands in Bash on the machine that will launch the MCP client.
 ```bash
 mkdir -p "$HOME/joomla-mcp"
 cd "$HOME/joomla-mcp"
-npm install --prefix . @joomengine/joomla-mcp@0.8.0
+npm install --prefix . @joomengine/joomla-mcp@0.8.1
 cp node_modules/@joomengine/joomla-mcp/config/sites.single-site-readonly.example.json sites.json
 ```
 

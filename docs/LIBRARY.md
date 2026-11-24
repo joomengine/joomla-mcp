@@ -16,7 +16,7 @@ plan/apply tools for execution and verification. [JCB integration](JCB.md)
 Pin a compatible version in the consuming application:
 
 ```bash
-npm install @joomengine/joomla-mcp@^0.8.0
+npm install @joomengine/joomla-mcp@^0.8.1
 ```
 
 For exact, reproducible deployments:
@@ -24,7 +24,7 @@ For exact, reproducible deployments:
 ```json
 {
   "dependencies": {
-    "@joomengine/joomla-mcp": "0.8.0"
+    "@joomengine/joomla-mcp": "0.8.1"
   }
 }
 ```
@@ -40,7 +40,7 @@ release asset:
 ```json
 {
   "dependencies": {
-    "@joomengine/joomla-mcp": "https://github.com/joomengine/joomla-mcp/releases/download/v0.8.0/joomengine-mcp-for-joomla-v0.8.0.tgz"
+    "@joomengine/joomla-mcp": "https://github.com/joomengine/joomla-mcp/releases/download/v0.8.1/joomengine-mcp-for-joomla-v0.8.1.tgz"
   }
 }
 ```

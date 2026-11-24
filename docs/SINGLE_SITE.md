@@ -178,7 +178,7 @@ store.
 
 If the Node process has local access to the Joomla installation and PHP, it can
 also invoke Joomla-native actions through this repository’s companion. Install
-the matching release ZIP (for example, `pkg_joomlamcp-0.8.0.zip`) using
+the matching release ZIP (for example, `pkg_joomlamcp-0.8.1.zip`) using
 Joomla’s extension installer, enable the console plugin, and select its
 dedicated **MCP actor user**. Run the following from the Joomla installation
 directory under the account that will execute the companion.

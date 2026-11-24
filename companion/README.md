@@ -10,7 +10,7 @@ later.
 
 ## Install and verify
 
-1. When building this source revision for direct JCB jobs, run `php companion/build.php` in the repository root and use the ZIP in `companion/dist/`. For the published 0.8.0 server, get the `pkg_joomlamcp-0.8.0.zip` asset from the [matching server release](https://github.com/joomengine/joomla-mcp/releases/tag/v0.8.0).
+1. When building this source revision for direct JCB jobs, run `php companion/build.php` in the repository root and use the ZIP in `companion/dist/`. For the published 0.8.1 server, get the `pkg_joomlamcp-0.8.1.zip` asset from the [matching server release](https://github.com/joomengine/joomla-mcp/releases/tag/v0.8.1).
 2. In Joomla Administrator, open **System → Install → Extensions** and upload
    the ZIP. Open **System → Manage → Plugins**, select **Console - JoomEngine
    MCP for Joomla Companion**, and set **MCP actor user** to the dedicated
@@ -66,7 +66,7 @@ as the Node server and configure the site's job directory and `jcb.execute`
 toolset. The actor needs JCB administration permission. The server resolves
 eligible commands from the installed JCB plugin. [JCB jobs](../docs/JCB.md)
 
-Companion 0.8.0 includes the following native operations.
+Companion 0.8.1 includes the following native operations.
 
 | Action | Native Joomla 6.1+ capability |
 |---|---|
@@ -100,7 +100,7 @@ php companion/tests/run.php
 php companion/build.php
 ```
 
-The build writes `companion/dist/pkg_joomlamcp-0.8.0.zip`. Install it through
+The build writes `companion/dist/pkg_joomlamcp-0.8.1.zip`. Install it through
 the same Joomla extension installer. The [companion reference](../docs/PHP_COMPANION.md)
 covers the protocol and includes a read-only dispatch example.
 

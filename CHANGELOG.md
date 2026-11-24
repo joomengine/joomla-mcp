@@ -19,6 +19,31 @@ follow Semantic Versioning.
 - Complete omitted native field-create descriptions and parameter groups with administrator form defaults through the API and companion. Preserve explicit values and partial updates; prevent the missing non-null SQL payload failure reported in [#57](https://github.com/joomengine/joomla-mcp/issues/57) without assuming every HTTP 400 is effect-free.
 - Accept category assignments on create and update for all six native custom-field contexts. Preserve omitted assignments during API and companion updates, expose assignment read-back, and retain Joomla's All, None and subform-only behavior.
 
+## [0.8.1] - 2026-11-24
+
+<!-- Release notes generated using configuration in .github/release.yml at 4d78b8c0086c6ba81a31f39829026b36db0d6770 -->
+
+### What's Changed
+#### Dependencies
+* Bump @types/node from 26.6.4 to 26.6.5 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/62
+* Bump actions/setup-node from 7.0.0 to 7.1.0 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/64
+* Bump actions/create-github-app-token from 3.2.0 to 3.3.0 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/66
+* Update pending dependencies and fix production dependency audit by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/67
+* Bump vitest from 5.0.3 to 5.0.5 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/68
+* Bump docker/login-action from 4.5.2 to 4.7.0 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/70
+* Bump @modelcontextprotocol/sdk from 1.32.0 to 1.32.2 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/71
+* chore(deps): bump @types/node from 26.6.5 to 26.6.6 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/73
+* chore(deps): bump docker/login-action from 4.7.0 to 4.8.0 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/78
+* chore(deps-dev): bump vitest from 5.0.5 to 5.1.0 by @dependabot[bot] in https://github.com/joomengine/joomla-mcp/pull/79
+#### Other changes
+* Fix release verification after asynchronous npm publication by @Llewellynvdm in https://github.com/joomengine/joomla-mcp/pull/61
+* fix: preserve native form error diagnostics and update dependencies by @Llewellynvdm in https://github.com/joomengine/joomla-mcp/pull/72
+* Fix media verification and native publishing fields by @Llewellynvdm in https://github.com/joomengine/joomla-mcp/pull/77
+* Document Joomla MCP and integrate JCB directly into the Node server by @Llewellynvdm in https://github.com/joomengine/joomla-mcp/pull/80
+
+
+**Full Changelog**: https://github.com/joomengine/joomla-mcp/compare/v0.8.0...v0.8.1
+
 ## [0.8.0] - 2026-09-30
 
 ### Changed
@@ -138,3 +163,4 @@ follow Semantic Versioning.
 [0.6.0]: https://github.com/joomengine/joomla-mcp/releases/tag/v0.6.0
 [0.7.0]: https://github.com/joomengine/joomla-mcp/releases/tag/v0.7.0
 [0.8.0]: https://github.com/joomengine/joomla-mcp/releases/tag/v0.8.0
+[0.8.1]: https://github.com/joomengine/joomla-mcp/releases/tag/v0.8.1

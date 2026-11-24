@@ -19,6 +19,8 @@ export interface JcbField {
   readonly min?: string;
   readonly max?: string;
   readonly options?: readonly string[];
+  readonly dynamicOptions?: boolean;
+  readonly integerStorage?: boolean;
   readonly fields?: Readonly<Record<string, JcbField>>;
 }
 
@@ -53,12 +55,14 @@ export interface JcbApiAction {
   readonly conditionGroups: readonly JcbConditionGroup[];
   readonly dynamicRequired: boolean;
   readonly sourceCreateDisabled?: boolean;
+  readonly formPluginDefaults?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly source: {
     readonly routeRegistration: string;
     readonly registrationFile: string;
     readonly controller: string;
     readonly form?: string;
     readonly model?: string;
+    readonly formPlugins?: readonly string[];
   };
 }
 
@@ -74,6 +78,8 @@ interface Resource {
   readonly conditionGroups?: readonly JcbConditionGroup[];
   readonly dynamicRequired?: boolean;
   readonly sourceCreateDisabled?: boolean;
+  readonly formPluginDefaults?: JcbApiAction['formPluginDefaults'];
+  readonly formPlugins?: readonly string[];
   readonly model?: string;
   readonly form?: string;
 }
@@ -83,8 +89,8 @@ const operations: Readonly<Record<string, JcbApiAction['operation']>> = {
   displayList: 'list', displayItem: 'get', add: 'create', edit: 'update', delete: 'delete',
 };
 const componentSource = 'https://github.com/vdm-io/Joomla-Component-Builder/blob/' + data.componentRevision + '/';
-const routeRegistration = 'https://github.com/joomengine/pkg-component-builder/blob/' + data.packageRevision
-  + '/src/joomla__plg_webservices_componentbuilderapiroutes__6.x.zip';
+const pluginSource = 'https://github.com/joomengine/pkg-component-builder/blob/' + data.packageRevision + '/src/joomla__';
+const routeRegistration = pluginSource + 'plg_webservices_componentbuilderapiroutes__6.x.zip';
 
 function normalizeFields(fields: Readonly<Record<string, StoredField>>): Readonly<Record<string, JcbField>> {
   return Object.fromEntries(Object.entries(fields).map(([name, raw]) => {
@@ -127,6 +133,7 @@ for (const [route, controller] of Object.entries(data.routes)) {
     controller: componentSource + 'api/src/Controller/' + controllerName[0]!.toUpperCase() + controllerName.slice(1) + 'Controller.php',
     ...(metadata.form && {form: componentSource + 'admin/forms/' + metadata.form + '.xml'}),
     ...(metadata.model && {model: componentSource + 'admin/src/Model/' + metadata.model[0]!.toUpperCase() + metadata.model.slice(1) + 'Model.php'}),
+    ...(metadata.formPlugins && {formPlugins: metadata.formPlugins.map(name => pluginSource + name + '__6.x.zip')}),
   };
   actions.push({
     id: 'jcb.api.' + resource + '.' + operation + (identifier === 'guid' ? '.guid' : ''),
@@ -139,6 +146,7 @@ for (const [route, controller] of Object.entries(data.routes)) {
     conditionGroups: metadata.conditionGroups ?? [],
     dynamicRequired: metadata.dynamicRequired ?? false,
     ...(metadata.sourceCreateDisabled && {sourceCreateDisabled: true}),
+    ...(operation === 'create' && metadata.formPluginDefaults && {formPluginDefaults: metadata.formPluginDefaults}),
   });
 }
 

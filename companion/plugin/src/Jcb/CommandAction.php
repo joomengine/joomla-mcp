@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace VDM\Plugin\Console\JoomlaMcp\Jcb;
 
 use Joomla\CMS\Factory;
+use Joomla\CMS\Language\Text;
 use VDM\Joomla\Componentbuilder\Table;
 use VDM\Joomla\Database\Load;
 use ReflectionClass;
@@ -191,6 +192,18 @@ final readonly class CommandAction implements ActionInterface
             $bus = (new ReflectionProperty($this->command, 'message'))->getValue($this->command);
             foreach (['warning' => 'warnings', 'error' => 'errors'] as $key => $counter) {
                 $counts[$counter] = count((array) $bus?->get($key));
+            }
+            if ($this->verb === 'push') {
+                // JCB returns false and emits this localized warning for an already synchronized dependency.
+                $markers = ['McpAreaMarker', 'McpItemMarker', 'McpRepoMarker'];
+                $template = Text::sprintf('COM_COMPONENTBUILDER_NO_CHANGE_S_ITEM_S_IN_REPO_S_IS_ALREADY_IN_SYNC', ...$markers);
+                $pattern = '~^' . str_replace($markers, '.{0,1024}?', preg_quote($template, '~')) . '$~Ds';
+                $counts['inSyncWarnings'] = 0;
+                foreach ((array) $bus?->get('warning') as $warning) {
+                    if (is_string($warning) && strlen($warning) <= 4096 && preg_match($pattern, $warning) === 1) {
+                        $counts['inSyncWarnings']++;
+                    }
+                }
             }
         }
         foreach (array_slice($this->application->getMessageQueue(), $before) as $message) {

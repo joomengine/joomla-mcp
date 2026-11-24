@@ -156,7 +156,7 @@ describe('durable JCB queue controls', () => {
     const claim = join(jobs, 'active-' + createHash('sha256').update(site.id).digest('hex'));
     await link(path, claim);
     await expect(withJcbSiteWriteLease(site, unrelated)).rejects.toThrow(/execution claim/i);
-    const next = { ...record, idempotencyKey: randomUUID(), input: {}, preflight: {} };
+    const next = { action: 'jcb.push.power', idempotencyKey: randomUUID(), input: {}, preflight: {} };
     const fresh = await submitJcbJob(site, 'alice', next, 'fresh', run);
     expect(fresh.status).toBe('queued');
     expect((await redispatchJcbJob(site, 'alice', fresh.jobId, run)).status).toBe('queued');

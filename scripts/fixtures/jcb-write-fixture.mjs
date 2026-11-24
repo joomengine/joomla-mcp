@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
@@ -8,30 +9,6 @@ const guidPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 // Relationships below always come from a previous native POST and independent
 // GET in this run. The fixture never copies a site's confidential definitions or
 // changes a pre-existing record to exercise a write.
-function nativeCreateData(spec, owned, resource) {
-  const data = { ...spec.data(owned) };
-  // Browser forms send publish/feature switches even when unchanged. The
-  // generated Web Services controller does not synthesize required defaults.
-  // Never copy another entity or fill omitted fields on a PATCH.
-  for (const [name, field] of Object.entries(resource.fields ?? {})) {
-    if (
-      Object.hasOwn(data, name) ||
-      !field.required ||
-      field.default === undefined ||
-      field.default === '' ||
-      field.disabled ||
-      field.readonly ||
-      field.requestOnly ||
-      field.showon ||
-      field.multiple ||
-      (field.options?.length && !field.options.includes(field.default))
-    )
-      continue;
-    data[name] = field.default;
-  }
-  return data;
-}
-
 function definitionCases(marker) {
   const named = { name: marker };
   const description = 'Disposable native JCB form ' + marker;
@@ -67,6 +44,8 @@ function definitionCases(marker) {
         short_description: description,
         component_version: '1.0.0',
         preferred_joomla_version: 6,
+        add_namespace_prefix: '1',
+        namespace_prefix: 'Fixture',
         add_powers: 0,
         companyname: 'MCP Fixture',
         author: 'MCP Fixture',
@@ -311,7 +290,17 @@ export async function runJcbWriteFixture(session, site) {
     assert.ok(writable.includes(family), 'Unknown boundary family: ' + family);
     families[family] = { status: 'not-exercised', reason };
   }
-  const scenarios = [...definitionCases(marker), ...additionalFamilyCases(marker)];
+  const translationSource = 'MCP translation ' + marker + ' %s';
+  const scenarios = [
+    ...definitionCases(marker), ...additionalFamilyCases(marker),
+    {
+      resource: 'language_translations', owner: 'source', ownerValue: () => translationSource,
+      ownerFilter: 'search', data: () => ({source: translationSource}),
+      update: {translation: {translation0: {language: 'en-GB', translation: 'Fixture translation for %s'}}},
+      seed: () => Number(execFileSync('php', ['tests/fixtures/joomengine/jcb-seed-translation.php', marker],
+        {encoding: 'utf8', timeout: 30000}).trim()),
+    },
+  ];
   assert.equal(
     new Set(scenarios.map(spec => spec.resource)).size,
     scenarios.length,
@@ -340,27 +329,41 @@ export async function runJcbWriteFixture(session, site) {
     try {
       await renewIfNeeded();
       const existing = await ownedIds(spec, marker, owned);
-      if (
+      const nativeChild = (
         spec.ownerValue &&
         existing.size &&
         (spec.dependencies ?? []).some(parent => owned.get(parent)?.guid === spec.ownerValue(owned))
-      ) {
-        // Some JCB models create companion rows automatically when the fixture
-        // parent is saved. Never submit a duplicate create or count one here.
-        detail.status = 'native-created-with-owned-parent';
-        detail.steps.push('native rows already present for the newly created parent');
-        attempted.push(spec);
-        continue;
+      );
+      if (nativeChild) {
+        assert.equal(existing.size, 1, 'Expected exactly one child for the newly created parent.');
+      } else {
+        assert.equal(existing.size, 0, 'Fresh unique marker already exists.');
       }
-      assert.equal(existing.size, 0, 'Fresh unique marker already exists.');
-      const data = nativeCreateData(spec, owned, catalogue.resources[resource]);
+      const data = spec.data(owned);
       phase = 'native create';
       // Mark ownership intent *before* forwarding. Even if the response is lost,
       // cleanup searches only this run's unique field marker.
       attempted.push(spec);
-      const created = await write(session, site, resource, 'create', { data });
-      assert.equal(created.verification.status, 'verified', 'JCB create was not independently verified.');
-      const id = Number(created.verification.id);
+      let id;
+      if (nativeChild) {
+        // This row may be touched only because its GUID references a parent
+        // actually created and independently verified during this run.
+        [id] = existing;
+        detail.creation = 'native-parent';
+      } else if (spec.seed) {
+        phase = 'native create gate and model seed';
+        await assert.rejects(call(session, 'joomla_action_write_plan', {
+          site, action: 'jcb.api.language_translations.create', input: {data}, transport: 'api',
+          dryRun: true, idempotencyKey: randomUUID(),
+        }), /disables source/);
+        detail.creation = 'gated-api-create-native-model-seed';
+        id = spec.seed();
+      } else {
+        const created = await write(session, site, resource, 'create', { data });
+        assert.equal(created.verification.status, 'verified', 'JCB create was not independently verified.');
+        id = Number(created.verification.id);
+        detail.creation = 'verified-mcp-create';
+      }
       assert.ok(Number.isSafeInteger(id) && id > 0);
       owned.set(resource, { id });
       phase = 'numeric identity and fields';
@@ -384,19 +387,42 @@ export async function runJcbWriteFixture(session, site) {
         assert.equal(String(byGuid.data.data.id), String(id));
         owned.set(resource, { id, guid });
       }
-      detail.steps.push(
-        supportsGuid ? 'verified create, numeric and GUID reads' : 'verified create and numeric read',
-      );
+      detail.steps.push(supportsGuid ? 'verified numeric and GUID reads' : 'verified numeric read');
       if (spec.relationships) detail.steps.push('independent native relationship identity');
+      if (spec.seed) {
+        phase = 'reject immutable source change';
+        await assert.rejects(call(session, 'joomla_action_write_plan', {
+          site, action: 'jcb.api.language_translations.update', transport: 'api',
+          input: {id, data: {source: translationSource + ' modified'}}, dryRun: true,
+          idempotencyKey: randomUUID(),
+        }), /read-only|immutable/i);
+        detail.steps.push('confirmed source is immutable');
+      }
 
       const route = supportsGuid ? 'update.guid' : 'update';
+      const identifier = supportsGuid ? { guid } : { id };
+      let linkedRows;
+      if (spec.link) {
+        phase = 'append owned target to existing association rows';
+        const {column, edit} = spec.link;
+        linkedRows = edit(owned, field(control.data, column));
+        await write(session, site, resource, route, {...identifier, data: {[column]: linkedRows}});
+        const linked = field((await native(resource, '/' + id)).data, column);
+        assert.deepEqual(typeof linked === 'string' ? JSON.parse(linked) : linked, linkedRows);
+        detail.steps.push('independent native read verified linked target GUID and existing rows');
+      }
       phase = route + ' and independent field read';
       const updated = await write(session, site, resource, route, {
-        ...(supportsGuid ? { guid } : { id }),
+        ...identifier,
         data: spec.update,
       });
       assert.equal(updated.verification.status, 'verified', 'JCB did not verify the approved update.');
       const saved = (await native(resource, '/' + id)).data;
+      if (spec.link) {
+        const preserved = field(saved, spec.link.column);
+        assert.deepEqual(typeof preserved === 'string' ? JSON.parse(preserved) : preserved, linkedRows);
+        detail.steps.push('native sibling update preserved the complete relationship rows');
+      }
       assert.ok(
         ownerValues(spec, marker, owned).has(field(saved, spec.owner)),
         'The updated JCB record has a different ownership marker.',
@@ -409,6 +435,12 @@ export async function runJcbWriteFixture(session, site) {
           assert.deepEqual(Object.keys(observed), Object.keys(expected), 'Repeatable row order is significant.');
         } else assert.equal(String(raw), String(expected));
       }
+      if (spec.seed) {
+        const record = (await read(session, site, resource, 'get', {id})).data.data;
+        assert.equal(field(record, 'source'), translationSource);
+        assert.equal(field(saved, 'source'), translationSource);
+        detail.steps.push('native read independently verified original source and new translation');
+      }
       detail.steps.push('verified ' + route + ' and independent numeric read');
       detail.status = 'awaiting-cleanup';
     } catch (error) {
@@ -418,30 +450,6 @@ export async function runJcbWriteFixture(session, site) {
       detail.diagnostic = evidenceError(error);
       failures.push(resource + ': ' + phase + ' (' + detail.diagnostic + ')');
     }
-  }
-
-  // The legacy form disabling source is a gated native contract with explicit
-  // preflight failure. Do not dispatch a knowingly invalid create to the site.
-  try {
-    const action = 'jcb.api.language_translations.create';
-    await assert.rejects(
-      call(session, 'joomla_action_write_plan', {
-        site,
-        action,
-        input: { data: { source: marker } },
-        transport: 'api',
-        dryRun: true,
-        idempotencyKey: randomUUID(),
-      }),
-      /disables source/,
-    );
-    families.language_translations = {
-      status: 'native-create-gated',
-      reason: 'Pinned native translation source form disables create.',
-    };
-  } catch (error) {
-    failures.push('language_translations: unexpected create preflight (' + evidenceError(error) + ')');
-    families.language_translations = { status: 'failed', phase: 'native create gate' };
   }
 
   // Descendants go first so an earlier failed assertion never leaves an owned
@@ -471,7 +479,11 @@ export async function runJcbWriteFixture(session, site) {
       }
       assert.equal((await ownedIds(spec, marker, owned)).size, 0);
       detail.steps.push('verified owned-record cleanup');
-      if (detail.status === 'awaiting-cleanup') detail.status = 'verified-lifecycle';
+      if (detail.status === 'awaiting-cleanup') {
+        detail.status = detail.creation === 'verified-mcp-create'
+          ? 'verified-lifecycle'
+          : 'verified-native-seeded-read-update-delete';
+      }
     } catch (error) {
       detail.cleanup = 'failed';
       failures.push(spec.resource + ': cleanup (' + evidenceError(error) + ')');

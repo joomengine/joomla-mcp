@@ -9,7 +9,7 @@ declare(strict_types=1);
  */
 const JCB_REVISION = 'beb33d8c7d5749ebb9e6b912aaeb9460caf9e4fd';
 const PACKAGE_REVISION = '1aa00148cf4726a6eb0754d56250ea2411bc9951';
-const SOURCE_DIGEST = 'a09a41398b42430a8ca6d5ceec95c7fec6589601ff82d18ba17dd058e950078d';
+const SOURCE_DIGEST = '3eed6d17f877737eacc0b3b3c0691dab4748f418afef4c57331363792b981467';
 const ROUTER = 'plg_webservices_componentbuilderapiroutes/src/Extension/ComponentbuilderApiRoutes.php';
 
 function readSource(string $path): string
@@ -156,7 +156,62 @@ function renderJson(mixed $value, int $depth = 0): string
     return ($object ? '{' : '[') . "\n" . implode(",\n", $parts) . "\n" . $indent . ($object ? '}' : ']');
 }
 
-function resource(string $root, string $list, ?string $item): array
+/** Match storage from table declarations only, without reading fixture rows as definitions. */
+function integerColumns(string $schema): array
+{
+    preg_match_all('/^CREATE TABLE IF NOT EXISTS `#__componentbuilder_(\w+)` \((.*?)^\) ENGINE=/ms', $schema, $tables, PREG_SET_ORDER);
+    $result = [];
+    foreach ($tables as [, $name, $columns]) {
+        preg_match_all('/^\h*`(\w+)`\h+(?:TINYINT|SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT)\b/im', $columns, $integer);
+        $result[$name] = $integer[1];
+    }
+    return $result;
+}
+
+/** Collect the neutral form switches installed by the JCB content plugins. */
+function contentFormDefaults(string $directory): array
+{
+    $plugins = glob(rtrim($directory, '/') . '/plg_content_componentbuilder*', GLOB_ONLYDIR);
+    if (count($plugins) !== 9) {
+        throw new RuntimeException('Extract all nine packaged JCB content plugins and review any changed registrations.');
+    }
+    $forms = [];
+    foreach ($plugins as $plugin) {
+        $files = glob($plugin . '/src/Extension/*.php');
+        $extension = count($files) === 1 ? readSource($files[0]) : '';
+        if (!preg_match('/strpos\(\$context, \x27com_componentbuilder\.(\w+)\x27\) === 0/', $extension, $context)) {
+            throw new RuntimeException('Unknown JCB content form context: ' . basename($plugin));
+        }
+        preg_match_all('/\$form->loadFile\(\x27(\w+)\x27\);/', $extension, $files);
+        if (!in_array($context[1], $files[1], true)) {
+            throw new RuntimeException('Unknown native plugin form registration: ' . basename($plugin));
+        }
+        $forms[$context[1]]['plugins'][] = basename($plugin);
+        foreach (array_unique($files[1]) as $form) {
+            $xml = simplexml_load_string(readSource($plugin . '/forms/' . $form . '.xml'), options: LIBXML_NONET);
+            $required = $xml->xpath('//field[@required="true"]');
+            $count = 0;
+            foreach ($xml->xpath('/form/fields[@name="params"]/fieldset/fields') as $group) {
+                foreach ($group->xpath('./field[@required="true"]') as $field) {
+                    $name = (string) $field['name'];
+                    $default = (string) $field['default'];
+                    if ((string) $field['type'] !== 'radio' || !in_array($default, ['0', '1'], true)
+                        || !$field->xpath('option[@value="' . $default . '"]') || $form !== $context[1]) {
+                        throw new RuntimeException("Review required content plugin input $form.$name.");
+                    }
+                    $forms[$context[1]]['defaults'][(string) $group['name']][$name] = $default;
+                    $count++;
+                }
+            }
+            if ($count !== count($required)) {
+                throw new RuntimeException("Review the location of required plugin inputs in $form.");
+            }
+        }
+    }
+    return $forms;
+}
+
+function resource(string $root, string $list, ?string $item, array $integerColumns): array
 {
     $listSource = readSource($root . '/api/src/Controller/' . ucfirst($list) . 'Controller.php');
     preg_match_all('/\$filters\[\x27(\w+)\x27\]/', $listSource, $filters);
@@ -180,6 +235,22 @@ function resource(string $root, string $list, ?string $item): array
         throw new RuntimeException("Invalid XML in form $form[1].");
     }
     $controls = fields($xml);
+    if (!isset($integerColumns[$binding[1]])) {
+        throw new RuntimeException("Missing native schema for $item.");
+    }
+    foreach ($integerColumns[$binding[1]] as $column) {
+        if (isset($controls[$column])) {
+            $controls[$column]['integerStorage'] = true;
+        }
+    }
+    if (($controls['approved_paths']['type'] ?? '') === 'superpowerpaths') {
+        $provider = readSource($root . '/admin/src/Field/SuperpowerpathsField.php');
+        if (!str_contains($provider, 'extends CheckboxesField') || !str_contains($provider, '#__componentbuilder_repository')) {
+            throw new RuntimeException('Review the changed Super Power repository selector.');
+        }
+        $controls['approved_paths']['multiple'] = true;
+        $controls['approved_paths']['dynamicOptions'] = true;
+    }
     if (isset($controls['guid']) && preg_match('/\$data\[\x27guid\x27\]\s*=\s*(?:\(string\)\s*)?GuidHelper::get\(\)/', $model)) {
         $controls['guid']['serverGenerated'] = true;
     }
@@ -233,8 +304,15 @@ foreach (explode("\n", $router) as $line) {
 if (count($routes) !== 320 || count($lists) !== 53 || count($items) !== 51) {
     throw new RuntimeException('Route coverage changed. Review new methods and resources before regenerating.');
 }
+$integerColumns = integerColumns(readSource($argv[1] . '/admin/sql/install.mysql.utf8.sql'));
+$pluginForms = contentFormDefaults($argv[2]);
 foreach ($lists as $collection => $controller) {
-    $resources[$collection] = resource($argv[1], $controller, $items[$collection] ?? null);
+    $resources[$collection] = resource($argv[1], $controller, $items[$collection] ?? null, $integerColumns);
+    $pluginForm = $pluginForms[$resources[$collection]['form'] ?? ''] ?? null;
+    if ($pluginForm !== null) {
+        $resources[$collection]['formPlugins'] = $pluginForm['plugins'];
+        $resources[$collection]['formPluginDefaults'] = $pluginForm['defaults'];
+    }
 }
 ksort($sourceHashes, SORT_STRING);
 $digest = hash_init('sha256');

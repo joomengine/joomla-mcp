@@ -2,7 +2,7 @@
 
 The Node server ships a catalogue generated from the official JCB 6.2.1 release
 and its packaged webservices plugin. The source
-revisions and the SHA-256 fingerprint of the 207 input files are recorded in
+revisions and the SHA-256 fingerprint of the 228 input files are recorded in
 `generate-api-catalog.php`. The runtime reads only the bundled JSON.
 
 The registration plugin supplies each HTTP method, path, identifier rule and
@@ -11,8 +11,18 @@ For each writable resource the generator follows the item controller's edit
 model and its explicit form binding. The form supplies field types, defaults,
 read-only flags, input filters, validation rules, relationship keys, choices and
 nested rows. The model supplies declared conditional requirements and native
-GUID generation. Joomla still applies the installed model, plugins and caller's
+GUID generation. The install schema supplies integer storage types for read-back
+verification, including custom select fields. Joomla still applies the installed model, plugins and caller's
 ACL to each request.
+
+Nine packaged content plugins extend six edit forms. Their form registrations
+and XML supply the default required radio selections on create, including the
+Admin View privacy controls. These defaults appear in the catalogue separately
+from writable fields. JCB's item serializers omit the underlying plugin params.
+
+The Super Power repository selector builds its checkbox choices from published
+Super Power repository definitions on the site. Its XML option is a hint,
+and the field accepts multiple repository paths.
 
 From a checkout of this repository, reproduce the catalogue with Git, curl,
 unzip and PHP 8.3+ with SimpleXML installed.
@@ -20,8 +30,13 @@ unzip and PHP 8.3+ with SimpleXML installed.
 ```bash
 source_dir=$(mktemp -d)
 git clone --quiet --branch v6.2.1 --depth 1 https://github.com/vdm-io/Joomla-Component-Builder.git "$source_dir/joomla"
-curl -fsSL https://raw.githubusercontent.com/joomengine/pkg-component-builder/1aa00148cf4726a6eb0754d56250ea2411bc9951/src/joomla__plg_webservices_componentbuilderapiroutes__6.x.zip -o "$source_dir/routes.zip"
-unzip -q "$source_dir/routes.zip" -d "$source_dir/plugins"
+package_revision=1aa00148cf4726a6eb0754d56250ea2411bc9951
+curl -fsSL "https://github.com/joomengine/pkg-component-builder/archive/$package_revision.tar.gz" -o "$source_dir/package.tar.gz"
+tar -xzf "$source_dir/package.tar.gz" -C "$source_dir"
+package_src="$source_dir/pkg-component-builder-$package_revision/src"
+for archive in "$package_src"/joomla__plg_content_componentbuilder*__6.x.zip "$package_src"/joomla__plg_webservices_componentbuilderapiroutes__6.x.zip; do
+  unzip -q "$archive" -d "$source_dir/plugins"
+done
 php scripts/jcb/generate-api-catalog.php "$source_dir/joomla" "$source_dir/plugins"
 git diff --exit-code -- src/jcb/api-catalog.json
 npm test -- tests/jcb-api-catalog.test.ts

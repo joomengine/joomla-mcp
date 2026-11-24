@@ -6,6 +6,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
+import { withJcbHttpClients } from './jcb-http.mjs';
 import { runJcbWriteFixture } from './jcb-write-fixture.mjs';
 import { loadConfiguration } from '../../dist/config/load.js';
 import { createHttpLiveSession, createStdioLiveSession } from '../../dist/live-test/transports.js';
@@ -85,7 +86,7 @@ try {
             'JCB fixture-owned definition lifecycles and cleanup',
           );
         });
-        await suite(session, 'native commands and jobs', () => checkJobs(session, phpBinary));
+        await suite(session, 'native commands and jobs', () => checkJobs(session, phpBinary, configuration));
       }
     } finally {
       await session.close();
@@ -316,7 +317,7 @@ async function checkInstalledRoutes(session, phpBinary) {
   passed(session, 'Inspected every registered API route, all 53 collection reads and numeric/GUID identity');
 }
 
-async function checkJobs(session, phpBinary) {
+async function checkJobs(session, phpBinary, configuration) {
   const site = localSite;
   const inventory = await session.call({ name: 'joomla_cli_inventory', arguments: { site } });
   const nativeCommands = inventory.data.commands.filter((command) =>
@@ -386,16 +387,33 @@ async function checkJobs(session, phpBinary) {
   // All ordinary package operations finish before compiling. If the compiler
   // reports an uncertain outcome, the same site's lease stops further writes.
   await checkPackageRoundtrip(session, phpBinary);
-  const compiler = await runJob(session, 'jcb.compile.component', {
-    component: demo,
-    'joomla-version': '6',
-    'add-build-date': '2',
-    'build-date': '2026-01-01',
+  await withJcbHttpClients(configuration, async (builder, observer) => {
+    await grant(builder, site, 'jcb.execute');
+    await grant(observer, site, 'jcb.execute');
+    const compiler = await runJob(builder, 'jcb.compile.component', {
+      component: demo,
+      'joomla-version': '6',
+      'add-build-date': '2',
+      'build-date': '2026-01-01',
+    });
+    const jobId = compiler.jobId;
+    const list = (client) => client.call({ name: 'joomla_jcb_jobs_list', arguments: { site } });
+    assert.ok((await list(builder)).jobs.some((entry) => entry.jobId === jobId));
+    assert.ok(!(await list(observer)).jobs.some((entry) => entry.jobId === jobId));
+    await assert.rejects(
+      observer.call({ name: 'joomla_jcb_job_get', arguments: { site, jobId } }),
+      /Unknown JCB job/i,
+    );
+    assert.ok(compiler.artifacts.length > 0, 'The installed compiler must produce an archive.');
+    for (const artifact of compiler.artifacts) {
+      await verifyArchive(builder, site, jobId, artifact);
+      await assert.rejects(
+        observer.call({ name: 'joomla_jcb_artifact_read', arguments: { site, jobId, name: artifact.name } }),
+        /Unknown JCB job/i,
+      );
+    }
+    passed(builder, 'Signed HTTP compiler job, ZIP manifest/size/SHA-256 and two-principal job and artifact isolation');
   });
-  assert.ok(compiler.artifacts.length > 0, 'The installed compiler must produce an archive.');
-  for (const artifact of compiler.artifacts)
-    await verifyArchive(session, localSite, compiler.jobId, artifact);
-  passed(session, 'Native jcb.compile.component independently verified');
 
   await checkPackageRoundtrip(session, phpBinary, true);
 }
@@ -416,6 +434,7 @@ async function runJob(session, action, options, expected = 'succeeded', key = ra
   evidence.jobs.push({
     action,
     jobId: job.jobId,
+    transport: session.kind,
     status: job.status,
     verification: job.verification,
     counts: job.counts,
@@ -490,7 +509,13 @@ async function checkPackageRoundtrip(session, phpBinary, rejectionOnly = false) 
     await execute('reset');
     assert.deepEqual(await request('inspect'), updated);
     assert.deepEqual(await request('local-revision'), { changed: true });
-    await execute('push');
+    try {
+      await execute('push');
+    } finally {
+      // Record both sides even if the native verifier rejects the update.
+      // These fields contain only fixture-owned fixed revision names and booleans.
+      evidence.packageUpdate = { ...await request('inspect'), ...await request('requests') };
+    }
     assert.deepEqual(await request('inspect'), {
       ...updated,
       nativeLocal: 'local revision',

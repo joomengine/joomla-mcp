@@ -88,7 +88,7 @@ aligned to the npm version:
 
 | Tag | Meaning |
 |---|---|
-| `0.8.0` and `v0.8.0` | Immutable tags for the same 0.8.0 release digest |
+| `0.8.1` and `v0.8.1` | Immutable tags for the same 0.8.1 release digest |
 | `sha-<commit>` | Immutable image built from the exact release commit |
 | `latest` | Latest verified stable release |
 | `next` | Latest verified prerelease; does not change `latest` |

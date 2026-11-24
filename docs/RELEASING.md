@@ -29,8 +29,8 @@ immutable version tag.
 
 Open **Actions → Release → Run workflow** on `main`.
 
-After merging the 0.8.0 preparation, select **strategy** `current` and leave
-**exact_version** blank to publish 0.8.0 (`auto` also selects 0.8.0 while it is
+After merging the 0.8.1 preparation, select **strategy** `current` and leave
+**exact_version** blank to publish 0.8.1 (`auto` also selects 0.8.1 while it is
 unreleased). Opening or merging the pull request does not publish a release.
 
 For the normal path, leave **strategy** as `auto`, keep **exact_version** blank,

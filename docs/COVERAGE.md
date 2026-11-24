@@ -97,7 +97,7 @@ for which operations have been run against a disposable Joomla site.
 | Joomla core update | Health/status plus typed prepare/finalize/success/failed notification routes using the separate update token | Cached status only | API lifecycle descriptors and local status | Implemented but high-risk and not live/recovery verified; channel/autoupdate/cleanup incomplete |
 | Database/search/global maintenance | No general Web Services lifecycle | Stock Joomla commands identified; native help/contracts captured | Discovery/target map only | Source-backed gap; not executable |
 
-## Companion 0.8.0 native operational actions
+## Companion 0.8.1 native operational actions
 
 These actions are fixed adapters over native Joomla capabilities, are described
 by the TypeScript edge, and route through generic read or guarded plan/apply.

@@ -1,62 +1,46 @@
 # AI client connections
 
-> **Current installation:** this page documents the TypeScript proof-of-concept
-> stack. For new installations, use the stable
-> [MCP package](https://github.com/joomengine/mcp_package/tags), then follow the
-> [Joomla setup guide](https://github.com/joomengine/mcp_component/blob/main/docs/GETTING-STARTED.md)
-> and [AI / direct client guide](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md).
-> The current PHP client is maintained in
-> [`mcp_client`](https://github.com/joomengine/mcp_client).
+Configure a Joomla site alias and credentials using the [npm quick start](../README.md)
+or the [single-site source installation](SINGLE_SITE.md). With **stdio**, your MCP client starts the
+server and communicates over its standard input and output. With **Streamable
+HTTP**, the client connects to an already running instance at its HTTPS
+`/mcp` endpoint. Either transport can reach a remote Joomla site through its
+Web Services API.
 
-JoomEngine MCP for Joomla is model-independent. The server speaks standard MCP;
-the AI product is an MCP host. Use local stdio when the host can start the Node
-process, or authenticated Streamable HTTP when the host connects over a
-network.
-
-Joomla API tokens, Joomla Update tokens, and the approval HMAC secret belong in
-the MCP server process environment. Do not paste them into prompts or put their
-values in an AI client configuration.
+The server reads Joomla credentials from its own environment. Remote clients
+authenticate to the MCP server with a token from its OAuth issuer. Keep the
+Joomla API token, any Joomla Update token, and the approval secret on the
+server.
 
 ## Compatibility matrix
 
 | Client | Local stdio | Streamable HTTP | Authentication |
 |---|---:|---:|---|
-| ChatGPT remote apps | No | Yes | HTTPS remote connector; this predecessor requires its configured OAuth/OIDC flow |
+| ChatGPT custom MCP server (HTTPS connection) | — | Yes | OAuth through your configured issuer |
 | Codex CLI/app/IDE | Yes | Yes | Inherited environment, bearer-token variable, or OAuth |
 | Claude Code | Yes | Yes | Inherited environment, headers, or OAuth |
 | Claude Desktop | Yes | Remote connector separately | Local process environment or connector OAuth |
 | Gemini CLI | Yes | Yes | Inherited environment, headers, or OAuth discovery |
 | Grok/xAI Responses API | No | Yes | Bearer token passed as the MCP `authorization` value |
 
-The configurations below use:
-
-- repository checkout: `/opt/joomla-mcp`;
-- compiled entry point: `/opt/joomla-mcp/dist/bin/joomla-mcp.js`;
-- site configuration: `/etc/joomla-mcp/sites.json`;
-- remote endpoint: `https://mcp.company.example/mcp`.
-
-Change only those installation-specific paths and hostnames.
+The local examples assume a checkout built with `npm ci && npm run build`
+at `/opt/joomla-mcp`, a site file at `/etc/joomla-mcp/sites.json` and the
+`company` alias from the [read-only example](../config/sites.single-site-readonly.example.json).
+Use the absolute paths and secret variable names from your installation. If
+you installed the npm executable on your PATH, you can use the absolute path
+reported by `command -v joomla-mcp` as the stdio command and omit the script
+argument. For HTTP examples, substitute your public MCP endpoint for
+`https://mcp.company.example/mcp`.
 
 ## ChatGPT
 
-Use a remote HTTPS MCP app connection. A local `mcpServers` stdio launcher
-configuration is for compatible local MCP hosts, including Codex and Claude;
-it is not a ChatGPT connection recipe.
-
-For this TypeScript predecessor, publish its authenticated Streamable HTTP
-endpoint as described in [remote HTTP](REMOTE_HTTP.md), configure the OAuth/OIDC
-flow required by that server, then follow
-[OpenAI's current ChatGPT connection instructions](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt).
-Select the remote HTTPS endpoint, complete authentication, inspect the
-discovered tools and start with a read-only request. Availability and settings
-depend on the ChatGPT account and workspace.
-
-For the actively maintained Joomla-native package and PHP client, follow the
-[current connection guide](https://github.com/joomengine/mcp_component/blob/main/docs/CLIENT-CONNECTIONS.md);
-its transport and authentication requirements differ from this predecessor.
-
-ChatGPT's app-level confirmation policy is additional to the server's Joomla
-permission grant; it does not replace the server-side grant.
+1. Deploy the [authenticated HTTP endpoint](REMOTE_HTTP.md). Configure its
+   public URL, OAuth issuer, audience and protected-resource metadata URL.
+2. In ChatGPT's custom MCP server setup, enter the HTTPS endpoint and select
+   OAuth. Complete your issuer's login and check the discovered Joomla tools.
+3. Install and select the connection in a conversation. Ask it to list up to
+   five Joomla articles on the configured site. Workspace permissions govern
+   access to custom servers. See [OpenAI's custom MCP server instructions](https://developers.openai.com/api/docs/guides/custom-mcp-server).
 
 ## Codex CLI, app, and IDE extension
 
@@ -69,11 +53,7 @@ Local stdio:
 command = "/usr/bin/node"
 args = ["/opt/joomla-mcp/dist/bin/joomla-mcp.js"]
 env = { JOOMLA_MCP_CONFIG = "/etc/joomla-mcp/sites.json" }
-env_vars = [
-  "JOOMLA_COMPANY_TOKEN",
-  "JOOMLA_COMPANY_UPDATE_TOKEN",
-  "JOOMLA_MCP_APPROVAL_SECRET"
-]
+env_vars = ["JOOMLA_COMPANY_TOKEN"]
 default_tools_approval_mode = "writes"
 required = true
 tool_timeout_sec = 180
@@ -84,7 +64,6 @@ Remote HTTP:
 ```toml
 [mcp_servers.joomla]
 url = "https://mcp.company.example/mcp"
-auth = "oauth"
 default_tools_approval_mode = "writes"
 required = true
 tool_timeout_sec = 180
@@ -97,7 +76,9 @@ codex mcp list
 codex mcp login joomla
 ```
 
-The login command is required only for the OAuth-protected HTTP configuration.
+Use the login command for HTTP with OAuth. For stdio, start Codex with the
+Joomla token set and add any other variables referenced by your site file to
+`env_vars`. See [Codex MCP configuration](https://developers.openai.com/codex/mcp).
 
 ## Claude Code
 
@@ -107,8 +88,8 @@ Local stdio:
 claude mcp add \
   --transport stdio \
   --scope user \
-  --env JOOMLA_MCP_CONFIG=/etc/joomla-mcp/sites.json \
   joomla \
+  --env JOOMLA_MCP_CONFIG=/etc/joomla-mcp/sites.json \
   -- /usr/bin/node /opt/joomla-mcp/dist/bin/joomla-mcp.js
 ```
 
@@ -126,11 +107,8 @@ claude mcp add \
 ```
 
 Run `claude mcp list`, then `/mcp` inside Claude Code. Complete OAuth when
-prompted. The `type` of a JSON remote configuration must be `http` or
-`streamable-http`; a URL without a type is not a valid Claude Code
-configuration.
-
-See <https://docs.anthropic.com/en/docs/claude-code/mcp>.
+prompted. A JSON configuration for this endpoint uses `"type": "http"`.
+See [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp).
 
 ## Claude Desktop
 
@@ -151,9 +129,12 @@ desktop MCP configuration and restart Claude Desktop:
 }
 ```
 
-The desktop process must inherit the secret environment variables. Remote
-Claude connectors are account-managed and connect from Anthropic’s
-infrastructure rather than from the desktop’s local network.
+If the desktop launcher filters environment variables, save the required
+values in a private Node environment file readable by the desktop account
+(mode `0600` on Unix). Insert `--env-file=/absolute/path/to/client.env` as
+the first Node argument, before the path to the built script. For a remote
+Claude connector, provide an HTTPS endpoint reachable from Anthropic's
+infrastructure.
 
 ## Gemini CLI
 
@@ -170,9 +151,7 @@ Add this to `~/.gemini/settings.json`:
       "args": ["/opt/joomla-mcp/dist/bin/joomla-mcp.js"],
       "env": {
         "JOOMLA_MCP_CONFIG": "/etc/joomla-mcp/sites.json",
-        "JOOMLA_COMPANY_TOKEN": "$JOOMLA_COMPANY_TOKEN",
-        "JOOMLA_COMPANY_UPDATE_TOKEN": "$JOOMLA_COMPANY_UPDATE_TOKEN",
-        "JOOMLA_MCP_APPROVAL_SECRET": "$JOOMLA_MCP_APPROVAL_SECRET"
+        "JOOMLA_COMPANY_TOKEN": "$JOOMLA_COMPANY_TOKEN"
       },
       "timeout": 180000,
       "trust": false
@@ -198,20 +177,21 @@ For Streamable HTTP, replace the server entry with:
 Use `/mcp` and `/mcp auth joomla` to inspect and authenticate the remote server.
 Do not set `trust` to `true` for a write-capable Joomla server.
 
-See <https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html>.
+See [Gemini CLI's MCP guide](https://geminicli.com/docs/tools/mcp-server/).
 
 ## Grok through the xAI Responses API
 
-Grok’s remote MCP tool connects from xAI infrastructure, so use the HTTPS
-endpoint. The bearer token must be a short-lived JWT issued for this MCP
-resource; it is not a Joomla token.
+Grok's remote MCP tool connects from xAI infrastructure. Set `XAI_MODEL` to
+a model available to your xAI account that supports remote MCP. Set
+`XAI_API_KEY` to your xAI key and `JOOMLA_MCP_ACCESS_TOKEN` to a short-lived
+JWT from the MCP server's issuer with the discovery scopes for your site.
 
 ```bash
 curl https://api.x.ai/v1/responses \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${XAI_API_KEY}" \
   -d "{
-    \"model\": \"grok-4.5\",
+    \"model\": \"${XAI_MODEL:?Set XAI_MODEL to a model with remote MCP support}\",
     \"input\": [{
       \"role\": \"user\",
       \"content\": \"List the configured Joomla sites and describe their enabled capabilities.\"
@@ -233,24 +213,22 @@ curl https://api.x.ai/v1/responses \
   }"
 ```
 
-The example deliberately allows only discovery and generic read tools. Expand
-`allowed_tools` only after testing the server-side permission workflow. xAI
-currently supports remote MCP over Streamable HTTP and SSE:
-<https://docs.x.ai/developers/tools/remote-mcp>.
+The example allows only discovery and generic read tools. See
+[xAI's remote MCP reference](https://docs.x.ai/developers/tools/remote-mcp).
 
-## Connection acceptance test
+## Verify the connection
 
-For every client:
+Open the client’s tool list and look for `joomla_sites_list`. Calling it with
+`{}` should return `defaultSite` and the configured aliases. Then run the
+[first article read](USAGE.md#read-your-first-articles) to check the connection
+all the way through to Joomla. An empty article list is a successful response
+on a fresh site. For a site configured only for CLI discovery, use the
+[installed command inventory](CLI.md) instead.
 
-1. List tools and confirm the product reports `joomengine-mcp-for-joomla`.
-2. Call `joomla_sites_list`; verify that no token or environment value appears.
-3. Call `joomla_capabilities` for the configured alias.
-4. Run one bounded read.
-5. Preview one write with `dryRun: true`; verify that no confirmation token is
-   returned.
-6. Attempt a non-dry-run plan without a grant; it must direct the AI to
-   `joomla_permission_request`.
-7. Complete a one-operation permission request and apply one staging mutation.
-8. Confirm the grant, plan, use, result, and verification events in the audit
-   stream.
+If the tools appear but an API read fails, check the site's `content.read`
+toolset, the Content Web Services plugin, and the Joomla token supplied to
+the server process. For HTTP, confirm the JWT also carries the required site
+and toolset scopes. See [troubleshooting](TROUBLESHOOTING.md) and
+[remote scopes](USAGE.md#remote-scopes). To test an intentional change on a
+write-enabled staging site, follow the [guarded write example](USAGE.md#generic-write-example).
 

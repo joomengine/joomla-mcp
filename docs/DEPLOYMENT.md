@@ -1,25 +1,28 @@
 # Deployment, upgrade, and rollback
 
+The Node.js MCP server runs on the client machine or on a host you manage. It
+connects to Joomla over Web Services, through the local companion, or both.
+
 ## Choose the deployment path
 
 | Need | Recommended path |
 |---|---|
-| Local developer/desktop MCP client | Source build with stdio |
+| Local developer/desktop MCP client | Node.js stdio process launched by the client |
 | Remote API-only edge | Pinned OCI image with Compose or an orchestrator |
 | Remote edge as a host service | Source/release build with systemd |
 | Joomla-native companion actions | Host deployment with PHP and direct access to the fixed Joomla root |
 
-The shipped OCI image contains the TypeScript HTTP edge, not PHP or a Joomla
-installation. It is therefore API-only unless a separately reviewed image and
-mount model is introduced. Do not mount a production Joomla root into the
-standard edge container expecting companion execution.
+The shipped OCI image runs the Node.js HTTP server and connects to Joomla
+over the Web Services API. For companion actions, run Node.js on a host with
+PHP and local access to the Joomla installation.
 
 ## Deployment prerequisites
 
 - Pin a reviewed commit, release tag, or image digest.
 - Run all checks in [Testing](TESTING.md).
-- Prepare `/etc/joomla-mcp/sites.json` from the example with exact aliases,
-  toolsets, API origins, and HTTP authorization settings.
+- Prepare the site file for your deployment with the intended aliases,
+  toolsets and API origins. For HTTP clients, also set the authorization and
+  listener options.
 - Keep `mcpPath`, `healthPath`, and `readinessPath` distinct. The defaults are
   `/mcp`, `/healthz`, and `/readyz`.
 - Set `shutdownGraceMs` to 1,000–120,000 ms; the default is 30,000 ms. The
@@ -34,19 +37,16 @@ standard edge container expecting companion execution.
 - Take tested Joomla filesystem and database backups before enabling writes or
   upgrading the companion.
 
-The uninterrupted single-company procedure is in
-[Single-company, single-site deployment](SINGLE_SITE.md). Client configurations
-are in [AI client connections](CLIENTS.md).
+For a local client, start with the [single-site walkthrough](SINGLE_SITE.md)
+and the [client configuration examples](CLIENTS.md).
 
-## Release artifacts and manual release
+## Obtain a release
 
-Start **Actions → Release → Run workflow** on `main`. The release workflow
-synchronizes and validates the chosen version, anchors it with an immutable
-tag, and dispatches publication on `main` with the exact source commit.
-Publication checks out that commit and coordinates npm, OCI, and GitHub
-release artifacts. Pull requests, merges, and pushed tags do not trigger
-publication. See [Versioning and releases](RELEASING.md) for strategies,
-approval gates, and recovery.
+Choose the version you want to deploy from the [GitHub releases](https://github.com/joomengine/joomla-mcp/releases).
+The matching deployment bundle contains the Compose file, systemd unit,
+configuration examples and rollout scripts. For the systemd build below, use
+a full source checkout. The npm package can also be
+installed by version from the registry.
 
 Each release contains:
 
@@ -60,23 +60,24 @@ Each release contains:
 - an attested OCI image at
   `ghcr.io/joomengine/joomla-mcp:X.Y.Z` and `:vX.Y.Z`.
 
-After merging the 0.8.0 preparation, run Release with strategy `current` to
-publish that version. Strategy `auto` also selects it while unreleased.
+Verify the assets against their release checksums. Maintainers can find
+publication and recovery procedures in [Versioning and releases](RELEASING.md).
 
 ## Stdio installation
 
-From a verified checkout:
+The MCP client launches the stdio process. Build a verified checkout with
+Node.js 22.12 or newer:
 
 ```bash
 npm ci
 npm run validate
-npm run build
-JOOMLA_MCP_CONFIG=/absolute/path/to/sites.json npm start
 ```
 
-Configure the MCP client to launch `dist/bin/joomla-mcp.js` and provide only
-environment variable names/values required for that deployment. The stdio
-process should run as a dedicated account when it can reach a production site.
+Use the absolute path to Node as the client’s `command`, the absolute path to
+`dist/bin/joomla-mcp.js` as its argument, and set `JOOMLA_MCP_CONFIG` to the
+site file. Pass the environment variables referenced by that file to the child
+process. For a read-only site, follow the
+[single-site walkthrough](SINGLE_SITE.md) through its first Joomla article read.
 
 ## OCI and Docker Compose
 
@@ -96,32 +97,44 @@ Verify provenance and pin production deployments by digest, for example
 `ghcr.io/joomengine/joomla-mcp@sha256:<digest>`. The moving channel tags are
 convenient for discovery; the rollout script requires an immutable digest.
 
-From the repository root:
+Use a Linux host with Docker Compose v2, Node.js for the readiness probe, and
+a TLS reverse proxy. From the repository or extracted deployment bundle root:
 
 ```bash
 cp deploy/sites.container.example.json deploy/sites.json
-cp deploy/secrets.env.example deploy/secrets.env
+install -m 0600 deploy/secrets.env.example deploy/secrets.env
 ```
 
-Edit both files, then make the non-secret site configuration readable by the
-container's fixed UID but not writable, and keep the Compose-consumed secret
-file private to its host owner:
+Set `sites.production.api.baseUrl` to your Joomla installation URL. For an
+initial read-only deployment, keep `discovery` and `content.read` in the site
+toolsets and remove the top-level `approval` object. Supply the Joomla token in
+`deploy/secrets.env` under the name in `api.tokenEnv`. If you keep the example’s
+write toolsets and approval block, also set `JOOMLA_MCP_APPROVAL_SECRET` to a
+persistent random secret of at least 32 characters.
+
+Configure the `http` block for your public MCP hostname and OAuth issuer. Keep
+`listenHost` at `0.0.0.0` inside the container so the published host port
+reaches it. The supplied Compose file binds that port to host loopback. Keep
+the internal health-probe Host in `allowedHosts` alongside the public hostname,
+or set `JOOMLA_MCP_HEALTH_HOST` for both probes to an allowed value.
+
+Compose mounts `deploy/sites.json` read-only at `/run/joomla-mcp/sites.json`.
+The file contains secret names and must be readable by UID 10001.
 
 ```bash
 chmod 0444 deploy/sites.json
 chmod 0600 deploy/secrets.env
 ```
 
-Validate the deployment artifacts:
+When working from a full checkout, run `npm ci` and
+`scripts/deploy/validate.sh` to check the deployment artifacts. To roll out the
+image, obtain the verified `release-manifest.json` from your chosen release.
+With that manifest in the current directory, read its digest using `jq` and
+wait for the service to become ready.
 
 ```bash
-scripts/deploy/validate.sh
-```
-
-Activate an immutable image and wait for its health probe:
-
-```bash
-scripts/deploy/compose-rollout.sh apply 'ghcr.io/joomengine/joomla-mcp@sha256:<64-lowercase-hex-digest>'
+image_digest="$(jq -er '.oci.digest' release-manifest.json)"
+scripts/deploy/compose-rollout.sh apply "ghcr.io/joomengine/joomla-mcp@${image_digest}"
 scripts/deploy/compose-rollout.sh status
 docker compose --project-directory deploy --env-file deploy/.release.env -f deploy/compose.yaml logs --tail=100 joomla-mcp
 ```
@@ -148,54 +161,57 @@ its application-level drain completes.
 
 ## systemd host service
 
-Build and validate in a non-privileged staging checkout before copying the
-finished release into `/opt`; do not run package lifecycle scripts as root:
+The shipped unit expects Node.js 22.12 or newer at `/usr/bin/node`. Build in a
+non-privileged staging checkout before copying the finished release into `/opt`.
 
 ```bash
 npm ci
 npm run validate
-npm run build
 npm prune --omit=dev
 ```
 
-Use release directories so the executable can be switched back atomically:
-
-Create the unprivileged `joomla-mcp` system account through the operating
-system's account-management policy, then:
+On a Linux host using `groupadd` and `useradd`, create the unprivileged service
+account and group. Install the verified runtime and readiness probe in a release
+directory named for the checked-out commit. Run these commands from the checkout.
 
 ```bash
-sudo install -d -o root -g root -m 0755 /opt/joomla-mcp/releases
+getent group joomla-mcp >/dev/null || sudo groupadd --system joomla-mcp
+id -u joomla-mcp >/dev/null 2>&1 || sudo useradd --system --gid joomla-mcp \
+  --home-dir /nonexistent --shell /usr/sbin/nologin joomla-mcp
+
+release_dir="/opt/joomla-mcp/releases/$(git rev-parse HEAD)"
+sudo install -d -o root -g root -m 0755 "$release_dir"
 sudo install -d -o root -g joomla-mcp -m 0750 /etc/joomla-mcp
-```
-
-Copy that verified built tree under `/opt/joomla-mcp/releases/<version>`, then
-make every release path root-owned and remove group/other write access:
-
-```bash
-sudo chown -R root:root /opt/joomla-mcp/releases/<version>
-sudo chmod -R go-w /opt/joomla-mcp/releases/<version>
+sudo cp -a dist node_modules package.json scripts "$release_dir/"
+sudo chown -R root:root "$release_dir"
+sudo chmod -R go-w "$release_dir"
 ```
 
 The rollout script also rejects broken links, non-root-owned content, and
 symlinks that escape the selected release tree.
 
-Use the rollout script to make `/opt/joomla-mcp/current` an atomic symlink to the
-selected release. Install
-`deploy/systemd/joomla-mcp.service` as
-`/etc/systemd/system/joomla-mcp.service`; copy `deploy/runtime.env.example` to
-`/etc/joomla-mcp/runtime.env`, `deploy/secrets.env.example` to
-`/etc/joomla-mcp/secrets.env`, and the reviewed site file to
-`/etc/joomla-mcp/sites.json`.
+For a first installation, start with the single-site read-only configuration
+and set the Joomla URL. Add the top-level `http` block from
+[`config/sites.example.json`](../config/sites.example.json), set the real OAuth
+and public URLs, and keep the host listener on loopback. Set
+`JOOMLA_MCP_HEALTH_HOST` in `runtime.env` to an exact `http.allowedHosts` entry.
+Place the Joomla token in `secrets.env` under the name in `api.tokenEnv`
+(`JOOMLA_COMPANY_TOKEN` for the single-site example).
 
 ```bash
-sudo chown root:joomla-mcp /etc/joomla-mcp/sites.json /etc/joomla-mcp/runtime.env /etc/joomla-mcp/secrets.env
-sudo chmod 0640 /etc/joomla-mcp/sites.json /etc/joomla-mcp/runtime.env
-sudo chmod 0600 /etc/joomla-mcp/secrets.env
+sudo install -m 0644 deploy/systemd/joomla-mcp.service /etc/systemd/system/joomla-mcp.service
+sudo install -o root -g joomla-mcp -m 0640 config/sites.single-site-readonly.example.json /etc/joomla-mcp/sites.json
+sudo install -o root -g joomla-mcp -m 0640 deploy/runtime.env.example /etc/joomla-mcp/runtime.env
+sudo install -o root -g root -m 0600 deploy/secrets.env.example /etc/joomla-mcp/secrets.env
+sudoedit /etc/joomla-mcp/sites.json /etc/joomla-mcp/runtime.env /etc/joomla-mcp/secrets.env
 sudo systemctl daemon-reload
-sudo scripts/deploy/systemd-rollout.sh activate /opt/joomla-mcp/releases/<version>
+sudo scripts/deploy/systemd-rollout.sh activate "$release_dir"
 sudo systemctl enable joomla-mcp.service
 sudo systemctl status joomla-mcp.service
 ```
+
+On later rollouts retain the site and environment files. The rollout script
+switches `/opt/joomla-mcp/current` to the selected release directory.
 
 The activation script records `/opt/joomla-mcp/previous`, restarts the service,
 and restores the old release automatically when activation fails. Use

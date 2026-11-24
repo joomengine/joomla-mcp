@@ -1,12 +1,14 @@
 # Remote Streamable HTTP
 
-The HTTP entry point exposes MCP Streamable HTTP at the configured `mcpPath`.
-The stdio entry point remains a separate process and does not require this
-authorization configuration.
+A remote MCP client connects to the Node.js server’s public HTTPS endpoint,
+normally `/mcp`. The client authenticates to this server with a JWT from your
+OAuth/OIDC provider. The Node.js process uses its own Joomla API token or its
+configured local companion to carry out the tool call.
 
 ## Required configuration
 
-Copy the `http` object from `config/sites.example.json` and set:
+Start with a working site configuration. Copy the top-level `http` object from
+[the full example](../config/sites.example.json) into it and configure these fields.
 
 - `listenHost` and `port` to a private listener;
 - `mcpPath`, `healthPath`, and `readinessPath` to three distinct paths;
@@ -14,7 +16,8 @@ Copy the `http` object from `config/sites.example.json` and set:
   30,000 ms; accepted range 1,000–120,000 ms);
 - `allowedHosts` to the exact external authority, including a non-default port;
 - `allowedOrigins` to approved browser origins, if any;
-- `issuer`, `audience`, and `jwksUrl` to the external authorization server;
+- `issuer` and `jwksUrl` to the authorization server and its public signing keys;
+- `audience` to the HTTPS resource identifier your issuer puts in access tokens for this MCP server;
 - `resourceMetadataUrl` to this service's HTTPS protected-resource metadata URL;
 - `requiredScopes` to the global MCP access scope;
 - `limits` according to measured workload and available memory.
@@ -35,8 +38,17 @@ An accepted token needs all applicable scopes:
 | List active permissions | `joomla:permissions:read` |
 | Apply a planned write | `joomla:writes:apply` |
 
-Use narrow site and toolset scopes for people and clients. Wildcard scopes are
-appropriate only for separately controlled operator identities.
+For the `company` alias in the single-site example, a client that lists sites,
+inspects capabilities, and reads articles needs these scopes when the global
+access scope is `joomla:mcp`.
+
+```text
+joomla:mcp joomla:sites:list joomla:site:company joomla:toolset:discovery joomla:toolset:content.read
+```
+
+The issuer supplies these scopes on the access token. The server also checks
+the site’s enabled toolsets and Joomla enforces the API user or companion
+actor’s permissions.
 
 ## Security contract
 
@@ -58,42 +70,42 @@ appropriate only for separately controlled operator identities.
 
 Terminate TLS at a trusted reverse proxy, clear inbound forwarding headers, preserve the original allowed `Host`, and do not expose the Node listener directly to an untrusted network. Distributed replicas need a shared session/rate strategy or session affinity; the included stores are process-local.
 
-## Integration
+## Start and verify the endpoint
 
-The shipped entry point wires the gateway to the Joomla server factory and the fixed HTTPS JWKS verifier. The equivalent programmatic integration is:
+With the built checkout and its secrets provisioned, start the HTTP entry
+point. Set the path to the site configuration prepared above.
 
-```ts
-import { createRemoteHttpServer } from '../http/index.js';
-import { createServer } from '../mcp/create-server.js';
-import { JwksJwtVerifier } from '../security/jwks-jwt-verifier.js';
-
-const productionVerifier = new JwksJwtVerifier({
-  jwksUrl: 'https://identity.example.org/.well-known/jwks.json',
-});
-
-const remote = createRemoteHttpServer({
-  createMcpServer: () => createServer(configuration),
-  jwtVerifier: productionVerifier,
-  authorization: {
-    issuer: 'https://identity.example.org',
-    audience: 'https://joomla-mcp.example.org',
-    requiredScopes: ['mcp:access'],
-  },
-  requestPolicy: {
-    allowedHosts: ['joomla-mcp.example.org'],
-    allowedOrigins: ['https://approved-client.example.org'],
-  },
-  resourceMetadataUrl: 'https://joomla-mcp.example.org/.well-known/oauth-protected-resource',
-  readinessPath: '/readyz',
-  readinessCheck: () => productionVerifier.warm(),
-  shutdownGraceMs: 30_000,
-  audit: productionAuditSink,
-});
-
-remote.server.listen(3000, '127.0.0.1');
+```bash
+JOOMLA_MCP_CONFIG=/etc/joomla-mcp/sites.json node dist/bin/joomla-mcp-http.js
 ```
 
-The gateway validates access tokens but does not mint them. Configure the external authorization server for the resource audience and Joomla site/toolset scopes. Put session affinity or shared session/event infrastructure in front of multiple replicas before horizontal scaling.
+For a managed deployment, use the shipped [Compose or systemd instructions](DEPLOYMENT.md).
+Check the public route through your TLS reverse proxy. Substitute the public
+MCP origin and the paths you configured. If `http.requireOrigin` is enabled,
+include an `Origin` header with one of the exact allowed origins on these requests.
+Use the third command when you have set `resourceMetadataUrl`.
+
+```bash
+mcp_origin='https://mcp.company.example'
+curl --fail --show-error --silent "$mcp_origin/healthz"
+curl --fail --show-error --silent "$mcp_origin/readyz"
+curl --fail --show-error --silent "$mcp_origin/.well-known/oauth-protected-resource"
+```
+
+Expect HTTP 200 from each configured route. A successful readiness response
+contains `{"status":"ready"}`. The metadata response identifies the
+configured resource and issuer. If readiness returns 503, verify that the
+server can fetch the issuer’s HTTPS JWKS.
+
+Connect a [Streamable HTTP client](CLIENTS.md) to the public `/mcp` URL and
+authorize it with the configured issuer. With the scopes above, call
+`joomla_sites_list` with `{}`, then `joomla_content_articles_list` with
+`{"site":"company","limit":1}`. The latter call exercises the connection
+through to Joomla.
+
+To run the gateway inside another Node.js application, see the
+[executable HTTP host example](../examples/embedded-host/http.mjs) and
+[library integration guide](LIBRARY.md).
 
 ## Operations
 

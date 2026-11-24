@@ -1,46 +1,40 @@
 # Single-company, single-site deployment
 
-This is the supported first production shape: one company, one Joomla site,
-one JoomEngine MCP for Joomla process, and one dedicated Joomla automation
-identity.
+This guide connects a local MCP client to one Joomla site over the Web Services
+API. The client launches a Node.js process under your operating-system account.
+One dedicated Joomla user determines what that process can do on the site.
+Start with read access and verify an article query before enabling writes.
 
-Start read-only. Add each write or administration toolset after it passes the
-company’s staging, backup, denial, and recovery checks.
+For a shared HTTPS endpoint hosted with Compose or systemd, follow
+[Deployment, upgrade, and rollback](DEPLOYMENT.md).
 
-## 1. Install and validate the server
+## 1. Build the server on the client machine
+
+Run these commands in Bash with Git, npm and Node.js 22.12 or newer. Use a
+directory owned by the account that will launch the MCP client.
 
 ```bash
-getent group joomla-mcp >/dev/null || sudo groupadd --system joomla-mcp
-id -u joomla-mcp >/dev/null 2>&1 || sudo useradd \
-  --system \
-  --gid joomla-mcp \
-  --home-dir /nonexistent \
-  --shell /usr/sbin/nologin \
-  joomla-mcp
-sudo install -d -o root -g root -m 0755 /opt/joomla-mcp
-sudo install -d -o root -g joomla-mcp -m 0750 /etc/joomla-mcp
-git clone https://github.com/joomengine/joomla-mcp.git /opt/joomla-mcp
-cd /opt/joomla-mcp
+git clone https://github.com/joomengine/joomla-mcp.git "$HOME/joomla-mcp"
+cd "$HOME/joomla-mcp"
 npm ci
 npm run validate
-npm run build
 ```
 
-For a tagged release, the equivalent server artifact is
-`joomengine-mcp-for-joomla-vX.Y.Z.tgz`. The deployment bundle contains the
-Compose, systemd, configuration, operations, and troubleshooting material.
+Validation includes the build. The stdio entry point is
+`dist/bin/joomla-mcp.js`. To install a compiled release from npm, see the
+[README](../README.md).
 
 ## 2. Create a dedicated Joomla API identity
 
 In Joomla:
 
 1. Enable **API Authentication - Web Services Joomla Token**.
-2. Enable **User - Joomla API Token**.
-3. Create a dedicated automation user and group.
+2. Create a dedicated automation user and group.
+3. Enable **User - Joomla API Token** and include the group in the plugin’s allowed groups.
 4. Grant `core.login.api`.
 5. Grant only the component read permissions needed by the enabled read
    toolsets.
-6. Enable only the required Web Services plugins.
+6. Enable **Web Services - Content** for the article query below and the Web Services plugins for any other enabled toolsets.
 7. Generate the user’s Joomla API token.
 
 Do not use a human Super User token. Article/banner creation requires **Access
@@ -49,61 +43,56 @@ Administration Interface** (`core.manage`) on the target component as well as
 the component's Options → Permissions; read success alone does not establish
 write access. **Configure ACL & Options** (`core.admin`) is not required.
 
-## 3. Install the read-only site configuration
+## 3. Configure the site and its credential
+
+From the checkout, create a private configuration for this account.
 
 ```bash
-sudo cp \
-  /opt/joomla-mcp/config/sites.single-site-readonly.example.json \
-  /etc/joomla-mcp/sites.json
-sudo chown root:joomla-mcp /etc/joomla-mcp/sites.json
-sudo chmod 0640 /etc/joomla-mcp/sites.json
-sudoedit /etc/joomla-mcp/sites.json
+install -d -m 0700 "$HOME/.config/joomla-mcp"
+install -m 0600 config/sites.single-site-readonly.example.json "$HOME/.config/joomla-mcp/sites.json"
 ```
 
-Set `api.baseUrl` to the site’s canonical HTTPS origin. Keep the site alias
-stable; AI clients use the alias and never receive the origin or token from a
-tool input.
+In that file, set `sites.company.api.baseUrl` to the Joomla installation URL
+(for example, `https://www.example.com`). The adapter appends the Web Services
+path. Keep the alias `company` for the example calls below.
 
-Provision the token through the process environment:
+Supply the token to the Node process as `JOOMLA_COMPANY_TOKEN`. For a client
+launched from an interactive Bash shell, enter the token without echoing it or
+putting it in the shell history.
 
 ```bash
-export JOOMLA_COMPANY_TOKEN='the-token-generated-by-joomla'
-export JOOMLA_MCP_CONFIG='/etc/joomla-mcp/sites.json'
-cd /opt/joomla-mcp
-npm start
+read -rsp 'Joomla API token: ' JOOMLA_COMPANY_TOKEN
+echo
+export JOOMLA_COMPANY_TOKEN
 ```
 
-Use a service manager or secret store for an unattended deployment. The export
-commands are a foreground validation example, not a production secret-storage
-recommendation.
+## 4. Connect and verify a read
 
-## 4. Connect an AI client
+For a client that accepts an `mcpServers` JSON object, run the following from
+the checkout to print a client entry with this machine’s absolute paths.
 
-Use [AI client connections](CLIENTS.md). The quickest in-house path is local
-stdio:
-
-```json
-{
-  "mcpServers": {
-    "joomla": {
-      "command": "/usr/bin/node",
-      "args": ["/opt/joomla-mcp/dist/bin/joomla-mcp.js"],
-      "env": {
-        "JOOMLA_MCP_CONFIG": "/etc/joomla-mcp/sites.json"
-      }
-    }
-  }
-}
+```bash
+node --input-type=module <<'JS'
+import { homedir } from 'node:os';
+import { resolve } from 'node:path';
+const server = {
+  command: process.execPath,
+  args: [resolve('dist/bin/joomla-mcp.js')],
+  env: { JOOMLA_MCP_CONFIG: resolve(homedir(), '.config/joomla-mcp/sites.json') }
+};
+console.log(JSON.stringify({ mcpServers: { joomla: server } }, null, 2));
+JS
 ```
 
-The client process must inherit `JOOMLA_COMPANY_TOKEN`.
+Add the entry to the client and configure it to pass `JOOMLA_COMPANY_TOKEN`
+to its child process. Restart the client and use its MCP tools. For Codex TOML
+and other client-specific settings, see [AI client connections](CLIENTS.md).
 
-Verify:
-
-1. `joomla_sites_list`
-2. `joomla_capabilities`
-3. `joomla_actions_search` with `includeWrites: false`
-4. one resource-specific list or `joomla_action_read`
+| Tool | Arguments | What to check |
+|---|---|---|
+| `joomla_sites_list` | `{}` | The configured alias `company` is listed. |
+| `joomla_capabilities` | `{"site":"company"}` | The site has the API adapter and `content.read`. |
+| `joomla_content_articles_list` | `{"site":"company","limit":1}` | Joomla returns at most one accessible article. An empty successful list is valid on a new site. |
 
 ## 5. Enable controlled writes
 
@@ -121,7 +110,10 @@ maintenance.admin
 core-update
 ```
 
-Add the approval block:
+Add an `approval` object alongside `sites` in the same JSON file. For a local
+stdio process, set `grantStorePath` to an absolute path inside the private
+configuration directory created in step 3. For example, this configuration is
+for a user whose home directory is `/home/operator`.
 
 ```json
 {
@@ -129,24 +121,20 @@ Add the approval block:
     "secretEnv": "JOOMLA_MCP_APPROVAL_SECRET",
     "ttlMs": 300000,
     "requestTtlMs": 300000,
-    "grantStorePath": "/var/lib/joomla-mcp/permission-grants.json",
+    "grantStorePath": "/home/operator/.config/joomla-mcp/permission-grants.json",
     "allowIndefinite": false
   }
 }
 ```
 
-Create the protected state directory and secret:
+Generate `JOOMLA_MCP_APPROVAL_SECRET` once with `openssl rand -hex 32` and store
+it in your secret manager. Pass the same value to the MCP process on each
+launch so it can verify persisted grants. The process creates the grant file
+with mode `0600` when it persists a change. Restart the client after changing
+toolsets or credentials.
 
-```bash
-sudo install -d -o joomla-mcp -g joomla-mcp -m 0700 /var/lib/joomla-mcp
-sudo -u joomla-mcp sh -c 'printf "%s\n" "{\"version\":1,\"grants\":[]}" > /var/lib/joomla-mcp/permission-grants.json'
-sudo chmod 0600 /var/lib/joomla-mcp/permission-grants.json
-export JOOMLA_MCP_APPROVAL_SECRET="$(openssl rand -hex 32)"
-```
-
-The file must remain owned by the MCP service account with mode `0600`. The
-systemd unit uses `StateDirectory=joomla-mcp`; the Compose deployment mounts a
-dedicated state volume.
+For a managed service the shipped systemd unit and Compose volume provide a
+private state directory at `/var/lib/joomla-mcp`.
 
 Set `allowIndefinite` to `true` only after audit retention, revocation, backup,
 and incident-response procedures have been tested.
@@ -186,24 +174,20 @@ store.
 
 ## 7. Optional local Joomla companion
 
-Install the companion only when the MCP process runs on the Joomla host and
-needs fixed Joomla-native operations unavailable through Web Services:
+If the Node process has local access to the Joomla installation and PHP, it can
+also invoke Joomla-native actions through this repository’s companion. Install
+the matching release ZIP (for example, `pkg_joomlamcp-0.8.0.zip`) using
+Joomla’s extension installer, enable the console plugin, and select its
+dedicated **MCP actor user**. Run the following from the Joomla installation
+directory under the account that will execute the companion.
 
 ```bash
-cd /opt/joomla-mcp
-php companion/tests/run.php
-php companion/build.php
-cd /srv/www/joomla
-php cli/joomla.php extension:install \
-  --path=/opt/joomla-mcp/companion/dist/pkg_joomlamcp-0.8.0.zip
 php cli/joomla.php joomla:mcp:self-test --format=json --no-interaction --no-ansi
 ```
 
-Select a dedicated MCP actor in the plugin configuration and add the fixed
-`cli` block described in [the companion guide](PHP_COMPANION.md).
-
-The companion does not expose arbitrary shell, PHP, SQL, filesystem paths,
-models, methods, URLs, or discovered Joomla commands.
+Add the site's `cli.root` and `cli.phpBinary`, restart the MCP process, and
+check its capabilities again. See [the companion guide](PHP_COMPANION.md) for
+package builds, filesystem permissions and the catalogue of local actions.
 
 ## 8. In-house acceptance gate
 

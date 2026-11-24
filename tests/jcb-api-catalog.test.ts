@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeJcbApiAction, getJcbApiAction, jcbApiActions } from '../src/jcb/catalog.js';
+import { describeJcbApiAction, getJcbApiAction, getJcbParentBinding, jcbApiActions } from '../src/jcb/catalog.js';
 
 describe('JCB registered API contracts', () => {
   it('accounts for each registration and preserves every declared item identifier', () => {
@@ -30,6 +30,18 @@ describe('JCB registered API contracts', () => {
     const list = getJcbApiAction('jcb.api.joomla_components.list')!;
     expect(list.filters).toEqual(['search', 'published', 'access', 'companyname', 'author']);
     expect(list.ordering).toContain('system_name');
+  });
+
+  it('binds association creates only to the read-only native selector and a registered parent GUID route', () => {
+    const associations = jcbApiActions.filter(action => action.operation === 'create' && getJcbParentBinding(action.resource));
+    expect(associations).toHaveLength(23);
+    for (const action of associations) {
+      const parent = getJcbParentBinding(action.resource)!;
+      expect(action.fields[parent.field]).toMatchObject({readonly: true, disabled: false});
+      expect(getJcbApiAction('jcb.api.' + parent.resource + '.get.guid')?.identifier).toBe('guid');
+    }
+    expect(getJcbParentBinding('language_translations')).toBeUndefined();
+    expect(getJcbParentBinding('components_unregistered')).toBeUndefined();
   });
 
   it('binds form metadata to the registered resource, including nested rows and native conditions', () => {

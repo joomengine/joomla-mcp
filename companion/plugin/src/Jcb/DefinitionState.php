@@ -6,6 +6,7 @@ namespace VDM\Plugin\Console\JoomlaMcp\Jcb;
 
 use VDM\Joomla\Componentbuilder\Table;
 use VDM\Joomla\Database\Load;
+use VDM\Joomla\Utilities\StringHelper;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
 
 final readonly class DefinitionState
@@ -69,5 +70,31 @@ final readonly class DefinitionState
         // Reject that case before dispatching a command approved for one explicit repository.
         return (int) $row['published'] >= 1 && !empty(trim((string) $row['organisation']))
             && !empty(trim((string) $row['repository']));
+    }
+
+    /** Bind the selected GUIDs to the identifiers and versions JCB writes into component manifests. */
+    public function componentManifests(array $guids): array
+    {
+        if (count($guids) > 32) {
+            throw new ActionException('INVALID_INPUT', 'Select at most 32 components per compiler job.');
+        }
+        $rows = $this->load->rows(['guid', 'name_code', 'component_version'], ['a' => '#__componentbuilder_joomla_component'],
+            ['guid' => ['operator' => 'IN', 'value' => $guids]], null, 33) ?? [];
+        $expected = [];
+        $found = [];
+        foreach ($rows as $row) {
+            $code = StringHelper::safe((string) $row['name_code']);
+            $version = preg_replace('/^v/i', '', (string) $row['component_version']);
+            if (!preg_match('/^[a-z][a-z0-9_]{0,149}$/D', $code) || !is_string($version)
+                || $version === '' || strlen($version) > 128 || isset($expected[$code])) {
+                throw new ActionException('INVALID_INPUT', 'The selected components must have distinct verifiable native manifest identities.');
+            }
+            $expected[$code] = $version;
+            $found[] = strtolower((string) $row['guid']);
+        }
+        if (array_diff(array_map('strtolower', $guids), $found) !== []) {
+            throw new ActionException('INVALID_INPUT', 'Every selected component GUID must identify an installed JCB definition.');
+        }
+        return $expected;
     }
 }

@@ -24,7 +24,7 @@ if [[ "$(uname -s)" != Linux ]] || ! "${copy_node[@]}" <"$(command -v node)" || 
   docker run --rm --entrypoint cat node:22.17.1-bookworm-slim /usr/local/bin/node | "${copy_node[@]}"
 fi
 cd -- "$root"
-tar -cf - package.json node_modules dist scripts/fixtures/verify-jcb.mjs scripts/fixtures/jcb-*.mjs \
+tar -cf - package.json node_modules dist scripts/fixtures/verify-jcb.mjs scripts/fixtures/jcb-*.mjs scripts/fixtures/jcb-php.sh \
   tests/fixtures/joomengine/jcb-*.php \
   | docker exec -i --user www-data "$container" tar -C "$runtime" -xf -
 

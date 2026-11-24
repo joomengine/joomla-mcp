@@ -65,6 +65,7 @@ final readonly class CommandAction implements ActionInterface
         }
         $compiler = $this->verb === 'compile';
         $selectors = json_decode($options[$compiler ? 'components' : 'items'], true, 4, JSON_THROW_ON_ERROR);
+        $manifests = $compiler ? $state->componentManifests($selectors) : [];
         $fingerprint = $this->fingerprint($state, $options);
         $preview = [
             'preState' => ['contractFingerprint' => $fingerprint],
@@ -126,9 +127,9 @@ final readonly class CommandAction implements ActionInterface
             }
             if ($compiler) {
                 $paths = (new ReflectionProperty($this->command, 'outputPaths'))->getValue($this->command);
-                $artifacts = CompilerOutput::verify($workspace, $paths);
+                $artifacts = CompilerOutput::verify($workspace, $paths, $manifests);
                 $verification = ['status' => $statuses['warnings'] === 0 ? 'verified' : 'partial',
-                    'artifactCount' => count($artifacts), ...$statuses];
+                    'artifactCount' => count($artifacts), 'componentManifestCount' => count($manifests), ...$statuses];
                 return ['dryRun' => false, 'applied' => true, 'verification' => $verification, 'artifacts' => $artifacts];
             }
             $verification = (new PackageVerification())->inspect($this->command, $this->verb, $this->entity,

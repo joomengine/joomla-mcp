@@ -26,12 +26,13 @@ final class CompilerOutput
     }
 
     /** The compiler's own outputPaths collection is the authority; never scan shared Joomla temp directories. */
-    public static function verify(string $directory, array $paths): array
+    public static function verify(string $directory, array $paths, array $expectedManifests): array
     {
         if ($paths === [] || count($paths) > 32) {
             throw new ActionException('JCB_ARCHIVE_MISSING', 'Expected one to 32 native compiler archives.');
         }
         $results = [];
+        $matched = [];
         $total = 0;
         foreach (array_unique($paths) as $path) {
             $real = is_string($path) && !is_link($path) ? realpath($path) : false;
@@ -45,8 +46,19 @@ final class CompilerOutput
                 || $zip->open($real, ZipArchive::CHECKCONS | ZipArchive::RDONLY) !== true) {
                 throw new ActionException('JCB_ARCHIVE_INVALID', 'A compiler archive failed validation.');
             }
-            $entries = $zip->numFiles;
-            $zip->close();
+            try {
+                $entries = $zip->numFiles;
+                foreach ($expectedManifests as $code => $version) {
+                    if (self::containsComponent($zip, $code, $version)) {
+                        if (isset($matched[$code])) {
+                            throw new ActionException('JCB_ARCHIVE_INVALID', 'More than one archive claims the same selected component.');
+                        }
+                        $matched[$code] = true;
+                    }
+                }
+            } finally {
+                $zip->close();
+            }
             $hash = hash_file('sha256', $real);
             if ($entries < 1 || $hash === false || !chmod($real, 0600)) {
                 throw new ActionException('JCB_ARCHIVE_INVALID', 'An empty or unreadable compiler archive was returned.');
@@ -58,6 +70,33 @@ final class CompilerOutput
             }
             $results[] = ['name' => basename($real), 'size' => $size, 'sha256' => $hash];
         }
+        if ($expectedManifests === [] || count($matched) !== count($expectedManifests)) {
+            throw new ActionException('JCB_ARCHIVE_INVALID', 'The compiler archives did not match every requested component manifest.');
+        }
         return $results;
+    }
+
+    private static function containsComponent(ZipArchive $zip, string $code, string $version): bool
+    {
+        $entry = $zip->statName($code . '.xml');
+        if ($entry === false || $entry['size'] < 1 || $entry['size'] > 2097152) {
+            return false;
+        }
+        $xml = $zip->getFromIndex($entry['index'], $entry['size']);
+        if (!is_string($xml) || strlen($xml) !== $entry['size'] || stripos($xml, '<!DOCTYPE') !== false) {
+            return false;
+        }
+        $manifest = new \DOMDocument();
+        if (!$manifest->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING) || $manifest->doctype !== null) {
+            return false;
+        }
+        $root = $manifest->documentElement;
+        if ($root === null || $root->tagName !== 'extension' || $root->getAttribute('type') !== 'component') {
+            return false;
+        }
+        $xpath = new \DOMXPath($manifest);
+        return $xpath->evaluate('count(/extension/name)') === 1.0 && $xpath->evaluate('count(/extension/version)') === 1.0
+            && trim($xpath->evaluate('string(/extension/name)')) === 'COM_' . strtoupper($code)
+            && trim($xpath->evaluate('string(/extension/version)')) === $version;
     }
 }

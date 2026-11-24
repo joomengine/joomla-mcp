@@ -81,6 +81,8 @@ final readonly class CommandAction implements ActionInterface
         $native = $compiler ? Factory::getConfig() : null;
         $nativeTmp = $native?->get('tmp_path');
         $appTmp = $this->application->get('tmp_path');
+        $post = $compiler ? $this->application->getInput()->post : null;
+        $priorPost = [];
         $environment = [];
         $beforeMessages = count($this->application->getMessageQueue());
         try {
@@ -95,6 +97,10 @@ final readonly class CommandAction implements ActionInterface
             if ($compiler) {
                 $this->application->set('tmp_path', $workspace);
                 $native->set('tmp_path', $workspace);
+                foreach (CommandOptions::compilerPostOverrides($options) as $key => $value) {
+                    $priorPost[$key] = $post->get($key, null, 'RAW');
+                    $post->set($key, $value);
+                }
             }
             $args = [];
             foreach ($options as $name => $value) {
@@ -131,6 +137,9 @@ final readonly class CommandAction implements ActionInterface
             if ($compiler) {
                 $native->set('tmp_path', $nativeTmp);
                 $this->application->set('tmp_path', $appTmp);
+                foreach ($priorPost as $key => $value) {
+                    $post->set($key, $value);
+                }
             }
             foreach ($environment as $key => $value) {
                 putenv($key . '=' . $value);

@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 // Isolated acceptance fixture. This identity may log in to the Joomla API.
 // JCB's per-record ACL still denies it access to JCB language definitions.
-require '/var/www/html/configuration.php';
+require __DIR__ . '/jcb-bootstrap.php';
+require_once '/var/www/html/configuration.php';
 
 $config = new JConfig();
 if ($config->sitename !== 'JoomEngine MCP for Joomla Integration Fixture' || !preg_match('/^[A-Za-z0-9_]+$/D', $config->dbprefix)) {
@@ -45,4 +46,9 @@ $profile = $db->prepare("INSERT INTO `{$p}user_profiles` (user_id, profile_key, 
 $profile->execute([$user, 'joomlatoken.token', base64_encode($seed), 1]);
 $profile->execute([$user, 'joomlatoken.enabled', '1', 2]);
 $db->commit();
+\Joomla\CMS\Access\Access::clearStatics();
+$actor = $container->get(\Joomla\CMS\User\UserFactoryInterface::class)->loadUserById($user);
+if (!$actor->authorise('core.login.api') || $actor->authorise('language.access', 'com_componentbuilder')) {
+    throw new RuntimeException('The test identity must be authorized to use Joomla Web Services and denied JCB language access.');
+}
 echo base64_encode('sha256:' . $user . ':' . hash_hmac('sha256', $seed, $config->secret));

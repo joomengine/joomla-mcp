@@ -153,3 +153,22 @@ export function getJcbApiAction(id: string): JcbApiAction | undefined {
 export function describeJcbApiAction(action: JcbApiAction) {
   return {...action, inputSchema: jcbInputSchema(action)};
 }
+
+/** Public source metadata. Use site-scoped discovery for installed routes and actor permissions. */
+export function publicJcbCatalog() {
+  const families = new Map<string, string[]>();
+  for (const action of jcbApiActions) {
+    const actions = families.get(action.resource);
+    if (actions) actions.push(action.id);
+    else families.set(action.resource, [action.id]);
+  }
+  return {
+    component: 'com_componentbuilder',
+    routeCount: jcbApiActions.length,
+    resources: Object.fromEntries(families),
+    discoveryDomain: 'jcb',
+    toolsets: ['jcb.read', 'jcb.write', 'jcb.execute'],
+  };
+}
+
+export { getJcbParentBinding } from './parent-binding.js';

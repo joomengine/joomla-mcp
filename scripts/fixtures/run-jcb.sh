@@ -15,13 +15,16 @@ package_commit=1aa00148cf4726a6eb0754d56250ea2411bc9951
   "https://github.com/joomengine/pkg-component-builder/archive/${package_commit}.zip" -o /tmp/mcp-jcb-package.zip
 "${run[@]}" php cli/joomla.php extension:install --path=/tmp/mcp-jcb-package.zip --no-interaction --no-ansi
 
-# Run Node and its PHP child as the same Joomla OS user, with the same private
-# workspace. Copy the Linux Node binary even when the Docker host runs macOS.
+# Node and PHP run as the same account and share the same private workspace.
+# Reuse setup-node's binary on Linux CI. Use a Linux runtime image only when
+# the host binary cannot run in the Joomla container (e.g. a macOS host).
 "${run[@]}" mkdir -m 0700 "$runtime"
-docker run --rm --entrypoint cat node:22.17.1-bookworm-slim /usr/local/bin/node \
-  | docker exec -i --user www-data "$container" sh -c 'cat > "$1/node" && chmod 0700 "$1/node"' sh "$runtime"
+copy_node=(docker exec -i --user www-data "$container" sh -c 'cat > "$1/node" && chmod 0700 "$1/node"' sh "$runtime")
+if [[ "$(uname -s)" != Linux ]] || ! "${copy_node[@]}" <"$(command -v node)" || ! "${run[@]}" "$runtime/node" --version; then
+  docker run --rm --entrypoint cat node:22.17.1-bookworm-slim /usr/local/bin/node | "${copy_node[@]}"
+fi
 cd -- "$root"
-tar -cf - package.json node_modules dist scripts/fixtures/verify-jcb.mjs scripts/fixtures/jcb-write-fixture.mjs \
+tar -cf - package.json node_modules dist scripts/fixtures/verify-jcb.mjs scripts/fixtures/jcb-*.mjs \
   tests/fixtures/joomengine/jcb-*.php \
   | docker exec -i --user www-data "$container" tar -C "$runtime" -xf -
 

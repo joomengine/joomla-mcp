@@ -17,6 +17,19 @@ final class CommandOptions
         'add-build-date' => ['1', '2', '3'],
     ];
 
+    /** The native CLI drops string "0" flags. JCB's compiler consumes the normalized Joomla POST fields. */
+    public static function compilerPostOverrides(array $options): array
+    {
+        // Without an explicit advanced override JCB can enable its global Super Powers repository export.
+        $post = ['backup' => '0', 'repository' => '0', 'powers_repository' => '0', 'show_advanced_options' => '1'];
+        foreach (self::ENUMS as $name => $values) {
+            if (($options[$name] ?? null) === '0' && in_array('0', $values, true)) {
+                $post[str_replace('-', '_', $name)] = '0';
+            }
+        }
+        return $post;
+    }
+
     /** Restrict public options to typed forms present in the native command definition. */
     public static function properties(object $definition, bool $compiler): array
     {
@@ -114,7 +127,9 @@ final class CommandOptions
                 if (!is_array($items) || !array_is_list($items) || $items === [] || count($items) > 500) {
                     throw new ActionException('INVALID_INPUT', 'Select between one and 500 items.');
                 }
-                $pattern = in_array($verb, ['compile', 'push'], true) ? self::GUID : '[a-zA-Z0-9][a-zA-Z0-9_.-]{0,190}';
+                $resolveAliases = $verb === 'get' || (in_array($verb, ['init', 'pull', 'reset'], true)
+                    && ($options['resolve'] ?? false) === true);
+                $pattern = $resolveAliases ? '[a-zA-Z0-9][a-zA-Z0-9_.-]{0,190}' : self::GUID;
                 foreach ($items as $item) {
                     $item = is_int($item) || is_string($item) ? trim((string) $item) : '';
                     if (strtolower($item) === 'all' || !preg_match('~^' . $pattern . '$~D', $item)) {

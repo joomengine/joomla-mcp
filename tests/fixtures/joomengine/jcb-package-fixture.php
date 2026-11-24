@@ -80,6 +80,14 @@ try {
                 $setDescription('local revision');
                 $send(['changed'=>$description() === 'local revision']);
                 break;
+            case 'reject-writes':
+                $setDescription('revision rejected by controlled repository');
+                $local->rejectWrites(true);
+                $send(['sha256'=>$local->fingerprint(), 'requests'=>count($local->requests())]);
+                break;
+            case 'fingerprint':
+                $send(['sha256'=>$local->fingerprint(), 'requests'=>count($local->requests())]);
+                break;
             case 'requests':
                 $requests = $local->requests();
                 $send(['methods'=>array_values(array_unique(array_column($requests, 'method'))),

@@ -62,6 +62,7 @@ namespace {
     use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
     use VDM\Plugin\Console\JoomlaMcp\Jcb\CommandOptions;
     use VDM\Plugin\Console\JoomlaMcp\Jcb\CompilerOutput;
+    use VDM\Plugin\Console\JoomlaMcp\Jcb\FileComparison;
     use VDM\Plugin\Console\JoomlaMcp\Jcb\PackageVerification;
     use VDM\Joomla\Abstraction\Remote\Get;
     use VDM\Joomla\Abstraction\Remote\Set;
@@ -77,9 +78,9 @@ namespace {
     test('JCB options admit only installed reviewed forms and explicit inline selections', static function (): void {
         $definition = new class {
             public function getArguments(): array { return []; }
-            public function hasOption($name): bool { return in_array($name, ['component', 'components', 'build-date', 'options', 'minify', 'items', 'repo', 'force']); }
+            public function hasOption($name): bool { return in_array($name, ['component', 'components', 'build-date', 'options', 'minify', 'items', 'repo', 'force', 'resolve']); }
             public function getOption($name): object {
-                return new class($name !== 'force') {
+                return new class(!in_array($name, ['force', 'resolve'], true)) {
                     public function __construct(private bool $value) {}
                     public function acceptValue(): bool { return $this->value; }
                     public function isArray(): bool { return false; }
@@ -91,12 +92,21 @@ namespace {
         $packages = CommandOptions::properties($definition, false);
         expect(CommandOptions::normalize((object) ['component'=>$guid], $compiler, 'compile')['components']
             === json_encode([$guid]), 'Compiler selector did not freeze.');
-        expect(CommandOptions::normalize((object) ['items'=>'alpha,beta'], $packages, 'init')['items']
+        expect(CommandOptions::normalize((object) ['items'=>'alpha,beta', 'resolve'=>true], $packages, 'init')['items']
             === '["alpha","beta"]', 'Bounded alternative keys should work.');
+        expect(CommandOptions::normalize((object) ['items'=>'alpha'], $packages, 'get')['items']
+            === '["alpha"]', 'Get resolves bounded alternative keys itself.');
+        foreach (['init', 'pull', 'reset'] as $verb) {
+            jcbFailure(fn () => CommandOptions::normalize((object) ['items'=>'alpha'], $packages, $verb));
+        }
         $bundled = CommandOptions::normalize((object) ['components'=>'{"items":["' . $guid . '"]}',
             'options'=>'{"minify":1,"build_date":"2026-11-24"}', 'minify'=>'2'], $compiler, 'compile');
         expect($bundled['minify'] === '2' && $bundled['build-date'] === '2026-11-24'
             && !isset($bundled['options']), 'Explicit compiler options must take precedence over a bounded bundle.');
+        expect(CommandOptions::compilerPostOverrides(['minify' => '0', 'powers' => '2']) === [
+            'backup' => '0', 'repository' => '0', 'powers_repository' => '0', 'show_advanced_options' => '1',
+            'minify' => '0',
+        ], 'Disallowed exports and explicit zero-valued native options must be applied to compiler input.');
         foreach ([['install'=>true], ['options'=>'{"install":1}'], ['components'=>'@/tmp/path'],
             ['components'=>'1'], ['components'=>'[]'], ['components'=>'*'], ['components'=>'["../x"]'],
             ['components'=>$guid, 'build-date'=>'2026-02-31']] as $bad) {
@@ -182,5 +192,40 @@ namespace {
             expect($bad['status'] === 'partial' && $bad['differentCount'] > 0, $verb . ' did not detect mismatch.');
         }
         expect(jcbPackageResult('init', false, 'local')['status'] === 'verified', 'Init should preserve and verify an existing local record.');
+    });
+
+    test('JCB folder read-back compares bounded regular files and rejects unsafe ZIP entries', static function (): void {
+        if (!class_exists(\ZipArchive::class)) {
+            return;
+        }
+        $dir = sys_get_temp_dir() . '/jcb-folder-check-' . bin2hex(random_bytes(6));
+        mkdir($dir, 0700);
+        $file = $dir . '/fixture.txt';
+        $archive = tempnam(sys_get_temp_dir(), 'jcb-zip');
+        $read = new FileComparison();
+        $local = new \ReflectionMethod($read, 'localDirectory');
+        $remote = new \ReflectionMethod($read, 'archive');
+        try {
+            file_put_contents($file, 'native content');
+            $make = static function (string $name) use ($archive): string {
+                $zip = new \ZipArchive();
+                $zip->open($archive, \ZipArchive::OVERWRITE);
+                $zip->addFromString($name, 'native content');
+                $zip->close();
+                return file_get_contents($archive);
+            };
+            $expected = $remote->invoke($read, $make('fixture.txt'));
+            expect($expected === $local->invoke($read, $dir, false), 'Local folder hash must match the remote archive.');
+            file_put_contents($file, 'changed content');
+            expect($expected !== $local->invoke($read, $dir, false), 'Folder comparison must detect changed bytes.');
+            jcbFailure(fn () => $remote->invoke($read, $make('../fixture.txt')));
+            symlink($file, $dir . '/other');
+            jcbFailure(fn () => $local->invoke($read, $dir, false));
+        } finally {
+            if (is_link($dir . '/other')) { unlink($dir . '/other'); }
+            unlink($archive);
+            unlink($file);
+            rmdir($dir);
+        }
     });
 }

@@ -4,6 +4,7 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { z } from 'zod/v4';
 
 import { publicCatalog } from '../catalog/core.js';
+import { publicJcbCatalog } from '../jcb/catalog.js';
 import { jcbToolset } from '../jcb/discovery.js';
 import { getJcbJob, readJcbArtifact } from '../jcb/jobs.js';
 import { getJoomlaReadAction, getJoomlaWriteAction } from '../catalog/action-catalog.js';
@@ -100,6 +101,16 @@ export function createServer(
       contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(publicCatalog()) }],
     }),
   );
+
+  if ([...configuration.sites.values()].some(site => [...site.toolsets].some(toolset => toolset.startsWith('jcb.')))) {
+    server.registerResource('jcb-catalog', 'joomla://catalog/jcb', {
+      title: 'Joomla Component Builder API catalogue',
+      description: 'Reviewed JCB route identifiers by resource. Use site-scoped action search to check availability.',
+      mimeType: 'application/json',
+    }, async uri => ({
+      contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(publicJcbCatalog()) }],
+    }));
+  }
 
   server.registerTool(
     'joomla_sites_list',

@@ -39,6 +39,10 @@ it('discloses JCB routes only under the selected site and scopes, then executes 
     action: 'jcb.api.languages.list', input: { filter: { search: 'German' }, limit: 2 },
   }});
   try {
+    const catalog = await client.readResource({ uri: 'joomla://catalog/jcb' });
+    expect(JSON.parse(String(catalog.contents[0]!.text))).toMatchObject({
+      component: 'com_componentbuilder', routeCount: 320, discoveryDomain: 'jcb',
+    });
     expect((await search()).structuredContent).toMatchObject({ actions: [] });
     expect((await read()).isError).toBe(true);
     expect(api.get).not.toHaveBeenCalled();

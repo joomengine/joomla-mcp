@@ -12,6 +12,8 @@ authenticate to the MCP server with a token from its OAuth issuer. Keep the
 Joomla API token, any Joomla Update token, and the approval secret on the
 server.
 
+For a JCB-only site, use the same client connection with your builder site alias. After connecting, ask the client to search the `jcb` domain for `joomla_components` and list one component through `jcb.api.joomla_components.list`. An empty collection is a valid first read. To authorize a hosted connection for that read, include the site, discovery and `jcb.read` toolset scopes. [JCB site configuration](JCB.md) · [HTTP scopes](REMOTE_HTTP.md)
+
 ## Compatibility matrix
 
 | Client | Local stdio | Streamable HTTP | Authentication |

@@ -85,7 +85,7 @@ final readonly class CommandAction implements ActionInterface
         $post = $compiler ? $this->application->getInput()->post : null;
         $priorPost = [];
         $environment = [];
-        $beforeMessages = count($this->application->getMessageQueue());
+        $beforeMessages = self::queueCounts($this->application->getMessageQueue());
         try {
             // The native commands accept paths, selectors, install flags and credentials through
             // environment fallbacks. Only the typed, reviewed arguments below are authoritative.
@@ -185,7 +185,22 @@ final readonly class CommandAction implements ActionInterface
             $sources, $state->fingerprint(), $options]));
     }
 
-    private function messages(int $before): array
+    /** Joomla ConsoleApplication groups its messages by severity. A long-running dispatcher may already have some. */
+    private static function queueCounts(array $queue): array
+    {
+        $counts = ['warnings' => 0, 'errors' => 0];
+        foreach ($queue as $type => $messages) {
+            $category = strtolower((string) $type);
+            if ($category === 'warning') {
+                $counts['warnings'] += count((array) $messages);
+            } elseif (in_array($category, ['error', 'alert', 'critical', 'emergency'], true)) {
+                $counts['errors'] += count((array) $messages);
+            }
+        }
+        return $counts;
+    }
+
+    private function messages(array $before): array
     {
         $counts = ['warnings' => 0, 'errors' => 0];
         if ($this->verb !== 'compile') {
@@ -206,12 +221,8 @@ final readonly class CommandAction implements ActionInterface
                 }
             }
         }
-        foreach (array_slice($this->application->getMessageQueue(), $before) as $message) {
-            if (($message['type'] ?? '') === 'error') {
-                $counts['errors']++;
-            } elseif (($message['type'] ?? '') === 'warning') {
-                $counts['warnings']++;
-            }
+        foreach (self::queueCounts($this->application->getMessageQueue()) as $category => $total) {
+            $counts[$category] += max(0, $total - $before[$category]);
         }
         return $counts;
     }

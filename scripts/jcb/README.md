@@ -25,7 +25,7 @@ Super Power repository definitions on the site. Its XML option is a hint,
 and the field accepts multiple repository paths.
 
 From a checkout of this repository, reproduce the catalogue with Git, curl,
-unzip and PHP 8.3+ with SimpleXML installed.
+tar, unzip and PHP 8.3+ with SimpleXML installed.
 
 ```bash
 source_dir=$(mktemp -d)
@@ -54,6 +54,7 @@ list-only resources. The compiler and extrusion collections expose display
 data. JCB's compiler command has a separate console contract.
 
 The 6.2.0 release has the same registered requests, form field descriptors,
+integer storage columns, plugin form registrations and default switches,
 filters, ordering keys and 21 GUID-capable families as 6.2.1. Version 6.2.1
 adds 40 explicit conditional-requirement groups in nine models. The bundled
 descriptions include those groups. Both releases disable the language

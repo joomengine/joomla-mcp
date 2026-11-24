@@ -474,6 +474,13 @@ async function checkPackageRoundtrip(session, phpBinary, rejectionOnly = false) 
       const key = randomUUID();
       const rejected = await runJob(session, action, options, 'uncertain', key);
       const after = await request('fingerprint');
+      const persisted = await request('inspect');
+      assert.deepEqual(persisted, {
+        nativeLocal: 'revision rejected by controlled repository',
+        nativeRemote: 'revision one',
+        linkedLocal: true,
+        linkedRemote: true,
+      });
       assert.equal(after.sha256, before.sha256);
       assert.ok(
         after.requests > before.requests,
@@ -481,7 +488,17 @@ async function checkPackageRoundtrip(session, phpBinary, rejectionOnly = false) 
       );
       const replay = await write(session, localSite, action, { options }, 'cli', key);
       assert.equal(replay.job.jobId, rejected.jobId);
-      assert.deepEqual(await request('fingerprint'), after, 'A repeated key cannot repeat the native push.');
+      const afterReplay = await request('fingerprint');
+      assert.deepEqual(afterReplay, after, 'A repeated key cannot repeat the native push.');
+      evidence.packageRejection = {
+        outcome: rejected.status,
+        verification: rejected.verification,
+        remoteDigestUnchanged: before.sha256 === afterReplay.sha256,
+        attemptedRequests: after.requests - before.requests,
+        replayedRequests: afterReplay.requests - after.requests,
+        sameJobId: replay.job.jobId === rejected.jobId,
+        ...persisted,
+      };
       passed(
         session,
         'Rejected push retained its original job and left remote bytes unchanged, including on replay',

@@ -61,6 +61,7 @@ namespace {
     use Joomla\DI\ContainerResource;
     use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
     use VDM\Plugin\Console\JoomlaMcp\Jcb\CommandOptions;
+    use VDM\Plugin\Console\JoomlaMcp\Jcb\CommandAction;
     use VDM\Plugin\Console\JoomlaMcp\Jcb\CompilerOutput;
     use VDM\Plugin\Console\JoomlaMcp\Jcb\FileComparison;
     use VDM\Plugin\Console\JoomlaMcp\Jcb\PackageVerification;
@@ -74,6 +75,12 @@ namespace {
         try { $f(); } catch (ActionException) { return; }
         throw new \RuntimeException('Expected rejection.');
     }
+
+    test('JCB counts Joomla console queues by severity and ignores informational notices', static function (): void {
+        $method = new \ReflectionMethod(CommandAction::class, 'queueCounts');
+        expect($method->invoke(null, ['Warning'=>['one', 'two'], 'error'=>['one'], 'Notice'=>['normal'], 'critical'=>['one']])
+            === ['warnings'=>2, 'errors'=>2], 'The native Joomla console queue groups messages by severity.');
+    });
 
     test('JCB options admit only installed reviewed forms and explicit inline selections', static function (): void {
         $definition = new class {

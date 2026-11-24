@@ -35,7 +35,9 @@ done
 
 bash -n "$RUNNER"
 bash -n scripts/fixtures/run-jcb.sh
-node --check scripts/fixtures/verify-jcb.mjs
+for module in scripts/fixtures/verify-jcb.mjs scripts/fixtures/jcb-*.mjs; do
+  node --check "$module"
+done
 bash -n tests/fixtures/static-joomengine.test.sh
 
 assert_contains "$COMPOSE_FILE" 'JOOMLA_FIXTURE_IMAGE:-octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372}'

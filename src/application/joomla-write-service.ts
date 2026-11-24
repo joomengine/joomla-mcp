@@ -45,6 +45,9 @@ import {
   type PermissionGrantDuration,
   type WritePermissionToolset,
 } from '../security/permission-grant-service.js';
+import { getJcbApiAction } from '../jcb/catalog.js';
+import { applyJcbApiWrite, prepareJcbApiWrite, probeJcbApiResource } from '../jcb/api.js';
+import { applyJcbCommand, isJcbCommandId, prepareJcbCommand } from '../jcb/commands.js';
 import { SiteRegistry } from './site-registry.js';
 import {
   compareSubformCustomField,
@@ -136,6 +139,8 @@ interface CachedResult {
   readonly fingerprint: string;
   readonly value: Record<string, unknown>;
   readonly completedAt: number;
+  /** Only redacted metadata is needed to issue a receipt for a repeated JCB intent. */
+  readonly replay?: Pick<PlannedOperation, 'method' | 'path' | 'summary' | 'preflight'>;
 }
 
 export class JoomlaWriteService {
@@ -264,6 +269,10 @@ export class JoomlaWriteService {
     principal = 'local-stdio',
     authorizeRead?: (site: string, toolset: string) => void,
   ): Promise<ConfirmationPlan | WritePreview> {
+    const jcb = getJcbApiAction(input.action);
+    if ((jcb !== undefined && jcb.method !== 'GET') || isJcbCommandId(input.action)) {
+      return this.planJcbAction(input, principal, jcb, authorizeRead);
+    }
     const gateReason = sourceOnlyGateReason(input.action);
 
     if (gateReason !== undefined) {
@@ -366,45 +375,7 @@ export class JoomlaWriteService {
       ...(preflight === undefined ? {} : { preflight }),
     };
 
-    if (input.dryRun === true) {
-      const preview: WritePreview = {
-        dryRun: true,
-        confirmationRequired: true,
-        operation: {
-          site: operation.site,
-          action: operation.action,
-          method: operation.method,
-          summary: operation.summary,
-          idempotencyKey: operation.idempotencyKey,
-          fingerprint: operationHash(operation),
-          transport,
-          ...(operation.preflight === undefined ? {} : { preflight: operation.preflight }),
-          ...(operation.customFields === undefined ? {} : { customFields: operation.customFields }),
-        },
-      };
-      await this.audit?.write({
-        timestamp: new Date().toISOString(), event: 'write.previewed', site: operation.site,
-        action: operation.action, transport, idempotencyKey: operation.idempotencyKey, outcome: 'previewed',
-        principalFingerprint: principalFingerprint(principal),
-      });
-      return preview;
-    }
-
-    const grant = this.requirePermissions().authorize(
-      principal,
-      site.id,
-      asWritePermissionToolset(action.toolset),
-    );
-    const plan = this.requireConfirmation().create(
-      { ...operation, permissionGrantId: grant.id },
-      principal,
-    );
-    await this.audit?.write({
-      timestamp: new Date().toISOString(), event: 'write.planned', site: operation.site,
-      action: operation.action, transport, idempotencyKey: operation.idempotencyKey, outcome: 'planned',
-      principalFingerprint: principalFingerprint(principal),
-    });
-    return plan;
+    return this.finishPlan(operation, principal, input.dryRun === true);
   }
 
   private async planCompanionAction(
@@ -440,7 +411,77 @@ export class JoomlaWriteService {
       preflight,
     };
 
-    if (input.dryRun === true) {
+    return this.finishPlan(operation, principal, input.dryRun === true);
+  }
+
+  private async planJcbAction(
+    input: JoomlaActionWritePlanInput,
+    principal: string,
+    action: ReturnType<typeof getJcbApiAction>,
+    authorizeRead?: (site: string, toolset: string) => void,
+  ): Promise<ConfirmationPlan | WritePreview> {
+    const site = this.sites.get(input.site);
+    const transport = action === undefined ? 'cli' : 'api';
+    const toolset = action === undefined ? 'jcb.execute' : 'jcb.write';
+    this.sites.requireToolset(site, toolset);
+    if (input.transport !== undefined && input.transport !== 'auto' && input.transport !== transport) {
+      throw new Error(`JCB action ${input.action} requires the ${transport.toUpperCase()} transport.`);
+    }
+    if (action !== undefined) {
+      this.sites.requireToolset(site, 'jcb.read');
+      authorizeRead?.(site.id, 'jcb.read');
+      if (site.api === undefined) throw new Error('JCB entity operations require a configured Joomla Web Services API adapter.');
+    } else if (site.cli === undefined) {
+      throw new Error('JCB command execution requires a configured Joomla companion CLI adapter.');
+    }
+    idempotencyKeySchema.parse(input.idempotencyKey);
+    validateJoomlaMutationJson(input.input);
+    // The embeddable API accepts caller-owned objects. Snapshot before the first
+    // asynchronous probe so the fingerprint and the prepared mutation agree.
+    const actionInput = structuredClone(input.input);
+    const intent = valueFingerprint({ site: site.id, action: input.action, transport, input: actionInput });
+    const common = {
+      site: site.id, action: input.action, transport, toolset,
+      idempotencyKey: input.idempotencyKey, jcbIntent: intent,
+    } as const;
+    this.sweepCompleted();
+    const cached = this.completed.get(jcbCacheKey(principal, site.id, input.idempotencyKey));
+    if (cached !== undefined) {
+      if (cached.fingerprint !== intent || cached.replay === undefined) {
+        throw new Error('The idempotency key was already used for a different operation.');
+      }
+      // DELETE may have removed the selected record. Returning the previous result
+      // still requires a newly authorized plan, without querying or mutating it again.
+      return this.finishPlan({ ...common, ...cached.replay, replayOnly: true }, principal, input.dryRun === true);
+    }
+    if (input.dryRun !== true) this.requirePermissions().authorize(principal, site.id, toolset);
+    if (action !== undefined && site.api !== undefined) {
+      if (action.method === 'GET') throw new Error('A JCB read cannot be planned as a write.');
+      if (!await probeJcbApiResource(this.api, site.api, action)) {
+        throw new Error(`JCB resource for ${action.id} is unavailable on ${site.id}.`);
+      }
+      const plan = await prepareJcbApiWrite(this.api, site.api, action, actionInput);
+      return this.finishPlan({
+        ...common, method: action.method, path: plan.request.path,
+        summary: `${action.method} ${plan.request.path} through Joomla Component Builder Web Services.`,
+        preflight: { ...plan.preview }, jcbApi: plan,
+      }, principal, input.dryRun === true);
+    }
+    const command = await prepareJcbCommand(this.cli, site, input.action, actionInput);
+    return this.finishPlan({
+      ...common, method: 'POST', path: `companion:${input.action}`, summary: command.title,
+      actionInput: command.actionInput, preflight: command.preflight,
+    }, principal, input.dryRun === true);
+  }
+
+  private async finishPlan(
+    operation: PlannedOperation,
+    principal: string,
+    dryRun: boolean,
+  ): Promise<ConfirmationPlan | WritePreview> {
+    const transport = operation.transport ?? 'api';
+    if (operation.toolset === undefined) throw new Error('A write plan must specify its site toolset.');
+    if (dryRun) {
       const preview: WritePreview = {
         dryRun: true,
         confirmationRequired: true,
@@ -451,13 +492,14 @@ export class JoomlaWriteService {
           summary: operation.summary,
           idempotencyKey: operation.idempotencyKey,
           fingerprint: operationHash(operation),
-          transport: 'cli',
-          preflight,
+          transport,
+          ...(operation.preflight === undefined ? {} : { preflight: operation.preflight }),
+          ...(operation.customFields === undefined ? {} : { customFields: operation.customFields }),
         },
       };
       await this.audit?.write({
         timestamp: new Date().toISOString(), event: 'write.previewed', site: operation.site,
-        action: operation.action, transport: 'cli', idempotencyKey: operation.idempotencyKey, outcome: 'previewed',
+        action: operation.action, transport, idempotencyKey: operation.idempotencyKey, outcome: 'previewed',
         principalFingerprint: principalFingerprint(principal),
       });
       return preview;
@@ -465,8 +507,8 @@ export class JoomlaWriteService {
 
     const grant = this.requirePermissions().authorize(
       principal,
-      site.id,
-      asWritePermissionToolset(action.toolset),
+      operation.site,
+      asWritePermissionToolset(operation.toolset),
     );
     const plan = this.requireConfirmation().create(
       { ...operation, permissionGrantId: grant.id },
@@ -474,7 +516,7 @@ export class JoomlaWriteService {
     );
     await this.audit?.write({
       timestamp: new Date().toISOString(), event: 'write.planned', site: operation.site,
-      action: operation.action, transport: 'cli', idempotencyKey: operation.idempotencyKey, outcome: 'planned',
+      action: operation.action, transport, idempotencyKey: operation.idempotencyKey, outcome: 'planned',
       principalFingerprint: principalFingerprint(principal),
     });
     return plan;
@@ -491,6 +533,13 @@ export class JoomlaWriteService {
       const companionAction = getCompanionWriteAction(planned.action);
       const toolset = action?.toolset ?? companionAction?.toolset ?? planned.toolset ?? 'content.write';
       authorize?.(planned.site, toolset);
+      if (planned.jcbIntent !== undefined && planned.toolset !== undefined) {
+        this.sites.requireToolset(this.sites.get(planned.site), planned.toolset);
+      }
+      if (planned.toolset === 'jcb.write') {
+        this.sites.requireToolset(this.sites.get(planned.site), 'jcb.read');
+        authorize?.(planned.site, 'jcb.read');
+      }
       if ((planned.transport ?? 'api') === 'api' && (isTemplateStyleCreate(planned.action) || isMenuItemWrite(planned.action))) {
         this.sites.requireToolset(this.sites.get(planned.site), 'structure.read');
         authorize?.(planned.site, 'structure.read');
@@ -522,9 +571,11 @@ export class JoomlaWriteService {
       toolsets: [toolset],
       outcome: 'success',
     });
-    const cacheKey = completedCacheKey(principal, operation.idempotencyKey);
+    const cacheKey = operation.jcbIntent === undefined
+      ? completedCacheKey(principal, operation.idempotencyKey)
+      : jcbCacheKey(principal, operation.site, operation.idempotencyKey);
     const cached = this.completed.get(cacheKey);
-    const fingerprint = operationHash(operation);
+    const fingerprint = operation.jcbIntent ?? operationHash(operation);
 
     if (cached !== undefined) {
       if (cached.fingerprint !== fingerprint) {
@@ -534,11 +585,17 @@ export class JoomlaWriteService {
       return { ...cached.value, idempotentReplay: true };
     }
 
+    if (operation.replayOnly) {
+      throw new Error('The cached JCB receipt expired. Inspect the operation result before requesting a new plan.');
+    }
+
     return this.locks.run(operation.site, async () => {
       const site = this.sites.get(operation.site);
       const action = getJoomlaWriteAction(operation.action);
       const companionAction = getCompanionWriteAction(operation.action);
-      if (action === undefined && companionAction === undefined) {
+      const jcbAction = getJcbApiAction(operation.action);
+      const jcbCommand = isJcbCommandId(operation.action);
+      if (action === undefined && companionAction === undefined && jcbAction === undefined && !jcbCommand) {
         throw new Error(`Planned Joomla action ${operation.action} is no longer allowlisted.`);
       }
       const toolset = action?.toolset ?? companionAction?.toolset ?? operation.toolset ?? 'content.write';
@@ -546,17 +603,44 @@ export class JoomlaWriteService {
       const transport = operation.transport ?? 'api';
 
       try {
+        if (jcbAction !== undefined || jcbCommand) {
+          let execution: Record<string, unknown>;
+          let success: boolean;
+          if (operation.jcbApi !== undefined && jcbAction !== undefined && site.api !== undefined && transport === 'api') {
+            if (!await probeJcbApiResource(this.api, site.api, jcbAction)) {
+              throw new Error(`JCB resource for ${jcbAction.id} is no longer available on ${site.id}.`);
+            }
+            const result = await applyJcbApiWrite(this.api, site.api, jcbAction, operation.jcbApi, operation.idempotencyKey);
+            execution = { mutation: result.mutation, verification: result.verification };
+            success = result.verification.status === 'verified';
+          } else if (jcbCommand && transport === 'cli' && operation.actionInput !== undefined && operation.preflight !== undefined) {
+            const job = await applyJcbCommand(this.cli, site, operation.action, operation.actionInput,
+              operation.preflight, principal, operation.idempotencyKey);
+            execution = { job };
+            success = ['queued', 'running', 'succeeded'].includes(String(job['status']));
+          } else {
+            throw new Error('The stored JCB plan does not match its configured transport.');
+          }
+          const value = { site: site.id, action: operation.action, idempotencyKey: operation.idempotencyKey,
+            ...execution, idempotentReplay: false };
+          this.remember(cacheKey, { fingerprint, value, completedAt: Date.now(),
+            replay: { method: operation.method, path: operation.path, summary: operation.summary,
+              ...(operation.preflight === undefined ? {} : { preflight: operation.preflight }) } });
+          await this.audit?.write({
+            timestamp: new Date().toISOString(), event: success ? 'write.applied' : 'write.failed',
+            site: site.id, action: operation.action, idempotencyKey: operation.idempotencyKey,
+            principalFingerprint: principalFingerprint(principal), transport, outcome: success ? 'success' : 'failure',
+            detail: jcbCommand ? 'JCB command job receipt recorded.' : 'JCB API mutation and verification receipt recorded.',
+          });
+          return value;
+        }
         if (transport === 'api' && isMenuItemWrite(operation.action)) {
           const execution = await executeMenuComponentBinding(site.api!, this.api, operation);
           const value = { site: operation.site, action: operation.action,
             idempotencyKey: operation.idempotencyKey, ...execution, idempotentReplay: false };
           // Retain ambiguous or partial effects too. Replanning with the same
           // key must never create a second menu after a successful first POST.
-          if (this.completed.size >= 10_000) {
-            const oldest = this.completed.keys().next().value as string | undefined;
-            if (oldest !== undefined) this.completed.delete(oldest);
-          }
-          this.completed.set(cacheKey, { fingerprint, value, completedAt: Date.now() });
+          this.remember(cacheKey, { fingerprint, value, completedAt: Date.now() });
           await this.audit?.write({
             timestamp: new Date().toISOString(), event: execution.outcome === 'verified' ? 'write.applied' : 'write.failed',
             site: operation.site, action: operation.action, idempotencyKey: operation.idempotencyKey,
@@ -580,11 +664,7 @@ export class JoomlaWriteService {
           verification,
           idempotentReplay: false,
         };
-        if (this.completed.size >= 10_000) {
-          const oldest = this.completed.keys().next().value as string | undefined;
-          if (oldest !== undefined) this.completed.delete(oldest);
-        }
-        this.completed.set(cacheKey, { fingerprint, value, completedAt: Date.now() });
+        this.remember(cacheKey, { fingerprint, value, completedAt: Date.now() });
         const fieldVerification = asRecord(asRecord(verification)['customFieldVerification']);
         const mediaVerification = asRecord(asRecord(verification)['nativeMediaVerification']);
         const fieldMismatch = fieldVerification['status'] === 'uncertain' || mediaVerification['status'] === 'uncertain';
@@ -827,6 +907,14 @@ export class JoomlaWriteService {
     return this.permissions;
   }
 
+  private remember(key: string, result: CachedResult): void {
+    if (this.completed.size >= 10_000) {
+      const oldest = this.completed.keys().next().value;
+      if (oldest !== undefined) this.completed.delete(oldest);
+    }
+    this.completed.set(key, result);
+  }
+
   private sweepCompleted(): void {
     const threshold = Date.now() - 86_400_000;
 
@@ -880,6 +968,10 @@ function principalFingerprint(principal: string): string {
 
 function completedCacheKey(principal: string, idempotencyKey: string): string {
   return `${principalFingerprint(principal)}:${idempotencyKey}`;
+}
+
+function jcbCacheKey(principal: string, site: string, idempotencyKey: string): string {
+  return `jcb:${site}:${completedCacheKey(principal, idempotencyKey)}`;
 }
 
 function valueFingerprint(value: unknown): string {

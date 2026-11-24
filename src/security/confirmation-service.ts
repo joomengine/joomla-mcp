@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
+import type { JcbApiPlan } from '../jcb/api.js';
 import type { Toolset } from '../config/schema.js';
 import type { ResolvedCustomField } from '../application/custom-fields.js';
 
@@ -24,6 +25,12 @@ export interface PlannedOperation {
   readonly permissionGrantId?: string;
   /** Site-resolved names and types accepted at plan time, included in the fingerprint. */
   readonly customFields?: readonly ResolvedCustomField[];
+  /** Server-side JCB selection, emitted only as a redacted public preflight. */
+  readonly jcbApi?: JcbApiPlan;
+  /** Request identity stays stable across changing native preconditions or grants. */
+  readonly jcbIntent?: string;
+  /** A receipt-only plan must never submit a native mutation. */
+  readonly replayOnly?: boolean;
 }
 
 export interface ConfirmationPlan {

@@ -443,6 +443,10 @@ node "${REPOSITORY_ROOT}/dist/bin/joomla-mcp-live-test.js" \
 printf 'JMCP-FIXTURE state=PASS phase=live-test message=%q\n' \
   'declarative MCP live validation completed'
 
+printf 'JMCP-FIXTURE state=START phase=jcb\n'
+bash "${SCRIPT_DIRECTORY}/run-jcb.sh" "$joomla_container_id" "$artifact_directory"
+printf 'JMCP-FIXTURE state=PASS phase=jcb\n'
+
 collect_diagnostics
 for command in \
   'joomla:mcp:describe --format=json --no-interaction --no-ansi' \

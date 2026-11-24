@@ -26,6 +26,8 @@ export const writePermissionToolsets = [
   'configuration.write',
   'maintenance.admin',
   'core-update',
+  'jcb.write',
+  'jcb.execute',
 ] as const satisfies readonly Toolset[];
 
 export type WritePermissionToolset = (typeof writePermissionToolsets)[number];

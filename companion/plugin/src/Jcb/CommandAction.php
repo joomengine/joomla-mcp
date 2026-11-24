@@ -1,0 +1,174 @@
+<?php
+
+declare(strict_types=1);
+
+namespace VDM\Plugin\Console\JoomlaMcp\Jcb;
+
+use Joomla\CMS\Factory;
+use VDM\Joomla\Componentbuilder\Table;
+use VDM\Joomla\Database\Load;
+use ReflectionClass;
+use ReflectionProperty;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
+use VDM\Plugin\Console\JoomlaMcp\Contract\ActionInterface;
+use VDM\Plugin\Console\JoomlaMcp\Domain\ActionDescriptor;
+use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
+use VDM\Plugin\Console\JoomlaMcp\Domain\Input;
+
+final readonly class CommandAction implements ActionInterface
+{
+    public function __construct(
+        private object $application,
+        private object $command,
+        private int $actorId,
+        private string $verb,
+        private string $area,
+        private string $entity,
+        private array $properties,
+    ) {
+    }
+
+    public function descriptor(): ActionDescriptor
+    {
+        $compiler = $this->verb === 'compile';
+        $options = ['type' => 'object', 'additionalProperties' => false, 'properties' => $this->properties];
+        if ($compiler) {
+            $options['anyOf'] = [['required' => ['component']], ['required' => ['components']]];
+        } else {
+            $options['required'] = ['items'];
+        }
+        return new ActionDescriptor(
+            'jcb.' . $this->verb . '.' . $this->area,
+            'Run the installed ' . $this->command->getName() . ' command after preview and operator approval.',
+            'high',
+            [['action' => 'core.admin', 'asset' => 'com_componentbuilder']],
+            ['type' => 'object', 'required' => ['options'], 'additionalProperties' => false, 'properties' => ['options' => $options]],
+            ['type' => 'object', 'required' => ['applied', 'dryRun']],
+        );
+    }
+
+    public function execute(array $input): array
+    {
+        Input::rejectUnknown($input, ['options', 'dryRun', '_edgeConfirmed', '_expectedContractFingerprint']);
+        $options = CommandOptions::normalize($input['options'] ?? null, $this->properties, $this->verb);
+        $identity = $this->application->getIdentity();
+        if ($this->actorId < 1 || (int) ($identity->id ?? 0) !== $this->actorId || !empty($identity->block)
+            || !$identity->authorise('core.admin', 'com_componentbuilder')) {
+            throw new ActionException('ACCESS_DENIED', 'The configured JCB actor is unavailable or lacks component administration permission.');
+        }
+        $state = new DefinitionState(new Load(), new Table());
+        if (isset($options['repo']) && !$state->hasRepository($options['repo'])) {
+            throw new ActionException('INVALID_INPUT', 'The selected repository GUID does not identify an installed JCB repository.');
+        }
+        $compiler = $this->verb === 'compile';
+        $selectors = json_decode($options[$compiler ? 'components' : 'items'], true, 4, JSON_THROW_ON_ERROR);
+        $fingerprint = $this->fingerprint($state, $options);
+        $preview = [
+            'preState' => ['contractFingerprint' => $fingerprint],
+            'requestedState' => ['command' => $this->command->getName(), 'options' => $options],
+        ];
+        if (Input::boolean($input, 'dryRun', true)) {
+            return ['dryRun' => true, 'applied' => false] + $preview;
+        }
+        if (!Input::boolean($input, '_edgeConfirmed', false)
+            || !hash_equals($fingerprint, Input::text($input, '_expectedContractFingerprint', '', 64))) {
+            throw new ActionException('PLAN_STALE', 'An unchanged, operator-confirmed JCB command plan is required.');
+        }
+
+        $workspace = $compiler ? CompilerOutput::directory() : null;
+        $native = $compiler ? Factory::getConfig() : null;
+        $nativeTmp = $native?->get('tmp_path');
+        $appTmp = $this->application->get('tmp_path');
+        $environment = [];
+        $beforeMessages = count($this->application->getMessageQueue());
+        try {
+            // The native commands accept paths, selectors, install flags and credentials through
+            // environment fallbacks. Only the typed, reviewed arguments below are authoritative.
+            foreach (getenv() as $key => $value) {
+                if (str_starts_with($key, 'JCB_')) {
+                    $environment[$key] = $value;
+                    putenv($key);
+                }
+            }
+            if ($compiler) {
+                $this->application->set('tmp_path', $workspace);
+                $native->set('tmp_path', $workspace);
+            }
+            $args = [];
+            foreach ($options as $name => $value) {
+                if ($value !== false) {
+                    $args['--' . $name] = $value;
+                }
+            }
+            $nativeInput = new ArrayInput($args, $this->command->getDefinition());
+            $nativeInput->setInteractive(false);
+            // Joomla binds command identity and dependencies when registering the object.
+            // Stdout from Joomla's application is handled by DispatchService, console output is discarded.
+            $exit = $this->command->execute($nativeInput, new NullOutput());
+            $statuses = $this->messages($beforeMessages);
+            if ($exit !== 0 || $statuses['errors'] > 0) {
+                throw new ActionException('JCB_PARTIAL', 'The native JCB command reported errors. It may have made partial changes.');
+            }
+            if ($compiler) {
+                $paths = (new ReflectionProperty($this->command, 'outputPaths'))->getValue($this->command);
+                $artifacts = CompilerOutput::verify($workspace, $paths);
+                $verification = ['status' => $statuses['warnings'] === 0 ? 'verified' : 'partial',
+                    'artifactCount' => count($artifacts), ...$statuses];
+                return ['dryRun' => false, 'applied' => true, 'verification' => $verification, 'artifacts' => $artifacts];
+            }
+            $observed = $state->observed($this->entity, $selectors);
+            $verification = ['status' => $statuses['warnings'] > 0 ? 'partial' : 'unverified',
+                'nativeExitCode' => $exit, 'selectedCount' => count($selectors), 'localRecordCount' => $observed, ...$statuses];
+            // Local existence alone cannot verify remote publication, dependencies or overwritten field values.
+            return ['dryRun' => false, 'applied' => true, 'verification' => $verification];
+        } finally {
+            if ($compiler) {
+                $native->set('tmp_path', $nativeTmp);
+                $this->application->set('tmp_path', $appTmp);
+            }
+            foreach ($environment as $key => $value) {
+                putenv($key . '=' . $value);
+            }
+        }
+    }
+
+    private function fingerprint(DefinitionState $state, array $options): string
+    {
+        $sources = [];
+        $reflection = new ReflectionClass($this->command);
+        do {
+            $filename = $reflection->getFileName();
+            if (!is_string($filename) || ($hash = hash_file('sha256', $filename)) === false) {
+                throw new ActionException('JCB_SOURCE_UNAVAILABLE', 'The installed command source cannot be verified.');
+            }
+            $sources[$reflection->getName()] = $hash;
+        } while ($reflection = $reflection->getParentClass());
+        $contract = [];
+        foreach ($this->command->getDefinition()->getOptions() as $name => $option) {
+            $contract[$name] = [$option->acceptValue(), $option->isValueRequired(), $option->isArray(), $option->getDefault()];
+        }
+        ksort($contract);
+        return hash('sha256', serialize([$this->actorId, $this->command->getName(), $this->entity, $contract,
+            $sources, $state->fingerprint(), $options]));
+    }
+
+    private function messages(int $before): array
+    {
+        $counts = ['warnings' => 0, 'errors' => 0];
+        if ($this->verb !== 'compile') {
+            $bus = (new ReflectionProperty($this->command, 'message'))->getValue($this->command);
+            foreach (['warning' => 'warnings', 'error' => 'errors'] as $key => $counter) {
+                $counts[$counter] = count((array) $bus?->get($key));
+            }
+        }
+        foreach (array_slice($this->application->getMessageQueue(), $before) as $message) {
+            if (($message['type'] ?? '') === 'error') {
+                $counts['errors']++;
+            } elseif (($message['type'] ?? '') === 'warning') {
+                $counts['warnings']++;
+            }
+        }
+        return $counts;
+    }
+}

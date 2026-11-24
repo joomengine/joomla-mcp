@@ -18,6 +18,11 @@ export interface CompanionEnvelope extends CliEnvelope {
   readonly data: unknown;
 }
 
+export interface CompanionDispatchOptions {
+  /** Private workspace allocated by the server for one confirmed JCB job. */
+  readonly jcbArtifactDirectory?: string;
+}
+
 export interface JoomlaCliTransport {
   list(config: CliConfig): Promise<CliEnvelope>;
   help(config: CliConfig, command: string): Promise<CliEnvelope>;
@@ -27,6 +32,7 @@ export interface JoomlaCliTransport {
     config: CliConfig,
     action: string,
     input: Readonly<Record<string, unknown>>,
+    options?: CompanionDispatchOptions,
   ): Promise<CompanionEnvelope>;
 }
 
@@ -74,6 +80,7 @@ export class JoomlaCliClient implements JoomlaCliTransport {
     config: CliConfig,
     action: string,
     input: Readonly<Record<string, unknown>>,
+    options?: CompanionDispatchOptions,
   ): Promise<CompanionEnvelope> {
     if (!/^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$/.test(action) || action.length > 128) {
       throw new Error('Invalid Joomla companion action identifier.');
@@ -89,6 +96,7 @@ export class JoomlaCliClient implements JoomlaCliTransport {
       config,
       ['joomla:mcp:dispatch', '--input=-', '--format=json', '--no-interaction', '--no-ansi'],
       stdin,
+      options,
     );
     const response = assertProtocol(envelope.data);
 
@@ -102,8 +110,10 @@ export class JoomlaCliClient implements JoomlaCliTransport {
     return envelope;
   }
 
-  private async executeJson(config: CliConfig, args: readonly string[], stdin?: string): Promise<CompanionEnvelope> {
-    const envelope = await this.execute(config, args, stdin);
+  private async executeJson(
+    config: CliConfig, args: readonly string[], stdin?: string, options?: CompanionDispatchOptions,
+  ): Promise<CompanionEnvelope> {
+    const envelope = await this.execute(config, args, stdin, options);
 
     if (envelope.exitCode !== 0 || envelope.timedOut || envelope.truncated) {
       throw new Error(
@@ -118,7 +128,9 @@ export class JoomlaCliClient implements JoomlaCliTransport {
     }
   }
 
-  private execute(config: CliConfig, args: readonly string[], stdin?: string): Promise<CliEnvelope> {
+  private execute(
+    config: CliConfig, args: readonly string[], stdin?: string, options?: CompanionDispatchOptions,
+  ): Promise<CliEnvelope> {
     const launcher = resolve(config.root, 'cli/joomla.php');
     const command = [config.phpBinary, launcher, ...args];
     const started = performance.now();
@@ -126,7 +138,12 @@ export class JoomlaCliClient implements JoomlaCliTransport {
     return new Promise((resolvePromise, reject) => {
       const child = spawn(config.phpBinary, [launcher, ...args], {
         cwd: config.root,
-        env: minimalEnvironment(),
+        env: {
+          ...minimalEnvironment(),
+          ...(options?.jcbArtifactDirectory === undefined ? {} : {
+            JOOMLA_MCP_JCB_ARTIFACT_DIR: options.jcbArtifactDirectory,
+          }),
+        },
         shell: false,
         stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       });

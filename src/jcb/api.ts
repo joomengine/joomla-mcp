@@ -29,8 +29,11 @@ export interface JcbApiPlan {
     readonly method: JoomlaApiRequest['method'];
     readonly path: string;
     readonly fields: readonly string[];
+    readonly formDefaults?: readonly string[];
+    readonly pluginFormDefaults?: Readonly<Record<string, Readonly<Record<string, string>>>>;
     readonly identifier?: string;
     readonly generatedGuid?: string;
+    readonly normalizedComponentCodeName?: string;
     readonly parent?: { readonly resource: string; readonly guid: string; readonly id: string };
     readonly preconditionChecked?: boolean;
   };
@@ -263,7 +266,27 @@ export async function prepareJcbApiWrite(
   if (action.operation === 'create' && action.sourceCreateDisabled)
     throw new Error('The installed JCB translation form disables source on create.');
   let request = resolveJcbApiRequest(action, input);
+  let normalizedComponentCodeName: string | undefined;
+  if (action.resource === 'joomla_components' && typeof request.body?.['name_code'] === 'string') {
+    // Joomla's CMD filter removes non-ASCII characters. JCB's
+    // ComponentCodeNameHelper::safe removes punctuation and calls ucfirst.
+    const name = request.body['name_code'];
+    const normalized = name.replace(/[^A-Za-z0-9]/g, '').replace(/^[a-z]/, letter => letter.toUpperCase());
+    if (!normalized) throw new Error('The component code name must contain an ASCII letter or digit.');
+    if (normalized !== name) {
+      normalizedComponentCodeName = normalized;
+      request = { ...request, body: { ...request.body, name_code: normalized } };
+    }
+  }
   const fields = Object.keys(request.body ?? {}).sort();
+  const submitted = isRecord(input['data']) ? input['data'] : {};
+  const formDefaults = action.operation === 'create' ? fields.filter(name => !Object.hasOwn(submitted, name)) : [];
+  const pluginFormDefaults = action.operation === 'create' ? action.formPluginDefaults : undefined;
+  if (pluginFormDefaults) {
+    // Bundled content plugins augment native forms. Joomla does not serialize
+    // these params, so only pinned plugin defaults can enter this internal field.
+    request = { ...request, body: { ...request.body, params: structuredClone(pluginFormDefaults) } };
+  }
   const binding = action.operation === 'create' ? getJcbParentBinding(action.resource) : undefined;
   const parentGuid = binding && readIdentity('guid', request.body?.[binding.field]);
   const parent = binding && parentGuid ? await readParent(api, config, binding.resource, parentGuid) : undefined;
@@ -335,6 +358,9 @@ export async function prepareJcbApiWrite(
       method: request.method,
       path: request.path,
       fields,
+      ...(normalizedComponentCodeName ? { normalizedComponentCodeName } : {}),
+      ...(formDefaults.length ? { formDefaults } : {}),
+      ...(pluginFormDefaults ? { pluginFormDefaults } : {}),
       ...(identity ? { identifier: identity.value } : {}),
       ...(parent ? { parent } : {}),
       ...(generatedGuid ? { generatedGuid } : {}),
@@ -351,6 +377,7 @@ function equivalent(field: JcbField | undefined, expected: unknown, actual: unkn
   if (!field) return false;
   // Comparison is field-specific; numeric-looking source/text values must remain exact.
   if (
+    field.integerStorage ||
     /^(?:int|integer|intval|uint)$/i.test(field.filter ?? '') ||
     /^(?:integer|number|radio)$/i.test(field.type)
   ) {

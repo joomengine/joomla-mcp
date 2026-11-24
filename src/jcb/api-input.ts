@@ -188,7 +188,13 @@ function checkValue(field: JcbField, value: unknown, label: string, depth: numbe
     )
       throw new Error(`Value is outside the declared range for ${label}.`);
   }
-  if (value !== null && value !== '' && field.options?.length && !field.options.includes(String(value))) {
+  if (
+    value !== null &&
+    value !== '' &&
+    !field.dynamicOptions &&
+    field.options?.length &&
+    !field.options.includes(String(value))
+  ) {
     throw new Error(`Value is outside the declared options for ${label}.`);
   }
 }
@@ -204,6 +210,56 @@ function validateFields(
     if (!field || !writable(field, name)) throw new Error(`Unknown or read-only JCB field ${prefix}.${name}.`);
     checkValue(field, value, `${prefix}.${name}`, depth);
   }
+}
+
+// The JCB model can remove a required flag after inspecting the other selectors.
+// Conditions run in the same order as ConditionalrequiredRule::requirements.
+function conditionallyRequired(action: JcbApiAction, input: Document): Map<string, boolean> {
+  const requirements = new Map<string, boolean>();
+  for (const group of action.conditionGroups) {
+    for (const target of group.targets) if (!requirements.has(target)) requirements.set(target, true);
+    const supported = group.matches.every(
+      rule => rule.supported && rule.behavior === 1 && !rule.user && !rule.checkbox && rule.options.length > 0,
+    );
+    if (!supported) {
+      // A future native condition must be evaluated by Joomla.
+      for (const target of group.targets) requirements.set(target, false);
+      continue;
+    }
+    const matched = group.matches.every(rule => {
+      const value = Object.hasOwn(input, rule.name) ? input[rule.name] : action.fields[rule.name]?.default;
+      const values = rule.array && Array.isArray(value) ? value : [value];
+      return values.some(choice => choice != null && rule.options.includes(String(choice)));
+    });
+    if (matched || group.toggle) {
+      for (const target of group.targets) requirements.set(target, matched ? group.show : !group.show);
+    }
+  }
+  return requirements;
+}
+
+function hasCreateDefault(field: JcbField, name: string): field is JcbField & { readonly default: string } {
+  return (
+    writable(field, name) &&
+    field.required &&
+    !field.multiple &&
+    !field.serverGenerated &&
+    field.default !== undefined &&
+    field.default !== '' &&
+    (!field.options?.length || field.options.includes(field.default))
+  );
+}
+
+function createBody(action: JcbApiAction, input: Document): Document {
+  const body = structuredClone(input) as Record<string, unknown>;
+  const conditions = conditionallyRequired(action, input);
+  for (const [name, field] of Object.entries(action.fields)) {
+    if (!Object.hasOwn(body, name) && hasCreateDefault(field, name) && conditions.get(name) !== false) {
+      checkValue(field, field.default, action.resource + '.' + name, 0);
+      body[name] = field.default;
+    }
+  }
+  return body;
 }
 
 export function resolveJcbApiRequest(action: JcbApiAction, input: Document, maxPage = 500): JoomlaApiRequest {
@@ -234,7 +290,11 @@ export function resolveJcbApiRequest(action: JcbApiAction, input: Document, maxP
       throw new Error(`The native JCB form requires the parent GUID in ${parent.field}.`);
     validateFields(action.fields, data, action.resource, 0);
   }
-  return { method: action.method, path, body: structuredClone(data) };
+  return {
+    method: action.method,
+    path,
+    body: action.operation === 'create' ? createBody(action, data) : structuredClone(data),
+  };
 }
 
 function fieldSchema(field: JcbField): Document {
@@ -251,7 +311,13 @@ function fieldSchema(field: JcbField): Document {
       : row;
   }
   const scalar = field.options?.length
-    ? { type: ['string', 'number', 'boolean', 'null'], description: 'Native choices: ' + field.options.join(', ') }
+    ? {
+        type: ['string', 'number', 'boolean', 'null'],
+        description:
+          (field.dynamicOptions
+            ? 'Static hints; the installed Joomla field resolves additional choices: '
+            : 'Native choices: ') + field.options.join(', '),
+      }
     : { type: ['string', 'number', 'boolean', 'null'] };
   const described = {
     ...scalar,
@@ -289,6 +355,21 @@ export function jcbInputSchema(action: JcbApiAction): Readonly<Record<string, un
   }
   if (action.operation === 'create' || action.operation === 'update') {
     const form = formSchema(action.fields);
+    const formProperties = form['properties'] as Record<string, Document>;
+    if (action.resource === 'joomla_components' && formProperties['name_code']) {
+      formProperties['name_code'] = {
+        ...formProperties['name_code'],
+        description:
+          'JCB stores ASCII letters and digits and uppercases an initial letter. The plan shows the normalized component code name.',
+      };
+    }
+    if (action.operation === 'create') {
+      for (const [name, field] of Object.entries(action.fields)) {
+        if (hasCreateDefault(field, name)) {
+          formProperties[name] = { ...formProperties[name], default: field.default };
+        }
+      }
+    }
     const parent = action.operation === 'create' ? getJcbParentBinding(action.resource) : undefined;
     if (parent && !action.fields[parent.field]?.disabled && !action.fields[parent.field]?.requestOnly) {
       (form['properties'] as Record<string, unknown>)[parent.field] = {

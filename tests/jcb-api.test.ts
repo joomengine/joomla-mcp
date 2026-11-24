@@ -68,6 +68,66 @@ describe('JCB Web Services', () => {
     expect(jcbInputSchema(fields)).toHaveProperty('properties.filter.properties.datatype');
   });
 
+  it('sends required native defaults only for active fields and only during creation', async () => {
+    const create = action('templates.create');
+    const body = { name: 'Fixture', alias: 'fixture', description: 'Fixture' };
+    const plan = await prepareJcbApiWrite(transport(), apiConfig, create, { data: body });
+    expect(plan.request.body).toHaveProperty('add_php_view', '0');
+    expect(plan.preview.formDefaults).toContain('add_php_view');
+    expect(jcbInputSchema(create)).toHaveProperty('properties.data.properties.add_php_view.default', '0');
+    expect(resolveJcbApiRequest(action('templates.update'), { id: 1, data: body }).body).toEqual(body);
+    expect(resolveJcbApiRequest(action('help_documents.create'), { data: { type: 2 } }).body).not.toHaveProperty(
+      'article',
+    );
+    expect(resolveJcbApiRequest(action('help_documents.create'), { data: { type: 1 } }).body).toHaveProperty(
+      'article',
+      '0',
+    );
+    expect(resolveJcbApiRequest(create, { data: { ...body, add_php_view: '1' } }).body).toHaveProperty(
+      'add_php_view',
+      '1',
+    );
+  });
+
+  it('sends native bundled form params only on create and discloses those form defaults separately', async () => {
+    const create = action('admin_views.create');
+    const data = { name_single: 'Entry', name_list: 'Entries', short_description: 'Fixture' };
+    const plan = await prepareJcbApiWrite(transport(), apiConfig, create, { data });
+    expect(plan.request.body).toHaveProperty('params.privacy.activate', '0');
+    expect(plan.preview.pluginFormDefaults).toHaveProperty('privacy.permissions', '1');
+    expect(plan.preview.fields).not.toContain('params');
+    expect(() =>
+      resolveJcbApiRequest(create, { data: { ...data, params: { privacy: { activate: '1' } } } }),
+    ).toThrow('read-only');
+    expect(resolveJcbApiRequest(action('admin_views.update'), { id: 1, data }).body).not.toHaveProperty('params');
+  });
+
+  it('discloses the component model canonical code name before dispatch', async () => {
+    const update = action('joomla_components.update');
+    const api = transport();
+    api.get.mockResolvedValue(item('7', { name_code: 'Old' }, 'joomla_components'));
+    const plan = await prepareJcbApiWrite(api, apiConfig, update, {
+      id: 7,
+      data: { name_code: 'test-component.v2' },
+    });
+    expect(plan.preview.normalizedComponentCodeName).toBe('Testcomponentv2');
+    expect(plan.request.body).toEqual({ name_code: 'Testcomponentv2' });
+  });
+
+  it('matches native integer storage while retaining strict comparison for ordinary text', async () => {
+    const update = action('libraries.update');
+    const api = transport();
+    const prior = item('7', { name: 'library', how: 0 }, 'libraries');
+    const saved = item('7', { name: 1, how: 1 }, 'libraries');
+    for (const data of [{ how: '1' }, { name: '1' }]) {
+      api.get.mockResolvedValueOnce(prior).mockResolvedValueOnce(prior).mockResolvedValueOnce(saved);
+      api.request.mockResolvedValueOnce(saved);
+      const plan = await prepareJcbApiWrite(api, apiConfig, update, { id: 7, data });
+      const result = await applyJcbApiWrite(api, apiConfig, update, plan, key);
+      expect(result.verification.status).toBe('how' in data ? 'verified' : 'uncertain');
+    }
+  });
+
   it('reads unpaginated compiler inventory without adding page or filter inputs', async () => {
     const api = transport();
     api.get.mockResolvedValue(response({ data: [] }));

@@ -144,7 +144,7 @@ namespace {
         }
     });
 
-    function jcbPackageResult(string $verb, bool $matches, string $category): array
+    function jcbPackageResult(string $verb, bool $matches, string $category, bool $saved = true, array $warnings = []): array
     {
         $guid = '60d58feb-2077-41a1-a91d-b53b19425675';
         $local = (object) ['guid'=>$guid, 'name'=>'demo'];
@@ -174,14 +174,14 @@ namespace {
                 return isset($this->services[$name]) ? new ContainerResource($this->services[$name]) : null;
             }
         };
-        $tracker = new class($guid) {
-            public function __construct(private string $guid) {}
-            public function get($key, $default): array { return ['joomla_component'=>['guid|' . $this->guid => true]]; }
+        $tracker = new class($guid, $saved) {
+            public function __construct(private string $guid, private bool $saved) {}
+            public function get($key, $default): array { return ['joomla_component'=>['guid|' . $this->guid => $this->saved]]; }
         };
         $builder = (object) ['container'=>$container, 'tracker'=>$tracker,
             'results'=>[$category=>[$guid=>'joomla_component']]];
         return (new PackageVerification())->inspect((object) ['get'=>$builder, 'set'=>$builder],
-            $verb, 'joomla_component', [$guid], null, ['errors'=>0,'warnings'=>0]);
+            $verb, 'joomla_component', [$guid], null, $warnings + ['errors'=>0,'warnings'=>0]);
     }
 
     test('JCB package verification proves retained rows, freshly compared imports and targeted remote pushes', static function (): void {
@@ -192,6 +192,13 @@ namespace {
             expect($bad['status'] === 'partial' && $bad['differentCount'] > 0, $verb . ' did not detect mismatch.');
         }
         expect(jcbPackageResult('init', false, 'local')['status'] === 'verified', 'Init should preserve and verify an existing local record.');
+        $noChange = ['warnings'=>1, 'inSyncWarnings'=>1];
+        expect(jcbPackageResult('push', true, 'added', false, $noChange)['status'] === 'verified',
+            'A synchronized native no-op must be proven against its remote contents.');
+        expect(jcbPackageResult('push', false, 'added', false, $noChange)['status'] === 'partial',
+            'A false native no-op must fail if the pushed bytes differ.');
+        expect(jcbPackageResult('push', true, 'added', false, ['warnings'=>1])['status'] === 'partial',
+            'An unrelated warning cannot excuse an unsuccessful push.');
     });
 
     test('JCB folder read-back compares bounded regular files and rejects unsafe ZIP entries', static function (): void {

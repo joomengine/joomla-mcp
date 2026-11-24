@@ -27,6 +27,7 @@ final class PackageVerification
     public function inspect(object $command, string $verb, string $entity, array $selectors, ?string $repoId, array $messages): array
     {
         $push = $verb === 'push';
+        $skippedPushes = 0;
         try {
             $builder = self::property($command, $push ? 'set' : 'get');
             $container = self::property($builder, 'container');
@@ -61,7 +62,11 @@ final class PackageVerification
                         continue;
                     }
                     if ($ok !== true) {
-                        $this->different++;
+                        if ($push && $ok === false) {
+                            $skippedPushes++;
+                        } else {
+                            $this->different++;
+                        }
                     }
                     $targets[$area][$pair[0]][$pair[1]] ??= 'saved';
                 }
@@ -172,7 +177,11 @@ final class PackageVerification
             // Unsupported or unavailable verification must never repeat the completed command.
             $this->unknown++;
         }
-        $status = $this->different > 0 || $messages['warnings'] > 0 ? 'partial'
+        // A native no-op warning is eligible only when fresh reads proved every targeted
+        // branch, index and dependency. A missing SHA with different bytes still fails.
+        $inSyncWarnings = $messages['inSyncWarnings'] ?? 0;
+        $this->different += max(0, $skippedPushes - $inSyncWarnings);
+        $status = $this->different > 0 || $messages['warnings'] > $inSyncWarnings ? 'partial'
             : ($this->unknown > 0 || $this->matches < 1 ? 'unverified' : 'verified');
         return ['status' => $status, 'selectedCount' => count($selectors), 'matchedCount' => $this->matches,
             'differentCount' => $this->different, 'unverifiedCount' => $this->unknown, ...$messages];

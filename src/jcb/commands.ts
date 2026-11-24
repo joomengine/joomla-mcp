@@ -2,7 +2,7 @@ import type { SiteConfig } from '../config/schema.js';
 import type { JsonSchema } from '../contracts/action-catalog.js';
 import type { JoomlaCliTransport } from '../infrastructure/cli/joomla-cli-client.js';
 import { operationFingerprint } from '../security/confirmation-service.js';
-import { jcbJobDirectory, safeArtifactName, submitJcbJob, type JcbArtifact, type JcbOutcome } from './jobs.js';
+import { jcbJobDirectory, safeArtifactName, redispatchJcbJob, submitJcbJob, type JcbJobPayload, type JcbArtifact, type JcbOutcome } from './jobs.js';
 
 type Fields = Readonly<Record<string, unknown>>;
 
@@ -136,19 +136,34 @@ export async function applyJcbCommand(
   principal: string, idempotencyKey: string,
 ) {
   if (!site.cli || !isJcbCommandId(action) || !object(input)) throw new Error('Invalid confirmed JCB operation.');
-  const transport = site.cli;
-  const operation = { site: site.id, action, method: 'POST' as const, path: 'companion:' + action, idempotencyKey, summary: action, actionInput: input };
-  const fingerprint = operationFingerprint({ ...operation, preflight });
-  return submitJcbJob(site, principal, idempotencyKey, action, operationFingerprint(operation), async (work, markStarted) => {
+  const payload: JcbJobPayload = { action, idempotencyKey, input: structuredClone(input), preflight };
+  const fingerprint = operationFingerprint(commandOperation(site, payload));
+  return submitJcbJob(site, principal, payload, fingerprint, commandWorker(cli, site));
+}
+
+export function redispatchJcbCommand(cli: JoomlaCliTransport, site: SiteConfig, principal: string, jobId: string) {
+  return redispatchJcbJob(site, principal, jobId, commandWorker(cli, site));
+}
+
+function commandOperation(site: SiteConfig, payload: JcbJobPayload) {
+  const { action, input, idempotencyKey } = payload;
+  return { site: site.id, action, method: 'POST' as const, path: 'companion:' + action, idempotencyKey, summary: action, actionInput: input };
+}
+
+function commandWorker(cli: JoomlaCliTransport, site: SiteConfig) {
+  return async (payload: JcbJobPayload, work: string, markStarted: () => void) => {
+    const { action, input, preflight } = payload;
+    if (!site.cli || !isJcbCommandId(action)) throw new Error('The JCB command is unavailable.');
+    const operation = commandOperation(site, payload);
     const fresh = await prepareJcbCommand(cli, site, action, input);
-    if (operationFingerprint({ ...operation, preflight: fresh.preflight }) !== fingerprint) {
+    if (operationFingerprint({ ...operation, preflight: fresh.preflight }) !== operationFingerprint({ ...operation, preflight })) {
       throw new Error('JCB command preconditions changed since planning.');
     }
     markStarted();
-    const native = await cli.dispatch(transport, action, {
+    const native = await cli.dispatch(site.cli, action, {
       ...fresh.actionInput, dryRun: false, _edgeConfirmed: true,
       _expectedContractFingerprint: fresh.preflight.preState.contractFingerprint,
     }, { jcbArtifactDirectory: work });
     return outcome(dispatchResult(native.data), action);
-  });
+  };
 }

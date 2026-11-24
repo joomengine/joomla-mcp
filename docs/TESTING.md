@@ -7,11 +7,12 @@ the status of a broader one.
 |---|---|---|
 | Type and build | `npm run check`, `npm run build` | TypeScript contracts compile and production output is generated |
 | Offline behavior | `npm test` | Complete route catalogue, field allowlists, special schemas, adapter availability, MCP tools, operator permission grants, write controls, release validation, HTTP security, and process boundaries behave against mocks/fixtures |
-| Generated action reference | `npm run docs:actions:check` | The 236-action user reference exactly matches the executable catalogue |
+| Generated action reference | `npm run docs:actions:check` | The Joomla action reference and JCB resource, filter and parent-link tables match the bundled catalogues |
 | Offline security | `npm run test:security` | Focused authorization, confirmation, and security-boundary checks |
 | Companion boundary | `php companion/tests/run.php` | Framing, registry, ACL preflight, allowlists, confirmation, manifests, and source escape-hatch checks |
 | Companion package | `php companion/build.php` | Installable package ZIP can be assembled |
 | Joomla 6.1 live fixture | `npm run test:fixture:joomengine` | Fresh Joomla 6.1.2/PHP 8.4/MariaDB installs the exact package, validates native CLI contracts, then runs the catalogue-complete live suite through API/companion and stdio/Streamable HTTP with redacted failure evidence |
+| Installed JCB 6.2.1 | `npm run test:fixture:joomengine -- --jcb-only` | Installs the released JCB package, checks Web Services registrations and definition writes, then exercises compiler and package commands. Per-family and per-job results are in `jcb-evidence.json`. [JCB fixture details](JCB.md#what-the-fixture-checks) |
 | API read contract | `npm run test:contract` | Configured live Joomla answers all 36 CRUD collection reads plus safe configuration |
 | Companion read contract | `npm run test:contract` | Configured local Joomla advertises required actions and executes bounded list/status reads through native services |
 | Container build | CI container job | OCI build definition is buildable |

@@ -3,22 +3,52 @@ import { resolve } from 'node:path';
 
 import { sourceOnlyGateReason } from '../src/catalog/action-gates.js';
 import { joomlaActions } from '../src/catalog/action-catalog.js';
+import { jcbApiActions, getJcbParentBinding } from '../src/jcb/catalog.js';
 import {
   supportsCompanionReadAction,
   supportsCompanionWriteAction,
 } from '../src/catalog/companion-actions.js';
 
-const outputPath = resolve('docs/API_ACTIONS.md');
-const generated = render();
-
-if (process.argv.includes('--check')) {
-  const current = readFileSync(outputPath, 'utf8');
-  if (current !== generated) {
-    process.stderr.write('docs/API_ACTIONS.md is stale; run npm run docs:actions.\\n');
+const references = {
+  'docs/API_ACTIONS.md': render(),
+  'docs/JCB_API_ACTIONS.md': renderJcb(),
+};
+for (const [name, generated] of Object.entries(references)) {
+  const path = resolve(name);
+  if (!process.argv.includes('--check')) {
+    writeFileSync(path, generated, 'utf8');
+  } else if (readFileSync(path, 'utf8') !== generated) {
+    process.stderr.write(name + ' is stale. Regenerate with npm run docs:actions.\n');
     process.exitCode = 1;
   }
-} else {
-  writeFileSync(outputPath, generated, 'utf8');
+}
+
+function renderJcb(): string {
+  const lines = [
+    '# JCB Web Services action reference',
+    '',
+    'Use `joomla_actions_search` with `domain: "jcb"` to discover the actions available on your site. This reference is generated from the reviewed JCB route registrations. The [JCB integration guide](JCB.md) covers setup, examples, native permissions, compilation and package commands.',
+    '',
+    'Each action ID starts with `jcb.api.`, followed by the family and the suffix in the table. For example, `jcb.api.admin_views.get.guid` reads one admin view by GUID. The plain `get`, `update` and `delete` suffixes take a numeric `id`. Their `.guid` variants take a `guid`. Use `joomla_action_describe` for the complete input schema, nested fields, native conditions and source references.',
+    '',
+    'List actions accept only their registered filters. Creates bind initial associations to the GUID of an existing parent where indicated. The installed translation form disables its required source on create. Its existing translations can be read and edited.',
+    '',
+    '| Family | Action suffixes | List filters | Parent GUID on create |',
+    '| --- | --- | --- | --- |',
+  ];
+  const lists = jcbApiActions.filter(action => action.operation === 'list')
+    .sort((a, b) => a.resource.localeCompare(b.resource, 'en'));
+  for (const list of lists) {
+    const actions = jcbApiActions.filter(action => action.resource === list.resource &&
+      !(action.operation === 'create' && action.sourceCreateDisabled));
+    const prefix = 'jcb.api.' + list.resource + '.';
+    const suffixes = actions.map(action => '`' + action.id.slice(prefix.length) + '`').join(', ');
+    const filters = list.filters.map(name => '`' + name + '`').join(', ') || '—';
+    const binding = getJcbParentBinding(list.resource);
+    const parent = binding ? '`' + binding.field + '` from `' + binding.resource + '`' : '—';
+    lines.push('| `' + list.resource + '` | ' + suffixes + ' | ' + filters + ' | ' + parent + ' |');
+  }
+  return lines.join('\n') + '\n';
 }
 
 function render(): string {
@@ -37,6 +67,8 @@ function render(): string {
     `| Source-only gated actions | ${joomlaActions.filter((action) => sourceOnlyGateReason(action.id) !== undefined).length} |`,
     '',
     'Use `joomla_actions_search` to find actions available to a configured site and actor, then `joomla_action_describe` to retrieve the complete machine-readable schema, source reference, ACL hints, availability, and certification state.',
+    '',
+    'For Joomla Component Builder resources, see the [JCB Web Services action reference](JCB_API_ACTIONS.md).',
     '',
     'The table lists static reviewed fields. API create/update plans for `content.articles`, `content.categories`, `contacts.contacts` and `users.users` also accept published custom fields resolved on the selected site, with the matching field-list read authorization (`structure.read`, or `users.read` for users). Their names/types appear in site-specific action descriptions; the static catalogue remains closed. See [Writing custom field values](CUSTOM_FIELDS.md) for aliases, controller-specific bodies, limits and testing.',
     '',

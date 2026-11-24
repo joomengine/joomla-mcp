@@ -6,7 +6,7 @@ import { z } from 'zod/v4';
 import { publicCatalog } from '../catalog/core.js';
 import { publicJcbCatalog } from '../jcb/catalog.js';
 import { jcbToolset } from '../jcb/discovery.js';
-import { getJcbJob, readJcbArtifact } from '../jcb/jobs.js';
+import { cancelJcbJob, getJcbJob, listJcbJobs, readJcbArtifact } from '../jcb/jobs.js';
 import { getJoomlaReadAction, getJoomlaWriteAction } from '../catalog/action-catalog.js';
 import { getCompanionReadAction, getCompanionWriteAction } from '../catalog/companion-actions.js';
 import { getJoomlaCliCommandTarget } from '../catalog/cli-command-targets.js';
@@ -586,6 +586,47 @@ export function createServer(
 
   if ([...configuration.sites.values()].some(site => site.toolsets.has('jcb.execute') && site.cli?.jcbJobDirectory)) {
     const jobId = z.string().regex(/^[0-9a-f]{64}$/);
+    server.registerTool(
+      'joomla_jcb_jobs_list',
+      {
+        title: 'List owned Joomla Component Builder jobs',
+        description: 'Lists job IDs, actions, states and timestamps for this principal on one site. Pass nextCursor to continue.',
+        inputSchema: { site: siteSelector, limit: z.int().min(1).max(100).default(25), cursor: jobId.optional() },
+        annotations: readOnly(false),
+      },
+      async (input, extra) => {
+        requireRemoteAccess(configuration, extra.authInfo, input.site, 'jcb.execute');
+        return result(await listJcbJobs(runtime.sites.get(input.site), approvalPrincipal(extra.authInfo, localPrincipal), input.limit, input.cursor));
+      },
+    );
+    server.registerTool(
+      'joomla_jcb_job_cancel',
+      {
+        title: 'Cancel a queued Joomla Component Builder job',
+        description: 'Cancels an owned job only while its approved command is still waiting for dispatch.',
+        inputSchema: { site: siteSelector, jobId },
+        annotations: write(false),
+      },
+      async (input, extra) => {
+        requireRemoteScope(extra.authInfo, 'joomla:writes:apply');
+        requireRemoteAccess(configuration, extra.authInfo, input.site, 'jcb.execute');
+        return result(await cancelJcbJob(runtime.sites.get(input.site), approvalPrincipal(extra.authInfo, localPrincipal), input.jobId));
+      },
+    );
+    server.registerTool(
+      'joomla_jcb_job_redispatch',
+      {
+        title: 'Dispatch a queued Joomla Component Builder job',
+        description: 'Attempts the originally approved command when its site is free. Requires an owned, never-started queued job.',
+        inputSchema: { site: siteSelector, jobId },
+        annotations: write(true),
+      },
+      async (input, extra) => {
+        requireRemoteScope(extra.authInfo, 'joomla:writes:apply');
+        requireRemoteAccess(configuration, extra.authInfo, input.site, 'jcb.execute');
+        return result(await writes.redispatchJcbJob(input.site, approvalPrincipal(extra.authInfo, localPrincipal), input.jobId));
+      },
+    );
     server.registerTool(
       'joomla_jcb_job_get',
       {

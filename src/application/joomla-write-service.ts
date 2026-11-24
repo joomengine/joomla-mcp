@@ -47,7 +47,7 @@ import {
 } from '../security/permission-grant-service.js';
 import { getJcbApiAction } from '../jcb/catalog.js';
 import { applyJcbApiWrite, prepareJcbApiWrite, probeJcbApiResource } from '../jcb/api.js';
-import { applyJcbCommand, isJcbCommandId, prepareJcbCommand } from '../jcb/commands.js';
+import { applyJcbCommand, isJcbCommandId, prepareJcbCommand, redispatchJcbCommand } from '../jcb/commands.js';
 import { getJcbJob, withJcbSiteWriteLease } from '../jcb/jobs.js';
 import { SiteRegistry } from './site-registry.js';
 import {
@@ -521,6 +521,13 @@ export class JoomlaWriteService {
       principalFingerprint: principalFingerprint(principal),
     });
     return plan;
+  }
+
+  /** Continue only the original, previously approved job that has never been claimed by a worker. */
+  public redispatchJcbJob(siteId: string | undefined, principal: string, jobId: string) {
+    const site = this.sites.get(siteId);
+    this.sites.requireToolset(site, 'jcb.execute');
+    return redispatchJcbCommand(this.cli, site, principal, jobId);
   }
 
   public async apply(

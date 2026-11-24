@@ -13,6 +13,12 @@ for each writable installation and use the same job directory for every
 process serving that alias. All principals on that alias share its execution
 claim.
 
+## Queued jobs
+
+List your submissions with `joomla_jcb_jobs_list`, inspect one with `joomla_jcb_job_get`, and use the exact site and job ID from its receipt. A busy site retains the signed plan's approved command input in its private job directory. Once the site is free, `joomla_jcb_job_redispatch` attempts that same job. It checks the original preflight fingerprint and the current companion actor before executing. `joomla_jcb_job_cancel` discards its eligibility to run. If several clients act concurrently, only one can claim the pending command.
+
+Keep the service directory private. A `pending.json` payload shows that the submitted operation has never been claimed. On dispatch the service atomically renames it to `claimed.json`; on cancellation it becomes `cancelled.json`. Do not modify or move these records manually. Cancellation applies only before dispatch. An interrupted claimed job requires reconciliation. Jobs created by versions that did not record a durable pending payload cannot be redispatched or cancelled this way. A legacy receipt on disk does not itself block the site. An actual `active-` claim from an interrupted process remains in force until the operator reconciles and releases it. Other submissions can wait in the queue while it is investigated.
+
 ## Inspect an outstanding claim
 
 The following Bash commands use the `builder` alias and directory from the

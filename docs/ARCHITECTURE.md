@@ -64,6 +64,10 @@ Semantic action descriptors map to fixed Joomla routes and methods. The adapter:
 
 The API path is preferred for remote administration and for capabilities already exposed by core Web Services plugins.
 
+## Joomla Component Builder
+
+The same site registry and MCP tools serve JCB. With `jcb.read` the Node server checks the configured API identity’s collection access and resolves fixed routes from the bundled JCB catalogue. With `jcb.write` it validates a proposed mutation against the native form and checks the result against a separate read. Local `jcb.execute` jobs use this repository’s console companion to discover and invoke the installed JCB commands. The private job directory holds receipts and verified build artifacts. [JCB setup and workflows](JCB.md)
+
 ## Local Joomla companion path
 
 The local adapter starts only the configured PHP executable and `<joomla-root>/cli/joomla.php` with an argument array and no shell. JSON requests travel over stdin. Time, output, environment, executable, and working directory are bounded by server configuration.

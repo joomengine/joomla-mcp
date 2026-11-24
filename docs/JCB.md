@@ -11,6 +11,17 @@ Build the Node server and companion from this revision, or install a release con
 | Inspect the installed JCB command names, arguments and options | Local PHP, the JCB console plugin and this repository's console companion | `cli.discovery` |
 | Compile a component or run a package get, init, pull, push or reset | Same local setup, an authorized companion actor and a private job directory | `discovery`, `jcb.execute` and an approval secret |
 
+## Build the server for JCB
+
+From the root of a checkout containing the direct JCB integration, run the following with Node.js 22.12 or newer.
+
+```bash
+npm ci
+npm run build
+```
+
+For stdio, configure your client to run `node` with the absolute path to `dist/bin/joomla-mcp.js`. For a shared HTTP endpoint, deploy `dist/bin/joomla-mcp-http.js` using the [hosted deployment guide](DEPLOYMENT.md). API-only sites can proceed directly to the token setup below. If the server will compile or run package jobs, also build the matching companion in this checkout with `php companion/build.php` (PHP 8.3+ with ZIP) and install the resulting `companion/dist/pkg_joomlamcp-*.zip` on the Joomla site.
+
 ## Connect to JCB over the API
 
 1. Install JCB on the Joomla site and enable its **Web Services** plugin with element `componentbuilderapiroutes`. The [JCB 6.2.1 package](https://github.com/joomengine/pkg-component-builder/tree/v6.2.1) includes the component and the API and console plugins.
@@ -49,6 +60,8 @@ Add `jcb.write` to the site's toolsets alongside `jcb.read`. At the top level of
 For example, to edit a language definition, read the record and use its actual ID in `joomla_action_write_plan`. Choose `action: "jcb.api.languages.update"`, `transport: "api"`, and pass `input` such as `{"id":7,"data":{"name":"Oshiwambo"}}` if record 7 is the intended language. Include `site: "builder"`, a fresh UUID `idempotencyKey` and `dryRun: true` to preview. Follow the [permission request, operator acknowledgement and plan/apply flow](USAGE.md) for the site's `jcb.write` toolset. Finish with an independent `jcb.api.languages.get` for the same ID.
 
 The apply receipt reports the native response status and verification result. If it reports `uncertain`, inspect the affected JCB definition before deciding what to do next. JCB's installed form, model and ACL govern the save. For translation updates, the adapter preserves the existing immutable source text. Creating a translation through the reviewed form is gated because that form disables its required source.
+
+The [JCB Web Services action reference](JCB_API_ACTIONS.md) lists every family, its numeric and GUID actions, supported filters and parent links.
 
 ## Work with a component, its admin views and fields
 
@@ -95,6 +108,10 @@ Create a private directory outside the Joomla web root. For the example paths be
 3. Preview a compile using `joomla_action_write_plan`, with the ID above, `transport: "cli"`, a new UUID idempotency key and `dryRun: true`. The input is an `options` object. For the Demo J6 definition shipped with the fixture, this is `{"options":{"component":"1c20aec5-bf1a-44e7-9deb-d1c920ca591d","joomla-version":"6"}}`. On your site, use the GUID of your component. For the corresponding package init, use `{"options":{"items":"1c20aec5-bf1a-44e7-9deb-d1c920ca591d"}}` when that action is available.
 4. After the operator approves a `jcb.execute` grant, request the executable plan and apply it once. Record `job.jobId` from the receipt. Poll `joomla_jcb_job_get` with the same `site`, `jobId` and MCP identity. For stdio, keep the server process alive while it executes the job.
 5. On success, the job returns its verification result and artifact list. Pass the job ID, site, returned filename (`name`) and byte `offset` to `joomla_jcb_artifact_read`. Decode the base64 `data`, advance the offset by `bytes` until `eof`, then compare the total size and SHA-256 with the artifact receipt. A failed or uncertain job needs operator inspection before another attempt.
+
+Use `joomla_jcb_jobs_list` with `{"site":"builder","limit":25}` to find your job IDs after reconnecting. Pass a returned `nextCursor` as `cursor` for the next page. Only your jobs for that site appear. If another write holds the site's execution claim, your submission stays queued. When the site is free, call `joomla_jcb_job_redispatch` with the same site and `jobId` to run the original approved inputs. Use `joomla_jcb_job_cancel` with those arguments to cancel a job still waiting for dispatch. Both commands require the original MCP identity and, for HTTP clients, the `joomla:writes:apply` scope. Running or uncertain native mutations require inspection through the [recovery procedure](JCB_JOB_OPERATIONS.md).
+
+To deploy the compiled component, assemble the returned archive and verify its SHA-256 against the job receipt. On the target Joomla site, open **System → Install → Extensions → Upload Package File** and select that ZIP. Check the installed extension and version under **System → Manage → Extensions**, then open the component and check the views you changed. This lets a build site compile for a separate target site with its own administrator permissions.
 
 The compiler accepts inline component GUIDs and the native flags advertised by its described schema. Its `options` command option can carry a JSON string of those same settings. Explicit named options take precedence, and the preview shows their resolved values. Package jobs accept inline `items` selectors (CSV, newline-separated or a JSON array in a string). Depending on the installed command, they can also accept a configured repository GUID in `repo` and boolean `force` or `resolve` flags. Choose explicit selectors. Local paths, wildcard selections, arbitrary command options and the compiler's `--install`, `--backup`, `--repository` and `--powers-repository` options are outside the MCP input contract.
 

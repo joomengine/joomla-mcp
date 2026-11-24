@@ -10,7 +10,7 @@ later.
 
 ## Install and verify
 
-1. Get the `pkg_joomlamcp-0.8.0.zip` asset from the [matching server release](https://github.com/joomengine/joomla-mcp/releases/tag/v0.8.0).
+1. When building this source revision for direct JCB jobs, run `php companion/build.php` in the repository root and use the ZIP in `companion/dist/`. For the published 0.8.0 server, get the `pkg_joomlamcp-0.8.0.zip` asset from the [matching server release](https://github.com/joomengine/joomla-mcp/releases/tag/v0.8.0).
 2. In Joomla Administrator, open **System → Install → Extensions** and upload
    the ZIP. Open **System → Manage → Plugins**, select **Console - JoomEngine
    MCP for Joomla Companion**, and set **MCP actor user** to the dedicated
@@ -28,7 +28,7 @@ later.
    account. Enable the toolsets needed for this site. For example,
    `cli.discovery` exposes the installed command inventory. See the
    [site configuration example](../config/sites.example.json) and the
-   [JCB discovery walkthrough](../docs/JCB.md).
+   [JCB integration walkthrough](../docs/JCB.md).
 
 ## Console commands
 

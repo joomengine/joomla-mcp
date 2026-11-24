@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, type BigIntStats } from 'node:fs';
-import { chmod, link, mkdir, mkdtemp, open, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
+import { access, chmod, link, mkdir, mkdtemp, open, opendir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { JoomlaCompanionError } from '../infrastructure/cli/joomla-cli-client.js';
@@ -19,13 +19,15 @@ export interface JcbOutcome {
   readonly artifacts: readonly JcbArtifact[];
 }
 
-type Status = 'queued' | 'running' | 'succeeded' | 'failed' | 'uncertain';
+type Status = 'queued' | 'running' | 'succeeded' | 'failed' | 'uncertain' | 'cancelled';
 interface Job {
   readonly jobId: string;
   readonly site: string;
   readonly action: string;
   readonly owner: string;
   readonly fingerprint: string;
+  /** Present only on jobs whose approved inputs were durably staged before dispatch. */
+  readonly payloadDigest?: string;
   readonly workerHost: string;
   readonly workerPid: number;
   readonly workerInstance: string;
@@ -55,9 +57,15 @@ function fileIdentity(stat: BigIntStats, expectedDigest: string): string {
   return [stat.dev, stat.ino, stat.size, stat.ctimeNs, stat.mtimeNs, expectedDigest].join(':');
 }
 
-type ExecuteJob = (directory: string, markStarted: () => void) => Promise<JcbOutcome>;
+export interface JcbJobPayload {
+  readonly action: string;
+  readonly input: Readonly<Record<string, unknown>>;
+  readonly preflight: Readonly<Record<string, unknown>>;
+  readonly idempotencyKey: string;
+}
+type ExecuteJob = (payload: JcbJobPayload, directory: string, markStarted: () => void) => Promise<JcbOutcome>;
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
-const publicJob = ({ owner, fingerprint, workerHost, workerPid, workerInstance: instance, outcome, ...job }: Job) => ({ ...job, ...outcome });
+const publicJob = ({ owner, fingerprint, payloadDigest, workerHost, workerPid, workerInstance: instance, outcome, ...job }: Job) => ({ ...job, ...outcome });
 
 export async function jcbJobDirectory(site: SiteConfig): Promise<string> {
   const configured = site.cli?.jcbJobDirectory;
@@ -77,16 +85,29 @@ async function persist(path: string, job: Job): Promise<void> {
   await rename(temporary, join(path, 'job.json'));
 }
 
-async function ownedJob(root: string, site: string, principal: string, id: string): Promise<Job> {
+async function exists(path: string): Promise<boolean> {
+  try { await access(path); return true; }
+  catch (error) { if (hasCode(error, 'ENOENT')) return false; throw error; }
+}
+
+async function readOwnedJob(root: string, site: string, principal: string, id: string): Promise<Job | undefined> {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('Unknown JCB job.');
   let value: Job;
   try {
     value = JSON.parse(await readFile(join(root, id, 'job.json'), 'utf8')) as Job;
   } catch (error) {
-    if (hasCode(error, 'ENOENT')) throw new Error('Unknown JCB job.');
+    if (hasCode(error, 'ENOENT')) return undefined;
     throw error;
   }
-  if (value.site !== site || value.owner !== digest(principal) || value.jobId !== id) throw new Error('Unknown JCB job.');
+  if (value.site !== site || value.owner !== digest(principal) || value.jobId !== id) return undefined;
+  if (value.status === 'queued' && value.payloadDigest) {
+    const directory = join(root, id);
+    if (await exists(join(directory, 'pending.json'))) return value;
+    if (await exists(join(directory, 'cancelled.json'))) return { ...value, status: 'cancelled' };
+    // A claimed payload may have crossed into native code. Never infer that
+    // its mutation can be retried from an out-of-date queued receipt.
+    value = { ...value, status: 'running' };
+  }
   if ((value.status === 'queued' || value.status === 'running') && value.workerHost === hostname()) {
     // A restarted container often gives its next Node process exactly the same PID.
     let interrupted = value.workerPid === process.pid && value.workerInstance !== workerInstance;
@@ -102,6 +123,32 @@ async function ownedJob(root: string, site: string, principal: string, id: strin
   return value;
 }
 
+async function ownedJob(root: string, site: string, principal: string, id: string): Promise<Job> {
+  const job = await readOwnedJob(root, site, principal, id);
+  if (!job) throw new Error('Unknown JCB job.');
+  return job;
+}
+
+export async function listJcbJobs(site: SiteConfig, principal: string, limit = 25, cursor?: string) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 ||
+      (cursor !== undefined && !/^[a-f0-9]{64}$/.test(cursor))) throw new Error('Invalid JCB job page.');
+  const root = await jcbJobDirectory(site);
+  const entries = await opendir(root);
+  const page: { jobId: string; site: string; action: string; status: Status; createdAt: string; updatedAt: string }[] = [];
+  for await (const entry of entries) {
+    const id = entry.name;
+    if (!entry.isDirectory() || !/^[a-f0-9]{64}$/.test(id) || (cursor && id <= cursor)) continue;
+    // Keep only enough sorted candidates to produce this page and its continuation.
+    if (page.length > limit && id > page[limit]!.jobId) continue;
+    const job = await readOwnedJob(root, site.id, principal, id);
+    if (!job) continue;
+    page.push({ jobId: id, site: job.site, action: job.action, status: job.status, createdAt: job.createdAt, updatedAt: job.updatedAt });
+    page.sort((a, b) => a.jobId < b.jobId ? -1 : 1);
+    if (page.length > limit + 1) page.pop();
+  }
+  return { jobs: page.slice(0, limit), nextCursor: page.length > limit ? page[limit - 1]!.jobId : null };
+}
+
 export async function getJcbJob(site: SiteConfig, principal: string, jobId: string) {
   return publicJob(await ownedJob(await jcbJobDirectory(site), site.id, principal, jobId));
 }
@@ -109,20 +156,23 @@ export async function getJcbJob(site: SiteConfig, principal: string, jobId: stri
 // Publish a complete, nonempty directory with one rename. A competing submitter
 // either claims the operation or reads the original receipt, including after restart.
 export async function submitJcbJob(
-  site: SiteConfig, principal: string, idempotencyKey: string, action: string, fingerprint: string, execute: ExecuteJob,
+  site: SiteConfig, principal: string, payload: JcbJobPayload, fingerprint: string, execute: ExecuteJob,
 ) {
   const root = await jcbJobDirectory(site);
+  const { action, idempotencyKey } = payload;
+  const encoded = JSON.stringify(payload);
   const jobId = digest(JSON.stringify([site.id, principal, idempotencyKey]));
   const directory = join(root, jobId);
   const temporary = await mkdtemp(join(root, '.new-'));
   const timestamp = new Date().toISOString();
   const job: Job = {
-    jobId, site: site.id, action, owner: digest(principal), fingerprint, workerHost: hostname(), workerPid: process.pid, workerInstance,
+    jobId, site: site.id, action, owner: digest(principal), fingerprint, payloadDigest: digest(encoded), workerHost: hostname(), workerPid: process.pid, workerInstance,
     status: 'queued', createdAt: timestamp, updatedAt: timestamp,
   };
   try {
     await mkdir(join(temporary, 'work'), { mode: 0o700 });
     await mkdir(join(temporary, 'artifacts'), { mode: 0o700 });
+    await writeFile(join(temporary, 'pending.json'), encoded, { flag: 'wx', flush: true, mode: 0o600 });
     await persist(temporary, job);
     try {
       await rename(temporary, directory);
@@ -135,17 +185,53 @@ export async function submitJcbJob(
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+  return dispatchPending(root, principal, job, execute);
+}
+
+/** Only a published, never-claimed payload can win this rename. */
+export async function cancelJcbJob(site: SiteConfig, principal: string, jobId: string) {
+  const root = await jcbJobDirectory(site);
+  const job = await ownedJob(root, site.id, principal, jobId);
+  if (job.status === 'cancelled') return publicJob(job);
+  if (!job.payloadDigest || job.status !== 'queued') throw new Error('Only a never-started queued JCB job can be cancelled.');
+  const directory = join(root, jobId);
+  try { await rename(join(directory, 'pending.json'), join(directory, 'cancelled.json')); }
+  catch (error) {
+    if (hasCode(error, 'ENOENT')) throw new Error('The JCB job was already cancelled or claimed for dispatch.');
+    throw error;
+  }
+  const cancelled: Job = { ...job, status: 'cancelled', updatedAt: new Date().toISOString() };
+  await persist(directory, cancelled);
+  return publicJob(cancelled);
+}
+
+export async function redispatchJcbJob(site: SiteConfig, principal: string, jobId: string, execute: ExecuteJob) {
+  const root = await jcbJobDirectory(site);
+  const job = await ownedJob(root, site.id, principal, jobId);
+  if (!job.payloadDigest || job.status !== 'queued') throw new Error('Only a never-started queued JCB job can be redispatched.');
+  return dispatchPending(root, principal, job, execute);
+}
+
+async function dispatchPending(root: string, principal: string, job: Job, execute: ExecuteJob) {
+  const directory = join(root, job.jobId);
   const lease = siteLease(root, job.site);
   try {
     // The linked receipt identifies its holder even after a process restart.
     await link(join(directory, 'job.json'), lease);
   } catch (error) {
     if (!hasCode(error, 'EEXIST')) throw error;
-    const denied: Job = { ...job, status: 'failed', updatedAt: new Date().toISOString(), message: 'Another write holds the site execution claim.' };
-    await persist(directory, denied);
-    return publicJob(denied);
+    // Keep the original approved payload pending while another job owns
+    // this site. The owner can cancel or redispatch it under the same claim.
+    return publicJob(await ownedJob(root, job.site, principal, job.jobId));
   }
-  void runJob(lease, directory, job, execute).catch(() => {
+  try { await rename(join(directory, 'pending.json'), join(directory, 'claimed.json')); }
+  catch (error) {
+    await unlink(lease);
+    if (hasCode(error, 'ENOENT')) return publicJob(await ownedJob(root, job.site, principal, job.jobId));
+    throw error;
+  }
+  const worker: Job = { ...job, workerHost: hostname(), workerPid: process.pid, workerInstance };
+  void runJob(lease, directory, worker, execute).catch(() => {
     // A storage failure can leave a durable running receipt. Never release an
     // execution claim if we cannot record whether it changed the Joomla site.
     process.stderr.write('JCB job state could not be persisted; operator reconciliation required.\n');
@@ -178,7 +264,11 @@ async function runJob(lease: string, directory: string, job: Job, execute: Execu
   let terminal: Job;
   try {
     await persist(directory, { ...job, status: 'running', updatedAt: new Date().toISOString() });
-    const outcome = await execute(work, () => { phase = 'dispatch'; });
+    const encoded = await readFile(join(directory, 'claimed.json'), 'utf8');
+    if (digest(encoded) !== job.payloadDigest) throw new Error('The approved JCB job payload changed.');
+    const payload: JcbJobPayload = JSON.parse(encoded);
+    if (payload.action !== job.action) throw new Error('The stored JCB action does not match its receipt.');
+    const outcome = await execute(payload, work, () => { phase = 'dispatch'; });
     phase = 'archive';
     for (const artifact of outcome.artifacts) await retainArtifact(directory, artifact);
     terminal = { ...job, updatedAt: new Date().toISOString(), status: outcome.verification === 'verified' ? 'succeeded' : 'uncertain', outcome };

@@ -75,6 +75,7 @@ export class JoomlaService {
 
   public capabilities(siteId?: string): Record<string, unknown> {
     const site = this.site(siteId, 'discovery');
+    const jcbToolsets = [...site.toolsets].filter(toolset => toolset.startsWith('jcb.'));
 
     return {
       site: {
@@ -84,6 +85,11 @@ export class JoomlaService {
         toolsets: [...site.toolsets],
       },
       catalog: publicCatalog(),
+      ...(jcbToolsets.length ? { jcb: {
+        domain: 'jcb', sourceCatalog: 'joomla://catalog/jcb', toolsets: jcbToolsets,
+        apiConfigured: site.api !== undefined && site.toolsets.has('jcb.read'),
+        commandJobsConfigured: site.cli?.jcbJobDirectory !== undefined && site.toolsets.has('jcb.execute'),
+      } } : {}),
       notes: [
         'Joomla core does not expose OpenAPI or route discovery.',
         'API responses are JSON:API, but POST and PATCH bodies are flat Joomla form JSON.',

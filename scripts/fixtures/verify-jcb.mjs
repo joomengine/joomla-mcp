@@ -15,7 +15,8 @@ const site = 'jcbApi';
 const localSite = 'jcbLocal';
 const deniedSite = 'jcbDenied';
 const configFile = resolve('jcb-sites.json');
-const evidence = { jcbPackageVersion: '6.2.1', checks: [], status: 'FAIL' };
+const evidence = { jcbPackageVersion: '6.2.1', checks: [], failedSuites: [], status: 'FAIL' };
+const failures = [];
 const demo = '1c20aec5-bf1a-44e7-9deb-d1c920ca591d';
 
 try {
@@ -73,20 +74,32 @@ try {
         ? await createStdioLiveSession({ configurationFile: configFile })
         : await createHttpLiveSession(configuration);
     try {
-      await checkApi(session);
+      await suite(session, 'API lifecycle', () => checkApi(session));
       if (transport === 'stdio') {
-        await checkInstalledRoutes(session, phpBinary);
-        evidence.definitionWrites = await runJcbWriteFixture(session, site);
-        assert.deepEqual(evidence.definitionWrites.failures, [], 'JCB fixture-owned definition lifecycles and cleanup');
-        await checkJobs(session, phpBinary);
+        await suite(session, 'installed API routes', () => checkInstalledRoutes(session, phpBinary));
+        await suite(session, 'definition writes', async () => {
+          evidence.definitionWrites = await runJcbWriteFixture(session, site);
+          assert.deepEqual(evidence.definitionWrites.failures, [], 'JCB fixture-owned definition lifecycles and cleanup');
+        });
+        await suite(session, 'native commands and jobs', () => checkJobs(session, phpBinary));
       }
     } finally {
       await session.close();
     }
   }
+  if (failures.length) throw new AggregateError(failures, 'Failed JCB fixture suites: ' + evidence.failedSuites.join(', '));
   evidence.status = 'PASS';
 } finally {
   await writeFile('jcb-evidence.json', JSON.stringify(evidence, null, 2) + '\n', { mode: 0o600 });
+}
+
+async function suite(session, name, run) {
+  try {
+    await run();
+  } catch (error) {
+    evidence.failedSuites.push(session.kind + ' ' + name);
+    failures.push(error);
+  }
 }
 
 function passed(session, name) {
@@ -113,15 +126,15 @@ async function grant(session, site, toolset) {
   });
 }
 
-function plan(session, site, action, input, transport, dryRun) {
+function plan(session, site, action, input, transport, dryRun, idempotencyKey = randomUUID()) {
   return session.call({
     name: 'joomla_action_write_plan',
-    arguments: { site, action, input, transport, dryRun, idempotencyKey: randomUUID() },
+    arguments: { site, action, input, transport, dryRun, idempotencyKey },
   });
 }
 
-async function write(session, site, action, input, transport) {
-  const issued = await plan(session, site, action, input, transport, false);
+async function write(session, site, action, input, transport, idempotencyKey = randomUUID()) {
+  const issued = await plan(session, site, action, input, transport, false, idempotencyKey);
   assert.equal(typeof issued.confirmationToken, 'string');
   return session.call({
     name: 'joomla_write_apply',
@@ -377,12 +390,12 @@ async function checkJobs(session, phpBinary) {
   await checkPackageRoundtrip(session, phpBinary);
 }
 
-async function runJob(session, action, options) {
+async function runJob(session, action, options, expected = 'succeeded', key = randomUUID()) {
   const site = localSite;
   const preview = await plan(session, site, action, { options }, 'cli', true);
   assert.equal(preview.dryRun, true);
   assert.ok(!preview.confirmationToken);
-  const receipt = await write(session, site, action, { options }, 'cli');
+  const receipt = await write(session, site, action, { options }, 'cli', key);
   let job = receipt.job;
   const deadline = Date.now() + 330_000;
   while (['queued', 'running'].includes(job.status) && Date.now() < deadline) {
@@ -391,7 +404,7 @@ async function runJob(session, action, options) {
   }
   evidence.jobs ??= [];
   evidence.jobs.push({ action, jobId: job.jobId, status: job.status, verification: job.verification });
-  assert.equal(job.status, 'succeeded', action + ' must finish and verify its native result');
+  assert.equal(job.status, expected, action + ' must report its actual native outcome');
   return job;
 }
 
@@ -447,6 +460,18 @@ async function checkPackageRoundtrip(session, phpBinary) {
       session,
       'Loopback push/get/init/pull/reset preserved the component and its linked update definition',
     );
+    const before = await request('reject-writes');
+    const action = 'jcb.push.joomla_component';
+    const options = { items: guid };
+    const key = randomUUID();
+    const rejected = await runJob(session, action, options, 'uncertain', key);
+    const after = await request('fingerprint');
+    assert.equal(after.sha256, before.sha256);
+    assert.ok(after.requests > before.requests, 'The installed command actually contacted the rejecting fixture.');
+    const replay = await write(session, localSite, action, { options }, 'cli', key);
+    assert.equal(replay.job.jobId, rejected.jobId);
+    assert.deepEqual(await request('fingerprint'), after, 'A repeated key cannot repeat the native push.');
+    passed(session, 'Rejected push retained its original job and left remote bytes unchanged, including on replay');
   } finally {
     fixture.stdin.end();
     const [code] = await exited;

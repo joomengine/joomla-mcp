@@ -56,7 +56,18 @@ final readonly class DefinitionState
 
     public function hasRepository(string $guid): bool
     {
-        return $this->metadata->exist('repository', 'guid')
-            && $this->load->count(['a' => '#__componentbuilder_repository'], ['guid' => $guid]) === 1;
+        if (!$this->metadata->exist('repository', 'guid')) {
+            return false;
+        }
+        $repositories = $this->load->rows(['organisation', 'repository', 'published'],
+            ['a' => '#__componentbuilder_repository'], ['guid' => $guid], null, 2) ?? [];
+        if (count($repositories) !== 1) {
+            return false;
+        }
+        $row = reset($repositories);
+        // Native Grep treats empty coordinates as invalid and falls back to its default repositories.
+        // Reject that case before dispatching a command approved for one explicit repository.
+        return (int) $row['published'] >= 1 && !empty(trim((string) $row['organisation']))
+            && !empty(trim((string) $row['repository']));
     }
 }

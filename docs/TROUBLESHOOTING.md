@@ -100,12 +100,11 @@ occurred. No automatic retry is added, and menu writes retain their uncertain
 outcome and same-key replay protection. Check native state and the installed
 extension's form/controller before preparing another write.
 
-The JCB `jcb.api.language_translation.*` actions and the Operations screen in
-[component issue #46](https://github.com/joomengine/mcp_component/issues/46)
-belong to the Joomla-native PHP component. This TypeScript predecessor does not
-implement JCB actions and rejects these IDs before planning or network access;
-install the current [MCP package](https://github.com/joomengine/mcp_package) for
-JCB integration. Optional JCB CLI inventory in fixture logs is discovery only.
+If this server rejects a `jcb.api.language_translation.*` action ID, the
+request stops before planning or contacting Joomla. Those IDs and the JCB
+Operations screen belong to the [Joomla-native MCP component](https://github.com/joomengine/mcp_component).
+Use that component for JCB translation writes. To inspect the JCB commands
+installed on a site through this server, follow the [JCB discovery walkthrough](JCB.md).
 
 ## Companion and CLI
 

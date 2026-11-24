@@ -136,15 +136,20 @@ namespace {
         try {
             $file = $dir . '/com_demo.zip';
             $zip->open($file, \ZipArchive::CREATE);
-            $zip->addFromString('demo.xml', '<extension/>');
+            $zip->addFromString('demo.xml', '<extension type="component"><name>COM_DEMO</name><version>1.2.0</version></extension>');
             $zip->close();
-            $result = CompilerOutput::verify($dir, [$file]);
+            $expected = ['demo' => '1.2.0'];
+            $result = CompilerOutput::verify($dir, [$file], $expected);
             expect($result === [['name'=>'com_demo.zip','size'=>filesize($file),'sha256'=>hash_file('sha256', $file)]],
                 'Archive metadata or digest mismatch.');
-            jcbFailure(fn () => CompilerOutput::verify($dir, []));
-            jcbFailure(fn () => CompilerOutput::verify(dirname($dir) . '/absent', [$file]));
+            jcbFailure(fn () => CompilerOutput::verify($dir, [], $expected));
+            jcbFailure(fn () => CompilerOutput::verify($dir, [$file], ['demo'=>'0.0.1']));
+            jcbFailure(fn () => CompilerOutput::verify($dir, [$file], $expected + ['unrelated'=>'1.2.0']));
+            jcbFailure(fn () => CompilerOutput::verify(dirname($dir) . '/absent', [$file], $expected));
             symlink($file, $dir . '/linked.zip');
-            jcbFailure(fn () => CompilerOutput::verify($dir, [$dir . '/linked.zip']));
+            jcbFailure(fn () => CompilerOutput::verify($dir, [$dir . '/linked.zip'], $expected));
+            copy($file, $dir . '/duplicate.zip');
+            jcbFailure(fn () => CompilerOutput::verify($dir, [$file, $dir . '/duplicate.zip'], $expected));
         } finally {
             foreach (glob($dir . '/*') as $file) { unlink($file); }
             rmdir($dir);

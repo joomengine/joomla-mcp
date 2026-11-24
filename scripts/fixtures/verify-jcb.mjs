@@ -57,7 +57,7 @@ try {
         [localSite]: {
           cli: {
             root: '/var/www/html',
-            phpBinary,
+            phpBinary: resolve('scripts/fixtures/jcb-php.sh'),
             jcbJobDirectory: jobs,
             timeoutMs: 300000,
             maxOutputBytes: 2097152,
@@ -429,6 +429,15 @@ async function runJob(session, action, options, expected = 'succeeded', key = ra
   while (['queued', 'running'].includes(job.status) && Date.now() < deadline) {
     await setTimeout(500);
     job = await session.call({ name: 'joomla_jcb_job_get', arguments: { site, jobId: job.jobId } });
+  }
+  if (action === 'jcb.compile.component' && job.counts?.warnings > 0) {
+    const warningFile = resolve('jcb-warnings-' + job.jobId + '.json');
+    try {
+      evidence.compilerWarnings = JSON.parse(await readFile(warningFile, 'utf8'));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      evidence.compilerWarnings = { total: job.counts.warnings, recognizedKeys: [] };
+    }
   }
   evidence.jobs ??= [];
   evidence.jobs.push({

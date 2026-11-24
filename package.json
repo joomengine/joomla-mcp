@@ -1,7 +1,7 @@
 {
   "name": "@joomengine/joomla-mcp",
   "version": "0.8.0",
-  "description": "Embeddable and self-hosted Model Context Protocol server for administering Joomla 6.x.",
+  "description": "Embeddable and self-hosted Model Context Protocol server for Joomla and Joomla Component Builder (JCB).",
   "homepage": "https://github.com/joomengine/joomla-mcp#readme",
   "bugs": {
     "url": "https://github.com/joomengine/joomla-mcp/issues"
@@ -12,6 +12,8 @@
   },
   "keywords": [
     "joomla",
+    "joomla-component-builder",
+    "jcb",
     "mcp",
     "model-context-protocol",
     "automation",

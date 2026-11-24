@@ -63,7 +63,7 @@ import {
   createJoomlaMcp,
   resolveConfiguration,
 } from '@joomengine/joomla-mcp';
-import { publicCatalog } from '@joomengine/joomla-mcp/catalog';
+import { describeJcbApiAction, getJcbApiAction, publicCatalog } from '@joomengine/joomla-mcp/catalog';
 import { ToolsetSchema } from '@joomengine/joomla-mcp/config';
 import { JwksJwtVerifier } from '@joomengine/joomla-mcp/security';
 import { JoomlaApiClient } from '@joomengine/joomla-mcp/adapters';
@@ -75,6 +75,8 @@ assert.equal(JOOMLA_MCP_VERSION, '${JSON.parse(readFileSync('package.json', 'utf
 assert.equal(typeof createJoomlaMcp, 'function');
 assert.equal(typeof resolveConfiguration, 'function');
 assert.equal(typeof publicCatalog, 'function');
+const readComponent = getJcbApiAction('jcb.api.joomla_components.get.guid');
+assert.equal(describeJcbApiAction(readComponent).inputSchema.properties.guid.type, 'string');
 assert.equal(typeof ToolsetSchema.parse, 'function');
 assert.equal(typeof JwksJwtVerifier, 'function');
 assert.equal(typeof JoomlaApiClient, 'function');

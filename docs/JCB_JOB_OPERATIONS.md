@@ -32,12 +32,17 @@ site_hash="$(printf '%s' "$site_alias" | sha256sum | cut -d' ' -f1)"
 claim="$job_root/active-$site_hash"
 jq -e --arg site "$site_alias" --arg id "$job_id" '
   select(.site == $site and .jobId == $id) |
-  {site,jobId,action,status,workerHost,workerPid,createdAt,updatedAt,outcome,message}
+  {site,jobId,action,status,workerHost,workerPid,createdAt,updatedAt,outcome,failurePhase,reasonCode,message}
 ' "$receipt"
 if [[ -f "$claim" ]]; then
   jq '{site,kind,jobId,action,workerHost,workerPid,createdAt}' "$claim"
 fi
 ```
+
+If available, `failurePhase` identifies preflight, native dispatch or archive
+retention. The bounded `reasonCode` can distinguish a native error such as
+`JCB_ARCHIVE_MISSING` from a transport timeout (`CLI_TIMEOUT`). Original PHP
+output, paths and credentials stay outside the job receipt.
 
 A JCB claim points to the initial receipt. Its queued status reflects when the
 claim was taken. Read `job.json` for subsequent progress. A claim with

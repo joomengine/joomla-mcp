@@ -14,6 +14,13 @@ export function jcbToolset(id: string): Toolset | undefined {
   return getJcbApiAction(id)?.toolset ?? (isJcbCommandId(id) ? 'jcb.execute' : undefined);
 }
 
+function apiTitle(action: JcbApiAction): string {
+  const verb = action.operation === 'get' ? 'Read' : action.operation[0]!.toUpperCase() + action.operation.slice(1);
+  const resource = action.resource.replaceAll('_', ' ').replace(/\bjoomla\b/g, 'Joomla');
+  const by = action.identifier ? ' by ' + action.identifier.toUpperCase() : '';
+  return verb + ' ' + resource + by;
+}
+
 interface Probe {
   readonly result: Promise<boolean>;
   readonly expires: number;
@@ -39,7 +46,7 @@ export class JcbDiscovery {
       const candidates = jcbApiActions.filter(action =>
         !(action.operation === 'create' && action.sourceCreateDisabled) &&
         (action.toolset === 'jcb.read' || (input.includeWrites && visible('jcb.write'))) &&
-        (action.id.includes(text) || action.path.includes(text)));
+        (action.id.includes(text) || action.path.includes(text) || apiTitle(action).toLowerCase().includes(text)));
       const resources = [...new Map(candidates.map(action => [action.resource, action])).values()];
       const available = new Set<string>();
       // Avoid opening one connection per resource on a newly connected Joomla site.
@@ -53,7 +60,7 @@ export class JcbDiscovery {
       await Promise.all(Array.from({ length: Math.min(4, resources.length) }, probe));
       for (const action of candidates) {
         if (available.has(action.resource)) {
-          actions.push({ id: action.id, domain: 'jcb', operation: action.operation,
+          actions.push({ id: action.id, title: apiTitle(action), domain: 'jcb', operation: action.operation,
             toolset: action.toolset, method: action.method, route: action.path, availableTransports: ['api'] });
         }
       }
@@ -81,7 +88,7 @@ export class JcbDiscovery {
       : true;
     return {
       site: site.id,
-      action: action ? describeJcbApiAction(action) : command,
+      action: action ? { ...describeJcbApiAction(action), title: apiTitle(action) } : command,
       availability: {
         executable: available,
         transports: available ? [action ? 'api' : 'cli'] : [],

@@ -167,6 +167,36 @@ describe('installed local JCB command jobs', () => {
     expect((await wait(job.jobId)).status).toBe('succeeded');
   });
 
+  it.each([
+    ['JCB_ARCHIVE_MISSING', 'JCB_ARCHIVE_MISSING'],
+    ['PRIVATE_NATIVE_TOKEN', 'JCB_DISPATCH_FAILED'],
+  ])('reports only a reviewed error code after native command failure (%s)', async (nativeCode, expectedCode) => {
+    const config = site.cli!;
+    await mkdir(join(config.root, 'cli'));
+    await writeFile(join(config.root, 'cli', 'joomla.php'), `
+      let request = '';
+      process.stdin.on('data', chunk => request += chunk);
+      process.stdin.on('end', () => {
+        const { id } = JSON.parse(request);
+        const error = { code: ${JSON.stringify(nativeCode)}, message: 'secret credential at /private/test/path' };
+        console.log(JSON.stringify({protocol:'joomla-mcp/1',id,ok:false,error}));
+      });
+    `);
+    const nativeTransport = new JoomlaCliClient();
+    const preflightTransport = cli;
+    cli = { ...preflightTransport, dispatch: (config, name, args, env) => args.dryRun
+      ? preflightTransport.dispatch(config, name, args, env)
+      : nativeTransport.dispatch(config, name, args, env) };
+    const { preflight } = await prepareJcbCommand(cli, site, action, input);
+    const accepted = await applyJcbCommand(cli, site, action, input, preflight, principal, randomUUID());
+    const result = await wait(accepted.jobId);
+    expect(result).toMatchObject({ status: 'uncertain', failurePhase: 'dispatch', reasonCode: expectedCode });
+    const stored = await readFile(join(jobs, accepted.jobId, 'job.json'), 'utf8');
+    expect(stored).not.toContain('secret credential');
+    expect(stored).not.toContain('/private/test/path');
+    expect(stored).not.toContain('PRIVATE_NATIVE_TOKEN');
+  });
+
   it('rejects an archive symlink and requires the private state directory', async () => {
     const { preflight } = await prepareJcbCommand(cli, site, action, input);
     native.mockImplementation(async (work: string) => {

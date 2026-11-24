@@ -18,6 +18,12 @@ export interface CompanionEnvelope extends CliEnvelope {
   readonly data: unknown;
 }
 
+export class JoomlaCompanionError extends Error {
+  public constructor(public readonly code: string, message: string) {
+    super(message);
+  }
+}
+
 export interface CompanionDispatchOptions {
   /** Private workspace allocated by the server for one confirmed JCB job. */
   readonly jcbArtifactDirectory?: string;
@@ -104,7 +110,7 @@ export class JoomlaCliClient implements JoomlaCliTransport {
       const error = asRecord(response['error']);
       const code = typeof error['code'] === 'string' ? error['code'] : 'ACTION_FAILED';
       const message = typeof error['message'] === 'string' ? error['message'] : 'The Joomla companion action failed.';
-      throw new Error(`Joomla companion ${code}: ${message}`);
+      throw new JoomlaCompanionError(code, `Joomla companion ${code}: ${message}`);
     }
 
     return envelope;
@@ -116,7 +122,8 @@ export class JoomlaCliClient implements JoomlaCliTransport {
     const envelope = await this.execute(config, args, stdin, options);
 
     if (envelope.exitCode !== 0 || envelope.timedOut || envelope.truncated) {
-      throw new Error(
+      const code = envelope.timedOut ? 'CLI_TIMEOUT' : envelope.truncated ? 'CLI_OUTPUT_LIMIT' : 'CLI_EXIT_FAILED';
+      throw new JoomlaCompanionError(code,
         `Joomla companion failed (exit ${envelope.exitCode}, timeout=${envelope.timedOut}, truncated=${envelope.truncated}).`,
       );
     }
@@ -124,7 +131,7 @@ export class JoomlaCliClient implements JoomlaCliTransport {
     try {
       return { ...envelope, data: JSON.parse(envelope.stdout) as unknown };
     } catch {
-      throw new Error('Joomla companion returned malformed JSON.');
+      throw new JoomlaCompanionError('CLI_INVALID_JSON', 'Joomla companion returned malformed JSON.');
     }
   }
 
@@ -234,7 +241,7 @@ function assertProtocol(value: unknown): Record<string, unknown> {
   const record = asRecord(value);
 
   if (record['protocol'] !== 'joomla-mcp/1') {
-    throw new Error('Joomla companion returned an unsupported protocol response.');
+    throw new JoomlaCompanionError('CLI_INVALID_PROTOCOL', 'Joomla companion returned an unsupported protocol response.');
   }
 
   return record;

@@ -1,4 +1,10 @@
 <?php
+/**
+ * Disposable package acceptance adapted from joomengine/mcp_component
+ * tests/golden-image/package-roundtrip.php at aedd96a7be89d54b5dae10a70067aeb7e191e123.
+ * Copyright (C) 2026 Vast Development Method.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 declare(strict_types=1);
 

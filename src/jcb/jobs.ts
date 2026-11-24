@@ -3,6 +3,7 @@ import { constants, type BigIntStats } from 'node:fs';
 import { chmod, link, mkdir, mkdtemp, open, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
+import { JoomlaCompanionError } from '../infrastructure/cli/joomla-cli-client.js';
 import { validateJcbJobDirectory } from '../config/jcb-job-directory.js';
 import type { SiteConfig } from '../config/schema.js';
 
@@ -33,10 +34,22 @@ interface Job {
   readonly status: Status;
   readonly outcome?: JcbOutcome;
   readonly message?: string;
+  readonly reasonCode?: string;
+  readonly failurePhase?: 'preflight' | 'dispatch' | 'archive';
 }
 
 const verifiedFiles = new Set<string>();
 const workerInstance = randomUUID();
+// Job files and MCP responses carry only reviewed codes. Raw native error messages
+// and output can include paths, settings or credentials and must stay out of receipts.
+const publicCompanionErrors = new Set([
+  'ACCESS_DENIED', 'ACTION_FAILED', 'INVALID_INPUT', 'INVALID_JSON', 'INVALID_PROTOCOL',
+  'INVALID_REQUEST', 'UNKNOWN_ACTION', 'PLAN_STALE', 'RESULT_INVALID', 'RESULT_TOO_LARGE',
+  'REQUEST_TOO_LARGE', 'JCB_ARCHIVE_INVALID', 'JCB_ARCHIVE_MISSING', 'JCB_ARTIFACT_STORAGE',
+  'JCB_GRAPH_LIMIT', 'JCB_GRAPH_UNAVAILABLE', 'JCB_PARTIAL', 'JCB_SOURCE_UNAVAILABLE',
+  'JCB_VERIFY_FILE', 'JCB_VERIFY_LIMIT', 'JCB_VERIFY_SOURCE', 'JCB_VERIFY_UNAVAILABLE',
+  'CLI_TIMEOUT', 'CLI_OUTPUT_LIMIT', 'CLI_EXIT_FAILED', 'CLI_INVALID_JSON', 'CLI_INVALID_PROTOCOL',
+]);
 
 function fileIdentity(stat: BigIntStats, expectedDigest: string): string {
   return [stat.dev, stat.ino, stat.size, stat.ctimeNs, stat.mtimeNs, expectedDigest].join(':');
@@ -161,17 +174,22 @@ export async function withJcbSiteWriteLease<T>(site: SiteConfig, operation: () =
 
 async function runJob(lease: string, directory: string, job: Job, execute: ExecuteJob): Promise<void> {
   const work = join(directory, 'work');
-  let started = false;
+  let phase: 'preflight' | 'dispatch' | 'archive' = 'preflight';
   let terminal: Job;
   try {
     await persist(directory, { ...job, status: 'running', updatedAt: new Date().toISOString() });
-    const outcome = await execute(work, () => { started = true; });
+    const outcome = await execute(work, () => { phase = 'dispatch'; });
+    phase = 'archive';
     for (const artifact of outcome.artifacts) await retainArtifact(directory, artifact);
     terminal = { ...job, updatedAt: new Date().toISOString(), status: outcome.verification === 'verified' ? 'succeeded' : 'uncertain', outcome };
-  } catch {
+  } catch (error) {
+    const fallback = { preflight: 'JCB_PREFLIGHT_FAILED', dispatch: 'JCB_DISPATCH_FAILED', archive: 'JCB_ARCHIVE_RETENTION_FAILED' };
+    const reasonCode = error instanceof JoomlaCompanionError && publicCompanionErrors.has(error.code)
+      ? error.code : fallback[phase];
     terminal = {
-      ...job, updatedAt: new Date().toISOString(), status: started ? 'uncertain' : 'failed',
-      message: started ? 'Native completion could not be verified. Reconcile the site before retrying.' : 'The command or its preconditions changed before native execution.',
+      ...job, updatedAt: new Date().toISOString(), status: phase === 'preflight' ? 'failed' : 'uncertain',
+      failurePhase: phase, reasonCode,
+      message: phase === 'preflight' ? 'JCB preflight failed before native execution.' : 'Native completion could not be verified. Reconcile the site before retrying.',
     };
   }
   await persist(directory, terminal);

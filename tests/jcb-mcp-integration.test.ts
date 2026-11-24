@@ -66,6 +66,13 @@ it('discloses JCB routes only under the selected site and scopes, then executes 
     expect(absent.structuredContent).toMatchObject({ count: 0, actions: [] });
     expect(api.request).not.toHaveBeenCalled();
 
+    const views = await client.callTool({name: 'joomla_actions_search', arguments: {
+      domain: 'jcb', text: 'read admin views by guid',
+    }});
+    expect(views.structuredContent).toMatchObject({ count: 1, actions: [
+      { id: 'jcb.api.admin_views.get.guid', title: 'Read admin views by GUID' },
+    ] });
+
     // A grant belongs to the exact issuer, subject and client tuple.
     authInfo.scopes.push('joomla:permissions:grant');
     authInfo.extra = { issuer: 'https://issuer.test', subject: 'dept:editor' };

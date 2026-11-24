@@ -8,7 +8,7 @@ registration code.
 When embedding the JCB integration, configure the same per-site toolsets and
 adapters as the self-hosted server. The `@joomengine/joomla-mcp/catalog` export
 includes `getJcbApiAction` and `describeJcbApiAction` for inspecting a
-source-defined contract offline. Use the connected site's discovery and
+source-defined contract offline when built from this revision or a release containing direct JCB actions. Use the connected site's discovery and
 plan/apply tools for execution and verification. [JCB integration](JCB.md)
 
 ## Install
@@ -54,7 +54,7 @@ attestations.
 |---|---|
 | `@joomengine/joomla-mcp` | Application factory, runtime/server factories, configuration resolution, services, audit types, JWKS verifier, and package identity |
 | `@joomengine/joomla-mcp/config` | Configuration schemas, types, file loader, and secret-resolver API |
-| `@joomengine/joomla-mcp/catalog` | Complete source-backed Joomla action catalogue and resolution helpers |
+| `@joomengine/joomla-mcp/catalog` | Source-backed Joomla and JCB action catalogues and resolution helpers |
 | `@joomengine/joomla-mcp/adapters` | Joomla API and companion CLI transport contracts and default implementations |
 | `@joomengine/joomla-mcp/http` | Authenticated Streamable HTTP gateway, authorization, limits, audit, and request-policy contracts |
 | `@joomengine/joomla-mcp/live-test` | Catalogue-complete live-test runner, scenario/fixture metadata, evidence writers, and public result types |

@@ -40,7 +40,7 @@ Call `joomla_actions_search` with `{"site":"builder","domain":"jcb","text":"joom
 }
 ```
 
-Use a returned record's numeric ID with `jcb.api.joomla_components.get`. Resources with a registered GUID route also advertise `.get.guid`, accepting a `guid` instead of an `id`. For lists, the description identifies the available filters and ordering fields. If the expected collection is missing, check the routing plugin, the selected site, and its API user's JCB permissions. The published Node Docker image supports this API connection.
+Use a returned record's numeric ID with `jcb.api.joomla_components.get`. Resources with a registered GUID route also advertise `.get.guid`, accepting a `guid` instead of an `id`. For lists, the description identifies the available filters and ordering fields. If the expected collection is missing, check the routing plugin, the selected site, and its API user's JCB permissions. A Node-only container built from this revision can make this API connection.
 
 ## Preview and apply a definition change
 
@@ -50,9 +50,25 @@ For example, to edit a language definition, read the record and use its actual I
 
 The apply receipt reports the native response status and verification result. If it reports `uncertain`, inspect the affected JCB definition before deciding what to do next. JCB's installed form, model and ACL govern the save. For translation updates, the adapter preserves the existing immutable source text. Creating a translation through the reviewed form is gated because that form disables its required source.
 
+## Work with a component, its admin views and fields
+
+JCB stores a component, an admin view and a field as separate definitions. Association records describe which views belong to the component and which fields appear on each view. The same MCP site alias can read both the definitions and their associations.
+
+| To find | Read this JCB family | What to follow |
+| --- | --- | --- |
+| A component | `joomla_components` | Keep the component GUID from the item read. |
+| Its administrator views | `components_admin_views` | Match `joomla_component` to the component GUID. Each `addadmin_views` row identifies its view in `adminview`. |
+| A view definition | `admin_views` | Read the view by GUID to see its names and definition. |
+| Fields attached to that view | `admins_fields` | Match `admin_view` to the view GUID. Each `addfields` row identifies a field in `field` and stores its ordering and display settings. |
+| A field definition | `fields` | Read the field by GUID. Its `fieldtype` identifies the corresponding `fieldtypes` definition. |
+
+For example, describe `jcb.api.components_admin_views.list` to see the installed collection filters, then call it with `joomla_action_read`. Page through results when needed. In a JSON:API item, check `attributes` for values and `relationships` for linked IDs. When a repeatable value is serialized as JSON text, decode it before reading the rows.
+
+To attach an existing field, read the whole `admins_fields` association for the view. Preserve its rows and ordering, append the chosen field GUID and its display settings to `addfields`, and preview `jcb.api.admins_fields.update` for the association’s numeric ID. The approved value replaces that entire subform. If the view has no association yet, describe `jcb.api.admins_fields.create` and supply the existing view GUID in `admin_view`. After applying the plan, read the association again and check both the original rows and the newly attached field. Compile the component when the saved definition is ready to test.
+
 ## Connect local compiler and package jobs
 
-Install the [console companion](../companion/README.md) from the same server release, enable the JCB console plugin (`componentbuildercommands`), and select the companion's **MCP actor user**. Grant the actor the dedicated JCB component administration permission (`core.admin` on `com_componentbuilder`) required by the companion. Run the Node service with a PHP executable and Joomla root it can access. The published Docker image is API-only. The [host deployment instructions](DEPLOYMENT.md) also cover systemd.
+Install the [console companion](../companion/README.md) from the same server release, enable the JCB console plugin (`componentbuildercommands`), and select the companion's **MCP actor user**. Grant the actor the dedicated JCB component administration permission (`core.admin` on `com_componentbuilder`) required by the companion. Run the Node service with a PHP executable and Joomla root it can access. The project’s Node-only Docker image serves API sites. CLI jobs need a process with local access to PHP and the Joomla installation. The [host deployment instructions](DEPLOYMENT.md) also cover systemd.
 
 Create a private directory outside the Joomla web root. For the example paths below, run `install -d -m 0700 -o joomla-mcp -g joomla-mcp /var/lib/joomla-mcp/jcb-jobs` as a system administrator on a host using that dedicated Node service account. Use the actual account and filesystem paths for your installation. The node process and its PHP child both need access.
 
@@ -95,9 +111,9 @@ The [installed JCB test](../scripts/fixtures/verify-jcb.mjs) runs in the dedicat
 
 | Surface | Installed checks |
 | --- | --- |
-| JCB Web Services | Compare all 320 method/path/controller registrations with the server catalogue, read all 53 collections, and compare numeric/GUID item reads for two resources. The report identifies native controller errors reproduced independently for the compiler and extrusion lists. |
+| JCB Web Services | Compare all 320 method/path/controller registrations with the server catalogue, read all 53 collections, and compare numeric/GUID item reads for two resources. The report records each collection’s result, including the compiler and extrusion display resources. |
 | Language definitions | Use an API-only site alias over stdio and Streamable HTTP. Preview a create, check denial without a grant, create and read a record, prove native Joomla ACL denial for another authenticated user, then update, delete and verify absence. |
-| Form and relationship writes | Exercise [fixture-owned definitions](../scripts/fixtures/jcb-write-fixture.mjs) across multiple resource families, including class/group relationships, conditional admin view inputs and a nested subform. Report the outcome separately for each of the 51 writable families, including the translation create restriction. |
+| Form and relationship writes | Exercise [fixture-owned definitions](../scripts/fixtures/jcb-write-fixture.mjs) across multiple resource families, including class/group relationships, conditional admin view inputs and a nested subform. Report the outcome separately for each of the 51 writable families, including updates to an independently seeded translation and its immutable source. |
 | Installed commands | Compare the names, argument and option definitions in Joomla's JCB registry with the actor's executable MCP schemas. The report distinguishes available commands and options from native registrations without an executable MCP binding. |
 | Compilation and package jobs | Compile Demo J6, retrieve the archive in chunks, and verify its digest and Joomla extension manifest. Exercise package push/get/init/pull/reset against a disposable loopback repository and check both the component and its linked update definition in Joomla and the repository. A rejected push must retain its uncertain job receipt and leave remote bytes unchanged even when the same key is replayed. The test reuses the [sibling implementation's repository fixture](https://github.com/joomengine/mcp_component/blob/aedd96a7be89d54b5dae10a70067aeb7e191e123/tests/golden-image/package-roundtrip.php). |
 

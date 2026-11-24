@@ -79,7 +79,11 @@ try {
         await suite(session, 'installed API routes', () => checkInstalledRoutes(session, phpBinary));
         await suite(session, 'definition writes', async () => {
           evidence.definitionWrites = await runJcbWriteFixture(session, site);
-          assert.deepEqual(evidence.definitionWrites.failures, [], 'JCB fixture-owned definition lifecycles and cleanup');
+          assert.deepEqual(
+            evidence.definitionWrites.failures,
+            [],
+            'JCB fixture-owned definition lifecycles and cleanup',
+          );
         });
         await suite(session, 'native commands and jobs', () => checkJobs(session, phpBinary));
       }
@@ -87,7 +91,8 @@ try {
       await session.close();
     }
   }
-  if (failures.length) throw new AggregateError(failures, 'Failed JCB fixture suites: ' + evidence.failedSuites.join(', '));
+  if (failures.length)
+    throw new AggregateError(failures, 'Failed JCB fixture suites: ' + evidence.failedSuites.join(', '));
   evidence.status = 'PASS';
 } finally {
   await writeFile('jcb-evidence.json', JSON.stringify(evidence, null, 2) + '\n', { mode: 0o600 });
@@ -375,19 +380,24 @@ async function checkJobs(session, phpBinary) {
   }
   passed(session, 'Native compiler and package commands appear in the installed inventory');
   await grant(session, site, 'jcb.execute');
-  for (const [action, options] of [
-    ['jcb.init.joomla_component', { items: demo }],
-    ['jcb.compile.component', { component: demo, 'joomla-version': '6' }],
-  ]) {
-    const job = await runJob(session, action, options);
-    const jobId = job.jobId;
-    if (action === 'jcb.compile.component') {
-      assert.ok(job.artifacts.length > 0, 'The installed compiler must produce an archive.');
-      for (const artifact of job.artifacts) await verifyArchive(session, site, jobId, artifact);
-    }
-    passed(session, `Native ${action} verified`);
-  }
+  await runJob(session, 'jcb.init.joomla_component', { items: demo });
+  passed(session, 'Native jcb.init.joomla_component verified');
+
+  // All ordinary package operations finish before compiling. If the compiler
+  // reports an uncertain outcome, the same site's lease stops further writes.
   await checkPackageRoundtrip(session, phpBinary);
+  const compiler = await runJob(session, 'jcb.compile.component', {
+    component: demo,
+    'joomla-version': '6',
+    'add-build-date': '2',
+    'build-date': '2026-01-01',
+  });
+  assert.ok(compiler.artifacts.length > 0, 'The installed compiler must produce an archive.');
+  for (const artifact of compiler.artifacts)
+    await verifyArchive(session, localSite, compiler.jobId, artifact);
+  passed(session, 'Native jcb.compile.component independently verified');
+
+  await checkPackageRoundtrip(session, phpBinary, true);
 }
 
 async function runJob(session, action, options, expected = 'succeeded', key = randomUUID()) {
@@ -403,12 +413,23 @@ async function runJob(session, action, options, expected = 'succeeded', key = ra
     job = await session.call({ name: 'joomla_jcb_job_get', arguments: { site, jobId: job.jobId } });
   }
   evidence.jobs ??= [];
-  evidence.jobs.push({ action, jobId: job.jobId, status: job.status, verification: job.verification });
-  assert.equal(job.status, expected, action + ' must report its actual native outcome');
+  evidence.jobs.push({
+    action,
+    jobId: job.jobId,
+    status: job.status,
+    verification: job.verification,
+    counts: job.counts,
+    message: job.message,
+    failurePhase: job.failurePhase,
+    reasonCode: job.reasonCode,
+    artifacts: job.artifacts?.map(({ name, size, sha256 }) => ({ name, size, sha256 })),
+  });
+  const reason = job.reasonCode ? ' (' + job.failurePhase + ': ' + job.reasonCode + ')' : '';
+  assert.equal(job.status, expected, action + ' must report its actual native outcome' + reason);
   return job;
 }
 
-async function checkPackageRoundtrip(session, phpBinary) {
+async function checkPackageRoundtrip(session, phpBinary, rejectionOnly = false) {
   const guid = randomUUID();
   const repo = randomUUID();
   const fixture = spawn(phpBinary, ['tests/fixtures/joomengine/jcb-package-fixture.php', guid, repo], {
@@ -427,6 +448,28 @@ async function checkPackageRoundtrip(session, phpBinary) {
     const execute = (verb, options = {}) =>
       runJob(session, 'jcb.' + verb + '.joomla_component', { items: guid, ...options });
     await execute('push');
+    if (rejectionOnly) {
+      const before = await request('reject-writes');
+      const action = 'jcb.push.joomla_component';
+      const options = { items: guid };
+      const key = randomUUID();
+      const rejected = await runJob(session, action, options, 'uncertain', key);
+      const after = await request('fingerprint');
+      assert.equal(after.sha256, before.sha256);
+      assert.ok(
+        after.requests > before.requests,
+        'The installed command actually contacted the rejecting fixture.',
+      );
+      const replay = await write(session, localSite, action, { options }, 'cli', key);
+      assert.equal(replay.job.jobId, rejected.jobId);
+      assert.deepEqual(await request('fingerprint'), after, 'A repeated key cannot repeat the native push.');
+      passed(
+        session,
+        'Rejected push retained its original job and left remote bytes unchanged, including on replay',
+      );
+      return;
+    }
+
     const original = {
       nativeLocal: 'revision one',
       nativeRemote: 'revision one',
@@ -460,18 +503,6 @@ async function checkPackageRoundtrip(session, phpBinary) {
       session,
       'Loopback push/get/init/pull/reset preserved the component and its linked update definition',
     );
-    const before = await request('reject-writes');
-    const action = 'jcb.push.joomla_component';
-    const options = { items: guid };
-    const key = randomUUID();
-    const rejected = await runJob(session, action, options, 'uncertain', key);
-    const after = await request('fingerprint');
-    assert.equal(after.sha256, before.sha256);
-    assert.ok(after.requests > before.requests, 'The installed command actually contacted the rejecting fixture.');
-    const replay = await write(session, localSite, action, { options }, 'cli', key);
-    assert.equal(replay.job.jobId, rejected.jobId);
-    assert.deepEqual(await request('fingerprint'), after, 'A repeated key cannot repeat the native push.');
-    passed(session, 'Rejected push retained its original job and left remote bytes unchanged, including on replay');
   } finally {
     fixture.stdin.end();
     const [code] = await exited;

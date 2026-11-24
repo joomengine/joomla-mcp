@@ -7,6 +7,7 @@ import type {
   JoomlaApiTransport,
 } from '../infrastructure/api/joomla-api-client.js';
 import { getJcbApiAction, type JcbApiAction, type JcbField } from './catalog.js';
+import { getJcbParentBinding } from './parent-binding.js';
 import { isRecord, itemPath, readIdentity, resolveJcbApiRequest } from './api-input.js';
 
 export { resolveJcbApiRequest } from './api-input.js';
@@ -21,6 +22,7 @@ export interface JcbApiPlan {
   readonly retainedSourceHash?: string;
   readonly preconditionFingerprint?: string;
   readonly originalRecordId?: string;
+  readonly parent?: { readonly resource: string; readonly guid: string; readonly id: string };
   readonly alreadyTrashed?: boolean;
   readonly preview: {
     readonly action: string;
@@ -29,6 +31,7 @@ export interface JcbApiPlan {
     readonly fields: readonly string[];
     readonly identifier?: string;
     readonly generatedGuid?: string;
+    readonly parent?: { readonly resource: string; readonly guid: string; readonly id: string };
     readonly preconditionChecked?: boolean;
   };
 }
@@ -38,6 +41,7 @@ export interface JcbApiWriteResult {
   readonly verification: {
     readonly status: 'verified' | 'uncertain';
     readonly reason?: string;
+    readonly nativeRejectedFields?: readonly string[];
     readonly id?: string;
     readonly fields?: readonly string[];
   };
@@ -92,7 +96,11 @@ function resourceDocument(response: JoomlaApiResponse, action: JcbApiAction): Do
   if (isRecord(item['relationships'])) {
     for (const [name, relationship] of Object.entries(item['relationships'])) {
       if (Object.hasOwn(result, name) || !Object.hasOwn(action.fields, name) || !isRecord(relationship)) continue;
-      const key = action.fields[name]?.relationshipKey;
+      const parent = getJcbParentBinding(action.resource);
+      const parentKey = parent?.field === name;
+      if (parentKey && isRecord(relationship['data']) && relationship['data']['type'] !== parent.resource)
+        continue;
+      const key = parentKey ? 'guid' : action.fields[name]?.relationshipKey;
       if (key !== 'id' && key !== 'guid') continue;
       const linkage = relationship['data'];
       const ids = (Array.isArray(linkage) ? linkage : [linkage]).map(link =>
@@ -236,6 +244,15 @@ export async function probeJcbApiResource(
   }
 }
 
+async function readParent(api: JoomlaApiTransport, config: ApiConfig, resource: string, guid: string) {
+  const get = getJcbApiAction('jcb.api.' + resource + '.get.guid');
+  if (get?.operation !== 'get') throw new Error('No independent parent GUID read is registered.');
+  const { fields } = await readItem(api, config, get, { kind: 'guid', value: guid });
+  const id = readIdentity('id', fields['id']);
+  if (!id) throw new Error('The native JCB parent lacks a numeric identity.');
+  return { resource, guid, id };
+}
+
 export async function prepareJcbApiWrite(
   api: JoomlaApiTransport,
   config: ApiConfig,
@@ -247,6 +264,9 @@ export async function prepareJcbApiWrite(
     throw new Error('The installed JCB translation form disables source on create.');
   let request = resolveJcbApiRequest(action, input);
   const fields = Object.keys(request.body ?? {}).sort();
+  const binding = action.operation === 'create' ? getJcbParentBinding(action.resource) : undefined;
+  const parentGuid = binding && readIdentity('guid', request.body?.[binding.field]);
+  const parent = binding && parentGuid ? await readParent(api, config, binding.resource, parentGuid) : undefined;
   const identity = action.identifier
     ? { kind: action.identifier, value: readIdentity(action.identifier, input[action.identifier])! }
     : undefined;
@@ -303,6 +323,7 @@ export async function prepareJcbApiWrite(
     action: action.id,
     request,
     ...(identity ? { identity } : {}),
+    ...(parent ? { parent } : {}),
     ...(retainedSourceHash ? { retainedSourceHash } : {}),
     ...(prior ? { preconditionFingerprint: digest(prior.fields) } : {}),
     ...(prior && readIdentity('id', prior.fields['id']) ? { originalRecordId: String(prior.fields['id']) } : {}),
@@ -315,6 +336,7 @@ export async function prepareJcbApiWrite(
       path: request.path,
       fields,
       ...(identity ? { identifier: identity.value } : {}),
+      ...(parent ? { parent } : {}),
       ...(generatedGuid ? { generatedGuid } : {}),
       ...(prior ? { preconditionChecked: true } : {}),
     },
@@ -393,6 +415,19 @@ function locationId(config: ApiConfig, action: JcbApiAction, location?: string):
   }
 }
 
+function rejectedFields(action: JcbApiAction, error: JoomlaApiError): readonly string[] {
+  // Joomla form diagnostics may include submitted values. Expose only names
+  // from the trusted form, never a native error string or its arguments.
+  const messages = error.errors
+    .map(entry => [entry.title, entry.detail].filter(Boolean).join(' '))
+    .join(' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ');
+  return Object.keys(action.fields)
+    .filter(name => (' ' + messages + ' ').includes(' ' + name.toLowerCase().replaceAll('_', ' ') + ' '))
+    .slice(0, 16);
+}
+
 function uncertain(status: number | undefined, reason: string, id?: string): JcbApiWriteResult {
   return {
     mutation: status === undefined ? null : { status },
@@ -414,6 +449,10 @@ export async function applyJcbApiWrite(
     plan.request.path !== (action.identifier ? itemPath(action, plan.identity?.value) : action.path)
   )
     throw new Error('The JCB plan does not match the action.');
+  if (plan.parent) {
+    const current = await readParent(api, config, plan.parent.resource, plan.parent.guid);
+    if (current.id !== plan.parent.id) throw new Error('The JCB association parent changed since planning.');
+  }
   if (plan.identity) {
     const current = await readItem(api, config, action, plan.identity);
     if (
@@ -480,6 +519,13 @@ export async function applyJcbApiWrite(
         return uncertain(status, 'The immutable translation source could not be verified.', identity.value);
       }
       for (const field of plan.preview.fields) {
+        const parentField = getJcbParentBinding(action.resource)?.field;
+        if (
+          plan.parent &&
+          field === parentField &&
+          readIdentity('guid', current.fields[field]) === plan.parent.guid
+        )
+          continue;
         if (
           !Object.hasOwn(current.fields, field) ||
           !equivalent(action.fields[field], plan.request.body?.[field], current.fields[field])
@@ -493,6 +539,16 @@ export async function applyJcbApiWrite(
       verification: { status: 'verified', id: identity.value, fields: plan.preview.fields },
     };
   } catch (error) {
+    if (status === undefined && error instanceof JoomlaApiError) {
+      return {
+        mutation: { status: error.httpStatus },
+        verification: {
+          status: 'uncertain',
+          reason: 'Native Joomla rejected the dispatched request; inspect its effects before retrying.',
+          nativeRejectedFields: rejectedFields(action, error),
+        },
+      };
+    }
     return uncertain(
       status ?? (error instanceof JoomlaApiError ? error.httpStatus : undefined),
       'The JCB request was dispatched but its effects could not be verified. Inspect the record before retrying.',

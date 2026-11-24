@@ -1,5 +1,6 @@
 import type { JoomlaApiRequest } from '../infrastructure/api/joomla-api-client.js';
 import type { JcbApiAction, JcbField } from './catalog.js';
+import { getJcbParentBinding } from './parent-binding.js';
 
 type Document = Readonly<Record<string, unknown>>;
 const guid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
@@ -219,7 +220,20 @@ export function resolveJcbApiRequest(action: JcbApiAction, input: Document, maxP
   if (!isRecord(data) || !Object.keys(data).length)
     throw new Error('Provide at least one writable JCB form field in data.');
   if (Buffer.byteLength(JSON.stringify(data)) > 1_048_576) throw new Error('JCB entity payload exceeds 1 MiB.');
-  validateFields(action.fields, data, action.resource, 0);
+  const parent = action.operation === 'create' ? getJcbParentBinding(action.resource) : undefined;
+  if (parent && Object.hasOwn(data, parent.field)) {
+    const selector = action.fields[parent.field];
+    if (!selector || selector.disabled || selector.requestOnly || !readIdentity('guid', data[parent.field])) {
+      throw new Error(`Expected a native parent GUID for ${action.resource}.${parent.field}.`);
+    }
+    const otherFields = { ...data };
+    delete otherFields[parent.field];
+    validateFields(action.fields, otherFields, action.resource, 0);
+  } else {
+    if (parent && action.fields[parent.field]?.required)
+      throw new Error(`The native JCB form requires the parent GUID in ${parent.field}.`);
+    validateFields(action.fields, data, action.resource, 0);
+  }
   return { method: action.method, path, body: structuredClone(data) };
 }
 
@@ -275,6 +289,14 @@ export function jcbInputSchema(action: JcbApiAction): Readonly<Record<string, un
   }
   if (action.operation === 'create' || action.operation === 'update') {
     const form = formSchema(action.fields);
+    const parent = action.operation === 'create' ? getJcbParentBinding(action.resource) : undefined;
+    if (parent && !action.fields[parent.field]?.disabled && !action.fields[parent.field]?.requestOnly) {
+      (form['properties'] as Record<string, unknown>)[parent.field] = {
+        type: 'string',
+        format: 'uuid',
+        description: 'GUID of an existing ' + parent.resource + ' record.',
+      };
+    }
     const mandatory =
       action.operation === 'create' && !action.dynamicRequired
         ? Object.entries(action.fields)
@@ -289,6 +311,8 @@ export function jcbInputSchema(action: JcbApiAction): Readonly<Record<string, un
             )
             .map(([name]) => name)
         : [];
+    if (parent && action.fields[parent.field]?.required && !mandatory.includes(parent.field))
+      mandatory.push(parent.field);
     properties['data'] = { ...form, minProperties: 1, ...(mandatory.length ? { required: mandatory } : {}) };
     required.push('data');
   }

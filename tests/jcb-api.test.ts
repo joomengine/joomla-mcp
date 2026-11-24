@@ -221,6 +221,34 @@ describe('JCB Web Services', () => {
     ).not.toThrow();
   });
 
+  it('binds an association parent GUID only on create and verifies the same parent before and after dispatch', async () => {
+    const api = transport();
+    const create = action('components_updates.create');
+    const parent = item('21', { guid: key }, 'joomla_components');
+    const related = response({
+      data: {
+        id: '81',
+        type: 'components_updates',
+        attributes: {},
+        relationships: { joomla_component: { data: { type: 'joomla_components', id: key } } },
+      },
+    });
+    api.get.mockResolvedValueOnce(parent).mockResolvedValueOnce(parent).mockResolvedValueOnce(related);
+    api.request.mockResolvedValue(response({ data: { type: 'components_updates', id: '81' } }, 201));
+    const plan = await prepareJcbApiWrite(api, apiConfig, create, { data: { joomla_component: key } });
+    expect(plan.preview.parent).toEqual({ resource: 'joomla_components', guid: key, id: '21' });
+    expect((await applyJcbApiWrite(api, apiConfig, create, plan, key)).verification.status).toBe('verified');
+    expect(api.get.mock.calls[0]?.[1]).toBe('v1/componentbuilder/joomla_components/guid/' + key);
+    expect(() =>
+      resolveJcbApiRequest(action('components_updates.update'), { id: 81, data: { joomla_component: key } }),
+    ).toThrow('read-only');
+    expect(() => resolveJcbApiRequest(create, { data: { joomla_component: 'wrong' } })).toThrow('GUID');
+    expect(jcbInputSchema(create)).toHaveProperty('properties.data.properties.joomla_component.format', 'uuid');
+    api.get.mockResolvedValue(item('42', { guid: key }, 'joomla_components'));
+    await expect(applyJcbApiWrite(api, apiConfig, create, plan, key)).rejects.toThrow('parent');
+    expect(api.request).toHaveBeenCalledTimes(1);
+  });
+
   it('binds preconditions and verifies an independently read approved field', async () => {
     const api = transport();
     const edit = action('languages.update');

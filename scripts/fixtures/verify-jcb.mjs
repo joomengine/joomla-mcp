@@ -387,6 +387,9 @@ async function checkJobs(session, phpBinary, configuration) {
   // All ordinary package operations finish before compiling. If the compiler
   // reports an uncertain outcome, the same site's lease stops further writes.
   await checkPackageRoundtrip(session, phpBinary);
+  evidence.demoPrivacy = JSON.parse(execFileSync(
+    phpBinary, ['tests/fixtures/joomengine/jcb-demo-privacy.php'], { encoding: 'utf8' },
+  ));
   await withJcbHttpClients(configuration, async (builder, observer) => {
     await grant(builder, site, 'jcb.execute');
     await grant(observer, site, 'jcb.execute');
@@ -412,6 +415,8 @@ async function checkJobs(session, phpBinary, configuration) {
         /Unknown JCB job/i,
       );
     }
+    assert.deepEqual(evidence.archiveManifests.map((item) => item.group || item.type).sort(),
+      ['component', 'console', 'privacy'], 'Demo J6 must include its selected component and both plugin manifests.');
     passed(builder, 'Signed HTTP compiler job, ZIP manifest/size/SHA-256 and two-principal job and artifact isolation');
   });
 
@@ -593,19 +598,32 @@ async function verifyArchive(session, site, jobId, artifact) {
     } while (offset < artifact.size);
     assert.equal(hash.digest('hex'), artifact.sha256);
     await output.sync();
-    execFileSync('php', [
+    const expected = /^com_demo_v[^/]+__J6\.zip$/.test(artifact.name)
+      ? { element: 'demo', type: 'component', group: '', version: '6.0.1' }
+      : /^plg_privacy_demo_v[^/]+__J6\.zip$/.test(artifact.name)
+        ? { element: 'demo', type: 'plugin', group: 'privacy', version: '2.0.0' }
+        : { element: 'democommands', type: 'plugin', group: 'console', version: '2.0.0' };
+    const manifest = JSON.parse(execFileSync('php', [
       '-r',
       `
       $zip = new ZipArchive();
       if ($zip->open($argv[1], ZipArchive::CHECKCONS) !== true) { exit(1); }
-      for ($i = 0; $i < $zip->numFiles; $i++) {
-        if (!str_ends_with($zip->getNameIndex($i), '.xml')) { continue; }
-        $xml = @simplexml_load_string($zip->getFromIndex($i));
-        if ($xml && $xml->getName() === 'extension') { exit(0); }
+      $raw = $zip->getFromName($argv[2] . '.xml', 2097152);
+      if (!is_string($raw) || stripos($raw, '<!DOCTYPE') !== false) { exit(1); }
+      $xml = @simplexml_load_string($raw, 'SimpleXMLElement', LIBXML_NONET);
+      if (!$xml || $xml->getName() !== 'extension') { exit(1); }
+      if ((string) $xml['type'] === 'component') {
+        if ((string) $xml->name !== 'COM_' . strtoupper($argv[2])) { exit(1); }
+      } elseif (!$xml->xpath('./files/*[@plugin="' . $argv[2] . '"]')) {
+        exit(1);
       }
-      exit(1);`,
-      file,
-    ]);
+      echo json_encode(['element' => $argv[2], 'type' => (string) $xml['type'],
+        'group' => (string) $xml['group'], 'version' => trim((string) $xml->version)], JSON_THROW_ON_ERROR);`,
+      file, expected.element,
+    ], { encoding: 'utf8' }));
+    assert.deepEqual(manifest, expected);
+    evidence.archiveManifests ??= [];
+    evidence.archiveManifests.push(manifest);
   } finally {
     await output.close();
     await rm(file, { force: true });

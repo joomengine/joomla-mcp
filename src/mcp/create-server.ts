@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { z } from 'zod/v4';
@@ -649,7 +650,11 @@ function approvalPrincipal(authInfo: AuthInfo | undefined, localPrincipal: strin
 
   const subject = typeof authInfo.extra?.['subject'] === 'string' ? authInfo.extra['subject'] : '';
   const issuer = typeof authInfo.extra?.['issuer'] === 'string' ? authInfo.extra['issuer'] : '';
-  return `remote:${issuer}:${subject}:${authInfo.clientId}`;
+  // Preserve existing grants for the unambiguous identity format.
+  if (!subject.includes(':') && !authInfo.clientId.includes(':')) {
+    return `remote:${issuer}:${subject}:${authInfo.clientId}`;
+  }
+  return 'remote-v2:' + createHash('sha256').update(JSON.stringify([issuer, subject, authInfo.clientId])).digest('hex');
 }
 
 function normalizeLocalPrincipal(value: string): string {

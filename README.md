@@ -2,8 +2,9 @@
 
 [![CI](https://github.com/joomengine/joomla-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/ci.yml) [![Release](https://github.com/joomengine/joomla-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/release.yml) [![Publish](https://github.com/joomengine/joomla-mcp/actions/workflows/publish-release.yml/badge.svg)](https://github.com/joomengine/joomla-mcp/actions/workflows/publish-release.yml) [![npm](https://img.shields.io/npm/v/%40joomengine%2Fjoomla-mcp?label=npm)](https://www.npmjs.com/package/@joomengine/joomla-mcp) [![Joomla](https://img.shields.io/badge/Joomla-6.1%2B-5091CD?logo=joomla&logoColor=white)](https://www.joomla.org/) [![Node](https://img.shields.io/badge/Node-22.12%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/) [![License](https://img.shields.io/badge/License-GPL--2.0%2B-blue)](LICENSE)
 
-Connect an MCP client to a Joomla site to read articles, inspect menus and
-extensions, and plan and apply changes with operator approval. The
+Connect an MCP client to Joomla and Joomla Component Builder (JCB). Read site
+content, edit component definitions through JCB Web Services, or compile a
+component on the Joomla host. Writes and command jobs require operator approval. The
 `@joomengine/joomla-mcp` npm package provides the Node.js server and an
 embeddable TypeScript library. One server can address several sites by alias,
 each with its own credentials and enabled tools.
@@ -13,7 +14,7 @@ each with its own credentials and enabled tools.
 | Connect a desktop or terminal client to a Joomla site | Follow the read-only setup below, then the [client guide](docs/CLIENTS.md). |
 | Connect a hosted MCP client such as ChatGPT | Deploy the [Streamable HTTP server](docs/REMOTE_HTTP.md) with HTTPS and OAuth. [Docker Compose and systemd instructions](docs/DEPLOYMENT.md) |
 | Use Joomla's native models or inspect the local CLI | Install the [PHP console companion](docs/PHP_COMPANION.md) on the Joomla host. |
-| Work with a site that uses Joomla Component Builder (JCB) | Use Joomla actions on the site and inspect installed JCB commands. [JCB setup and worked example](docs/JCB.md) |
+| Work with a site that uses Joomla Component Builder (JCB) | Connect the JCB API to work with definitions, or use the companion for compiler and package jobs. [JCB setup and examples](docs/JCB.md) |
 | Embed Joomla tools in a Node.js application | Use the [library API and runnable examples](docs/LIBRARY.md). |
 
 ## Connect your first Joomla site
@@ -110,12 +111,24 @@ denial and recovery matrix is still incomplete. Review the [action
 reference](docs/API_ACTIONS.md) and [coverage status](docs/COVERAGE.md)
 before enabling writes in production.
 
-With JCB installed, the same core tools work for articles, menus and other
-Joomla resources. To discover the `componentbuilder:` commands available on
-that particular site, configure the local companion and enable `cli.discovery`.
-Use `joomla_cli_inventory` to find a command and `joomla_cli_command_help`
-to inspect its arguments. For component authoring and compilation options,
-see [Using Joomla MCP with JCB](docs/JCB.md).
+### Use JCB directly
+
+Install JCB and enable its **Component Builder API Routes** webservices plugin
+on the Joomla site. On the server, add `jcb.read` to the site’s toolsets. Use
+`joomla_actions_search` with `{"site":"company","domain":"jcb","text":"admin_views"}`
+to see the admin-view actions available to that site's API identity. Inspect
+the form schema with `joomla_action_describe` before preparing a change.
+Add `jcb.write` for approved entity mutations.
+
+To compile or work with JCB packages, enable JCB’s console plugin and install
+this repository’s matching PHP companion on the Joomla host. A site with
+`jcb.execute` can run reviewed native commands through the same permission,
+plan and apply tools, then inspect the job and retrieve verified ZIP artifacts.
+JCB’s own component and plugins supply the native operations.
+
+For direct JCB actions, build the Node server and companion from this revision
+or choose a release that includes them in its [changelog](CHANGELOG.md).
+[JCB configuration, action examples and coverage](docs/JCB.md)
 
 ### Apply a change with operator approval
 

@@ -55,6 +55,7 @@ export interface JcbApiAction {
   readonly sourceCreateDisabled?: boolean;
   readonly source: {
     readonly routeRegistration: string;
+    readonly registrationFile: string;
     readonly controller: string;
     readonly form?: string;
     readonly model?: string;
@@ -81,8 +82,9 @@ const resources: Readonly<Record<string, Resource>> = data.resources;
 const operations: Readonly<Record<string, JcbApiAction['operation']>> = {
   displayList: 'list', displayItem: 'get', add: 'create', edit: 'update', delete: 'delete',
 };
-const componentSource = 'https://github.com/extension-builder/joomla/blob/' + data.componentRevision + '/';
-const routeRegistration = 'https://github.com/extension-builder/plugins/blob/' + data.pluginsRevision + '/' + data.router;
+const componentSource = 'https://github.com/vdm-io/Joomla-Component-Builder/blob/' + data.componentRevision + '/';
+const routeRegistration = 'https://github.com/joomengine/pkg-component-builder/blob/' + data.packageRevision
+  + '/src/joomla__plg_webservices_componentbuilderapiroutes__6.x.zip';
 
 function normalizeFields(fields: Readonly<Record<string, StoredField>>): Readonly<Record<string, JcbField>> {
   return Object.fromEntries(Object.entries(fields).map(([name, raw]) => {
@@ -121,6 +123,7 @@ for (const [route, controller] of Object.entries(data.routes)) {
   const identifier = path.endsWith('/:id') ? 'id' : path.endsWith('/:guid') ? 'guid' : null;
   const source = {
     routeRegistration,
+    registrationFile: data.router,
     controller: componentSource + 'api/src/Controller/' + controllerName[0]!.toUpperCase() + controllerName.slice(1) + 'Controller.php',
     ...(metadata.form && {form: componentSource + 'admin/forms/' + metadata.form + '.xml'}),
     ...(metadata.model && {model: componentSource + 'admin/src/Model/' + metadata.model[0]!.toUpperCase() + metadata.model.slice(1) + 'Model.php'}),

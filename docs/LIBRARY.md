@@ -5,6 +5,12 @@ embeddable Node.js library. The command-line binaries, container, systemd
 deployment, and host applications all use the same runtime and action
 registration code.
 
+When embedding the JCB integration, configure the same per-site toolsets and
+adapters as the self-hosted server. The `@joomengine/joomla-mcp/catalog` export
+includes `getJcbApiAction` and `describeJcbApiAction` for inspecting a
+source-defined contract offline. Use the connected site's discovery and
+plan/apply tools for execution and verification. [JCB integration](JCB.md)
+
 ## Install
 
 Pin a compatible version in the consuming application:

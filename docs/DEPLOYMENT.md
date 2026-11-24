@@ -261,6 +261,10 @@ configured JWKS and returns a generic `503` reason `not_ready` on failure.
 Joomla API/companion, database, coordination, and audit readiness still require
 separate non-mutating checks.
 
+After upgrading, request a fresh operator grant for remote clients whose OAuth
+subject or client ID contains a colon. The server now binds these grants and
+job receipts to a hash of the issuer, subject and client ID.
+
 ## Upgrade procedure
 
 1. Read the release notes and coverage changes; identify configuration, schema,

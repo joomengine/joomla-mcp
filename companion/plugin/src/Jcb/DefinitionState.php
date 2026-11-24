@@ -56,29 +56,7 @@ final readonly class DefinitionState
 
     public function hasRepository(string $guid): bool
     {
-        return $this->observed('repository', [$guid]) === 1;
-    }
-
-    /** Count distinct selected records that are independently visible in the native table by GUID or numeric id. */
-    public function observed(string $entity, array $selectors): int
-    {
-        if (!preg_match('/^[a-z][a-z0-9_]{0,63}$/D', $entity)) {
-            return 0;
-        }
-        if (!$this->metadata->exist($entity)) {
-            return 0;
-        }
-        $keys = ['guid' => [], 'id' => []];
-        foreach ($selectors as $selector) {
-            $keys[ctype_digit($selector) ? 'id' : 'guid'][] = $selector;
-        }
-        $count = 0;
-        foreach ($keys as $key => $values) {
-            if ($values !== [] && ($key === 'id' || $this->metadata->exist($entity, $key))) {
-                $count += (int) $this->load->count(['a' => '#__componentbuilder_' . $entity],
-                    [$key => ['operator' => 'IN', 'value' => $values]]);
-            }
-        }
-        return $count;
+        return $this->metadata->exist('repository', 'guid')
+            && $this->load->count(['a' => '#__componentbuilder_repository'], ['guid' => $guid]) === 1;
     }
 }

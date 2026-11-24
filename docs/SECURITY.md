@@ -35,6 +35,21 @@ vulnerabilities through the private process in [`SECURITY.md`](../SECURITY.md).
 | Joomla actor escalation | Dedicated actors, effective companion ACL preflight, explicit Web Services plugin and component permissions |
 | Unsafe native lifecycle | Source-backed semantic action, preview/confirmation, postcondition, action-specific rollback and live recovery tests |
 
+## JCB actions
+
+The three JCB toolsets are opt-in per site. JCB API writes also require read
+access so the server can verify the submitted field values and resource identity.
+Compiler and package jobs require `jcb.execute`, an active operator grant and a
+companion actor with `core.admin` on `com_componentbuilder`. A remote MCP client
+uses its own site and toolset scopes. The Node process and the companion must
+share the configured private job directory outside the Joomla installation.
+
+Job receipts belong to the submitting principal. The server accepts only
+registered JCB action identifiers, supported command options and verified
+artifact names returned by the job. Keep each alias mapped to its intended
+site so that write coordination and recovery operate on the same installation.
+See [JCB jobs and recovery](JCB.md).
+
 ## Joomla-specific warnings
 
 - Joomla CLI operates outside the normal Web Services token/ACL boundary.

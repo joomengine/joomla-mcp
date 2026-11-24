@@ -1064,6 +1064,7 @@ require __DIR__ . '/json-shapes.php';
 require __DIR__ . '/readback-shapes.php';
 require __DIR__ . '/native-list-pagination.php';
 require __DIR__ . '/publishing-fields.php';
+require __DIR__ . '/jcb-commands.php';
 
 if ($GLOBALS['failures'] > 0) {
     file_put_contents('php://stderr', sprintf("%d test(s) failed.\n", $GLOBALS['failures']), FILE_APPEND);

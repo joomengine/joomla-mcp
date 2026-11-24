@@ -1,7 +1,7 @@
 {
-  "componentRevision": "aea703fc11d551d6847f3142ca74357cb73c23fe",
-  "pluginsRevision": "33df9f3afd1f87b94151b8c824654e00557c3258",
-  "sourceDigest": "55182f3283e55ff14a966aae391e9d3866d3365ea7ec1d2db5004f55b1020d7b",
+  "componentRevision": "beb33d8c7d5749ebb9e6b912aaeb9460caf9e4fd",
+  "packageRevision": "1aa00148cf4726a6eb0754d56250ea2411bc9951",
+  "sourceDigest": "a09a41398b42430a8ca6d5ceec95c7fec6589601ff82d18ba17dd058e950078d",
   "router": "plg_webservices_componentbuilderapiroutes/src/Extension/ComponentbuilderApiRoutes.php",
   "routes": {
     "GET v1/componentbuilder/joomla_components": "joomla_components.displayList",
@@ -2929,7 +2929,7 @@
               "supported": true
             }
           ],
-          "targets": ["datatype","datalenght","datalenght_other","datadefault_other","indexes","null_switch","store","on_get_model_field","on_save_model_field"],
+          "targets": ["datalenght","datatype","store","indexes","null_switch","on_get_model_field","on_save_model_field","datadefault_other","datalenght_other"],
           "show": false,
           "toggle": false
         }

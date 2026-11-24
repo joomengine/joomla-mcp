@@ -106,6 +106,8 @@ media.write
 users.admin
 extensions.admin
 configuration.write
+jcb.write
+jcb.execute
 maintenance.admin
 core-update
 ```

@@ -296,22 +296,22 @@ export class JoomlaService {
 
     const jcb = await this.jcb.search(site, input, companionCapability.description, permitted);
     const core = actions.map((action) => ({
-        id: action.id,
-        title: action.title,
-        description: action.description,
-        domain: action.domain,
-        operation: 'operation' in action ? action.operation : (action.risk === 'read' ? 'read' : 'execute'),
-        toolset: action.toolset,
-        risk: action.risk,
-        inputSchema: action.inputSchema,
-        availableTransports: this.availableTransports(
-          site,
-          action.id,
-          'operation' in action ? action.risk === 'read' || action.risk === 'sensitive-read' : action.risk === 'read',
-          companionCapability.allowed,
-        ),
-        ...('versions' in action ? { versions: action.versions } : { native: action.native }),
-      }));
+      id: action.id,
+      title: action.title,
+      description: action.description,
+      domain: action.domain,
+      operation: 'operation' in action ? action.operation : (action.risk === 'read' ? 'read' : 'execute'),
+      toolset: action.toolset,
+      risk: action.risk,
+      inputSchema: action.inputSchema,
+      availableTransports: this.availableTransports(
+        site,
+        action.id,
+        'operation' in action ? action.risk === 'read' || action.risk === 'sensitive-read' : action.risk === 'read',
+        companionCapability.allowed,
+      ),
+      ...('versions' in action ? { versions: action.versions } : { native: action.native }),
+    }));
     return {
       site: site.id,
       count: core.length + jcb.length,

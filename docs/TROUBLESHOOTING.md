@@ -100,11 +100,13 @@ occurred. No automatic retry is added, and menu writes retain their uncertain
 outcome and same-key replay protection. Check native state and the installed
 extension's form/controller before preparing another write.
 
-If this server rejects a `jcb.api.language_translation.*` action ID, the
-request stops before planning or contacting Joomla. Those IDs and the JCB
-Operations screen belong to the [Joomla-native MCP component](https://github.com/joomengine/mcp_component).
-Use that component for JCB translation writes. To inspect the JCB commands
-installed on a site through this server, follow the [JCB discovery walkthrough](JCB.md).
+Search for `language_translations` with `domain: "jcb"` and
+`includeWrites: true` to get this server’s action identifiers. For an existing
+translation, use `jcb.api.language_translations.update`, select the existing
+record ID and submit only the form fields being changed. The server binds the
+original source during planning and checks it on read-back. JCB's native form,
+installed Web Services plugin and the authenticated user's permissions govern
+the operation. [JCB setup and known limits](JCB.md)
 
 ## Companion and CLI
 

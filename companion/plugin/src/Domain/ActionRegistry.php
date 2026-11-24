@@ -51,6 +51,7 @@ final class ActionRegistry
         $this->addInstalledActions();
         return array_values($this->actions);
     }
+
     private function addInstalledActions(): void
     {
         if ($this->installedActions === null) {

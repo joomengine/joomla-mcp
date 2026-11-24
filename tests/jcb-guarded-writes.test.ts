@@ -35,7 +35,7 @@ function fixture(toolsets: readonly Toolset[] = ['jcb.write', 'jcb.read']) {
   let next = 0;
   const calls: JoomlaApiRequest[] = [];
   function resource(id: number, attributes: Record<string, unknown>) {
-    return { id: String(id), type: 'language', attributes: { ...attributes, id } };
+    return { id: String(id), type: 'languages', attributes: { ...attributes, id } };
   }
   async function dispatch(request: JoomlaApiRequest): Promise<JoomlaApiResponse> {
     calls.push(request);
@@ -99,10 +99,18 @@ describe('JCB writes through JoomlaWriteService', () => {
     await approve(service);
     const first = await service.planAction(create, principal) as ConfirmationPlan;
     const receipt = await service.apply(first.confirmationToken, principal);
+    const original = structuredClone(receipt);
+    // An embedded client may retain and mutate its receipt after apply.
+    (receipt['verification'] as Record<string, unknown>)['status'] = 'client-side change';
     const count = calls.length;
     await approve(service);
     const repeat = await service.planAction(create, principal) as ConfirmationPlan;
-    expect(await service.apply(repeat.confirmationToken, principal)).toEqual({ ...receipt, idempotentReplay: true });
+    const replay = await service.apply(repeat.confirmationToken, principal);
+    expect(replay).toEqual({ ...original, idempotentReplay: true });
+    (replay['verification'] as Record<string, unknown>)['status'] = 'mutated replay';
+    await approve(service);
+    const again = await service.planAction(create, principal) as ConfirmationPlan;
+    expect(await service.apply(again.confirmationToken, principal)).toEqual({ ...original, idempotentReplay: true });
     expect(calls).toHaveLength(count);
     await expect(service.planAction({ ...create, input: { data: { name: 'Different language' } }, dryRun: true }, principal))
       .rejects.toThrow(/different operation/i);
@@ -133,6 +141,39 @@ describe('JCB writes through JoomlaWriteService', () => {
     records.set(3, { name: 'Saved in Joomla after planning' });
     await expect(service.apply(plan.confirmationToken, principal)).rejects.toThrow(/changed/i);
     expect(calls.filter(call => call.method === 'PATCH')).toHaveLength(0);
+  });
+
+  it('serializes two independently approved plans and never dispatches the same JCB create twice', async () => {
+    const { service, api, records, calls } = fixture();
+    const grant = await service.requestPermission({
+      duration: '30-minutes', toolsets: ['jcb.write'], reason: 'Verify concurrent JCB writes on the same site.',
+    }, principal);
+    await service.approvePermission(grant.requestId, grant.acknowledgement, principal);
+    const [first, second] = await Promise.all([
+      service.planAction(create, principal), service.planAction(create, principal),
+    ]) as ConfirmationPlan[];
+    const dispatched = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const original = api.request;
+    api.request = async (config, request) => {
+      if (request.method === 'POST') {
+        dispatched.resolve();
+        await release.promise;
+      }
+      return original(config, request);
+    };
+    const running = service.apply(first!.confirmationToken, principal);
+    try {
+      await dispatched.promise;
+      await expect(service.apply(second!.confirmationToken, principal)).rejects.toThrow(/write is already in progress/i);
+    } finally {
+      release.resolve();
+    }
+    expect(await running).toMatchObject({ verification: { status: 'verified' } });
+    const repeat = await service.planAction(create, principal) as ConfirmationPlan;
+    expect(await service.apply(repeat.confirmationToken, principal)).toMatchObject({ idempotentReplay: true });
+    expect(records.size).toBe(1);
+    expect(calls.filter(call => call.method === 'POST')).toHaveLength(1);
   });
 
   it('caches uncertainty if the native mutation committed before its response was lost', async () => {
@@ -166,11 +207,13 @@ describe('JCB writes through JoomlaWriteService', () => {
 
 it('submits an installed package command only through a matching jcb.execute grant', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jcb-guarded-'));
+  const { promise: mayFinish, resolve: finish } = Promise.withResolvers<void>();
   try {
     const site = {
       id: 'local',
+      api: { baseUrl: 'https://local.example', tokenEnv: 'TOKEN', token: 'fixture', timeoutMs: 2000, maxPageSize: 10, maxResponseBytes: 100000 },
       cli: { root: join(root, 'joomla'), jcbJobDirectory: join(root, 'jobs'), phpBinary: '/usr/bin/php', timeoutMs: 3000, maxOutputBytes: 100000 },
-      toolsets: new Set<Toolset>(['jcb.execute']),
+      toolsets: new Set<Toolset>(['jcb.execute', 'content.write']),
     };
     await mkdir(site.cli.root);
     await mkdir(site.cli.jcbJobDirectory, { mode: 0o700 });
@@ -183,13 +226,17 @@ it('submits an installed package command only through a matching jcb.execute gra
       name: input.action, risk: 'high', effective: { allowed: true },
       inputSchema: { properties: { options: { type: 'object', properties: {}, additionalProperties: false } } },
     };
-    const native = vi.fn(async (_config, _action, args) => ({
-      data: { result: args.dryRun
-        ? { applied: false, dryRun: true, preState: { contractFingerprint: 'a'.repeat(64) } }
-        : { applied: true, dryRun: false, verification: { status: 'verified' } } },
-    }));
+    const native = vi.fn(async (_config, _action, args) => {
+      if (args.dryRun) {
+        return { data: { result: { applied: false, dryRun: true, preState: { contractFingerprint: 'a'.repeat(64) },
+          requestedState: { command: 'componentbuilder:get:admin_view', options: {} } } } };
+      }
+      await mayFinish;
+      return { data: { result: { applied: true, dryRun: false, verification: { status: 'verified' } } } };
+    });
     const cli = { describe: async () => ({ data: { actions: [entry] } }), dispatch: native } as unknown as JoomlaCliTransport;
-    const service = new JoomlaWriteService(configuration, new SiteRegistry(configuration), undefined, undefined, cli);
+    const { api } = fixture();
+    const service = new JoomlaWriteService(configuration, new SiteRegistry(configuration), api, undefined, cli);
     await expect(service.planAction(input, principal)).rejects.toThrow(/grant/i);
     expect(native).not.toHaveBeenCalled();
     await expect(service.planAction({ ...input, transport: 'api', dryRun: true }, principal)).rejects.toThrow(/requires the CLI/i);
@@ -202,12 +249,28 @@ it('submits an installed package command only through a matching jcb.execute gra
     const result = await service.apply(plan.confirmationToken, principal);
     const job = result['job'] as { jobId: string; status: string };
     expect(job.status).toBe('queued');
+    // The per-site job claim must also exclude ordinary core writes while the worker runs.
+    const articleGrant = await service.requestPermission({ duration: 'once', reason: 'Check the shared site lock.', toolsets: ['content.write'] }, principal);
+    await service.approvePermission(articleGrant.requestId, articleGrant.acknowledgement, principal);
+    const articlePlan = await service.planArticle({
+      operation: 'create', data: { title: 'Overlapping write', catid: 2 }, idempotencyKey: '8d76b912-2bc6-4002-ab50-65b4df437a65',
+    }, principal);
+    await expect(service.apply(articlePlan.confirmationToken, principal)).rejects.toThrow(/JCB|claim|lease|write in progress/i);
+    expect(api.request).not.toHaveBeenCalled();
+    finish();
     await vi.waitFor(async () => {
       expect((await getJcbJob(site, principal, job.jobId)).status).toBe('succeeded');
+    });
+    const repeatGrant = await service.requestPermission({ duration: 'once', reason: 'Retrieve the completed package job.', toolsets: ['jcb.execute'] }, principal);
+    await service.approvePermission(repeatGrant.requestId, repeatGrant.acknowledgement, principal);
+    const repeat = await service.planAction(input, principal) as ConfirmationPlan;
+    expect(await service.apply(repeat.confirmationToken, principal)).toMatchObject({
+      idempotentReplay: true, job: { jobId: job.jobId, status: 'succeeded' },
     });
     expect(native.mock.calls.filter(([, , args]) => args.dryRun === false && args._edgeConfirmed === true)).toHaveLength(1);
     await expect(getJcbJob(site, 'other-user', job.jobId)).rejects.toThrow(/unknown/i);
   } finally {
+    finish();
     await rm(root, { recursive: true, force: true });
   }
 });

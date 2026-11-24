@@ -48,6 +48,7 @@ import {
 import { getJcbApiAction } from '../jcb/catalog.js';
 import { applyJcbApiWrite, prepareJcbApiWrite, probeJcbApiResource } from '../jcb/api.js';
 import { applyJcbCommand, isJcbCommandId, prepareJcbCommand } from '../jcb/commands.js';
+import { getJcbJob, withJcbSiteWriteLease } from '../jcb/jobs.js';
 import { SiteRegistry } from './site-registry.js';
 import {
   compareSubformCustomField,
@@ -444,6 +445,7 @@ export class JoomlaWriteService {
       site: site.id, action: input.action, transport, toolset,
       idempotencyKey: input.idempotencyKey, jcbIntent: intent,
     } as const;
+    if (input.dryRun !== true) this.requirePermissions().authorize(principal, site.id, toolset);
     this.sweepCompleted();
     const cached = this.completed.get(jcbCacheKey(principal, site.id, input.idempotencyKey));
     if (cached !== undefined) {
@@ -454,7 +456,6 @@ export class JoomlaWriteService {
       // still requires a newly authorized plan, without querying or mutating it again.
       return this.finishPlan({ ...common, ...cached.replay, replayOnly: true }, principal, input.dryRun === true);
     }
-    if (input.dryRun !== true) this.requirePermissions().authorize(principal, site.id, toolset);
     if (action !== undefined && site.api !== undefined) {
       if (action.method === 'GET') throw new Error('A JCB read cannot be planned as a write.');
       if (!await probeJcbApiResource(this.api, site.api, action)) {
@@ -582,19 +583,25 @@ export class JoomlaWriteService {
         throw new Error('The idempotency key was already used for a different operation.');
       }
 
-      return { ...cached.value, idempotentReplay: true };
+      if (operation.toolset === 'jcb.execute') {
+        const jobId = asRecord(cached.value['job'])['jobId'];
+        if (typeof jobId !== 'string') throw new Error('The saved JCB job receipt has no identifier.');
+        const job = await getJcbJob(this.sites.get(operation.site), principal, jobId);
+        return { ...cached.value, job, idempotentReplay: true };
+      }
+      return { ...structuredClone(cached.value), idempotentReplay: true };
     }
 
     if (operation.replayOnly) {
       throw new Error('The cached JCB receipt expired. Inspect the operation result before requesting a new plan.');
     }
 
-    return this.locks.run(operation.site, async () => {
-      const site = this.sites.get(operation.site);
+    const site = this.sites.get(operation.site);
+    const jcbCommand = isJcbCommandId(operation.action);
+    const execute = async () => {
       const action = getJoomlaWriteAction(operation.action);
       const companionAction = getCompanionWriteAction(operation.action);
       const jcbAction = getJcbApiAction(operation.action);
-      const jcbCommand = isJcbCommandId(operation.action);
       if (action === undefined && companionAction === undefined && jcbAction === undefined && !jcbCommand) {
         throw new Error(`Planned Joomla action ${operation.action} is no longer allowlisted.`);
       }
@@ -623,7 +630,9 @@ export class JoomlaWriteService {
           }
           const value = { site: site.id, action: operation.action, idempotencyKey: operation.idempotencyKey,
             ...execution, idempotentReplay: false };
-          this.remember(cacheKey, { fingerprint, value, completedAt: Date.now(),
+          // Embedded callers receive the public receipt by reference. Keep an independent
+          // snapshot so modifying their result cannot change a later replay.
+          this.remember(cacheKey, { fingerprint, value: structuredClone(value), completedAt: Date.now(),
             replay: { method: operation.method, path: operation.path, summary: operation.summary,
               ...(operation.preflight === undefined ? {} : { preflight: operation.preflight }) } });
           await this.audit?.write({
@@ -694,7 +703,10 @@ export class JoomlaWriteService {
         });
         throw error;
       }
-    });
+    };
+    // Job submission holds its own durable claim until the background worker
+    // finishes. Other writes on that site must acquire the very same claim.
+    return this.locks.run(site.id, () => jcbCommand ? execute() : withJcbSiteWriteLease(site, execute));
   }
 
   private async applyApi(site: ReturnType<SiteRegistry['get']>, operation: PlannedOperation): Promise<JoomlaApiResponse> {

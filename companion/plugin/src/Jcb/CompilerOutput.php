@@ -35,7 +35,7 @@ final class CompilerOutput
         $total = 0;
         foreach (array_unique($paths) as $path) {
             $real = is_string($path) && !is_link($path) ? realpath($path) : false;
-            if ($real === false || dirname($real) !== $directory || !is_file($real)
+            if ($real === false || !str_starts_with($real, $directory . DIRECTORY_SEPARATOR) || !is_file($real)
                 || !preg_match('/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,180}\.zip$/Di', basename($real))) {
                 throw new ActionException('JCB_ARCHIVE_INVALID', 'A compiler result is outside the private archive boundary.');
             }
@@ -50,6 +50,11 @@ final class CompilerOutput
             $hash = hash_file('sha256', $real);
             if ($entries < 1 || $hash === false || !chmod($real, 0600)) {
                 throw new ActionException('JCB_ARCHIVE_INVALID', 'An empty or unreadable compiler archive was returned.');
+            }
+            // Publish only a basename inside the worker's private root. Never replace another archive.
+            $target = $directory . DIRECTORY_SEPARATOR . basename($real);
+            if ($target !== $real && (!link($real, $target) || !unlink($real))) {
+                throw new ActionException('JCB_ARCHIVE_INVALID', 'The compiler produced conflicting archive names.');
             }
             $results[] = ['name' => basename($real), 'size' => $size, 'sha256' => $hash];
         }

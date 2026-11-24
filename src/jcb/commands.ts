@@ -86,11 +86,16 @@ export async function prepareJcbCommand(cli: JoomlaCliTransport, site: SiteConfi
   if (native['applied'] !== false || native['dryRun'] !== true || typeof contract !== 'string' || !/^[a-f0-9]{64}$/.test(contract)) {
     throw new Error('The installed JCB companion did not return a non-mutating, fingerprinted command preflight.');
   }
+  const requested = native['requestedState'];
+  if (!object(requested) || requested['command'] !== descriptor.title) {
+    throw new Error('The companion preview does not identify the requested JCB command.');
+  }
+  const requestedState = normalizedInput(descriptor, { options: requested['options'] });
   return {
     title: descriptor.title, actionInput,
     preflight: {
       dryRun: true, applied: false, command: descriptor.title, preState: { contractFingerprint: contract },
-      requestedState: actionInput,
+      requestedState,
     },
   };
 }

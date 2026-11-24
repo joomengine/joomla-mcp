@@ -40,7 +40,7 @@ not mean arbitrary stock CLI execution.
   Special writes contain 22 exact body/no-body contracts, one typed core plus
   runtime-extension contract for contact submission, and four source-gated
   generic contracts.
-- The companion allowlist contains 231 fixed native actions: 180 CRUD, 28 core
+- The Joomla core companion allowlist contains 231 fixed native actions: 180 CRUD, 28 core
   model state actions, and 23 supplemental/alias actions.
 - The edge companion catalogue contains 12 reads and 39 writes (51 descriptors):
   selected native operations, cache clean, and 28 core model-state actions.
@@ -52,11 +52,24 @@ not mean arbitrary stock CLI execution.
   a read smoke test, not a complete action matrix.
 - The reviewed Joomla CLI target map covers all 38 stock commands: 19 are
   implemented, six expose a bounded subset, and 13 remain non-executable and
-  recovery-gated. Live inventory/help also records the fixture's 111 optional
-  Joomla Component Builder commands separately. These optional JCB commands are
-  inventory only: this TypeScript server has no executable JCB API/CLI actions.
-  JCB integration, including language translation writes, belongs to the
-  [Joomla-native component](https://github.com/joomengine/mcp_component).
+  recovery-gated. The separate JCB command provider inspects the installed JCB
+  console registry and its native command implementations.
+
+## Joomla Component Builder
+
+The Node server has a second catalogue for the JCB webservices plugin. Its
+320 method/route pairs include 51 CRUD resource families, 63 GUID item routes
+across 21 families, and the list-only compiler and extrusion routes. The form
+metadata comes from JCB's native administrator forms. Source provenance and
+catalogue regeneration instructions are in the [generator guide](../scripts/jcb/README.md).
+
+Search checks collection access with the configured Joomla API identity.
+The exact item or mutation still depends on the installed JCB release, the
+native form and Joomla ACL. Write verification uses independent read-back.
+The local companion separately recognises the compiler and the installed
+package get, init, pull, push and reset commands. A completed compiler job
+can supply verified ZIP artifacts. See [JCB setup and acceptance evidence](JCB.md)
+for which operations have been run against a disposable Joomla site.
 
 ## Action-family matrix
 

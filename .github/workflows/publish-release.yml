@@ -173,11 +173,10 @@ jobs:
             --group=0 \
             --numeric-owner \
             -czf "release-assets/joomengine-mcp-for-joomla-deployment-${RELEASE_TAG}.tar.gz" \
-            README.md LICENSE SECURITY.md Dockerfile \
+            README.md CHANGELOG.md CONTRIBUTING.md LICENSE SECURITY.md Dockerfile \
             config/sites.example.json config/sites.single-site-readonly.example.json \
             deploy scripts/deploy \
-            docs/CLIENTS.md docs/DEPLOYMENT.md docs/LIBRARY.md docs/OPERATIONS.md \
-            docs/RELEASING.md docs/SINGLE_SITE.md docs/TROUBLESHOOTING.md
+            docs companion/README.md scripts/jcb/README.md examples/embedded-host
       - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-path: release-assets/*

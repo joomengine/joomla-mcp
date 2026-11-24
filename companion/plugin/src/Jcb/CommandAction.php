@@ -11,6 +11,7 @@ use ReflectionClass;
 use ReflectionProperty;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\NullOutput;
+use Symfony\Component\Console\Output\OutputInterface;
 use VDM\Plugin\Console\JoomlaMcp\Contract\ActionInterface;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionDescriptor;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionException;
@@ -105,7 +106,13 @@ final readonly class CommandAction implements ActionInterface
             $nativeInput->setInteractive(false);
             // Joomla binds command identity and dependencies when registering the object.
             // Stdout from Joomla's application is handled by DispatchService, console output is discarded.
-            $exit = $this->command->execute($nativeInput, new NullOutput());
+            $output = new class extends NullOutput {
+                public function getErrorOutput(): OutputInterface
+                {
+                    return $this;
+                }
+            };
+            $exit = $this->command->execute($nativeInput, $output);
             $statuses = $this->messages($beforeMessages);
             if ($exit !== 0 || $statuses['errors'] > 0) {
                 throw new ActionException('JCB_PARTIAL', 'The native JCB command reported errors. It may have made partial changes.');
@@ -117,10 +124,8 @@ final readonly class CommandAction implements ActionInterface
                     'artifactCount' => count($artifacts), ...$statuses];
                 return ['dryRun' => false, 'applied' => true, 'verification' => $verification, 'artifacts' => $artifacts];
             }
-            $observed = $state->observed($this->entity, $selectors);
-            $verification = ['status' => $statuses['warnings'] > 0 ? 'partial' : 'unverified',
-                'nativeExitCode' => $exit, 'selectedCount' => count($selectors), 'localRecordCount' => $observed, ...$statuses];
-            // Local existence alone cannot verify remote publication, dependencies or overwritten field values.
+            $verification = (new PackageVerification())->inspect($this->command, $this->verb, $this->entity,
+                $selectors, $options['repo'] ?? null, $statuses);
             return ['dryRun' => false, 'applied' => true, 'verification' => $verification];
         } finally {
             if ($compiler) {
@@ -149,6 +154,23 @@ final readonly class CommandAction implements ActionInterface
             $contract[$name] = [$option->acceptValue(), $option->isValueRequired(), $option->isArray(), $option->getDefault()];
         }
         ksort($contract);
+        // A package service or compiler dependency can change independently of the console class.
+        $library = dirname((new ReflectionClass(Table::class))->getFileName(), 4);
+        $files = [];
+        $bytes = 0;
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($library, \FilesystemIterator::SKIP_DOTS)) as $entry) {
+            if (!$entry->isFile() || $entry->getExtension() !== 'php') {
+                continue;
+            }
+            $bytes += $entry->getSize();
+            if ($entry->isLink() || count($files) >= 8192 || $bytes > 268435456
+                || ($digest = hash_file('sha256', $entry->getPathname())) === false) {
+                throw new ActionException('JCB_SOURCE_UNAVAILABLE', 'The installed JCB library could not be fingerprinted.');
+            }
+            $files[substr($entry->getPathname(), strlen($library) + 1)] = $digest;
+        }
+        ksort($files);
+        $sources['library'] = hash('sha256', serialize($files));
         return hash('sha256', serialize([$this->actorId, $this->command->getName(), $this->entity, $contract,
             $sources, $state->fingerprint(), $options]));
     }

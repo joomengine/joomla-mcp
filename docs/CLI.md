@@ -24,8 +24,9 @@ gated entry is documentation, not execution authority.
 The fixture retains `cli-list.txt`, `cli-inventory.json`, and bounded native help
 for all 153 commands currently installed by its pinned image: 38 Joomla core,
 111 Joomla Component Builder, and four companion commands. Commands added by an
-extension appear automatically without becoming executable MCP tools. For a
-site configuration and a worked `componentbuilder:` example, see [Using Joomla
+extension appear automatically in inventory. Enabling `jcb.execute` gives
+the local companion access to the reviewed JCB compiler and package commands
+installed for its actor. For a site configuration and a worked `componentbuilder:` example, see [Using Joomla
 MCP with JCB](JCB.md).
 
 The reviewed core target map currently classifies 19 commands as implemented,

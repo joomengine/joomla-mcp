@@ -5,11 +5,11 @@ declare(strict_types=1);
 /**
  * Generate the reviewed Node catalogue from JCB's literal route declarations,
  * native controllers, edit models and XML forms. Upstream PHP is read as text.
- * Usage: php scripts/jcb/generate-api-catalog.php <joomla-checkout> <plugins-checkout>
+ * Usage: php scripts/jcb/generate-api-catalog.php <component-checkout> <extracted-route-plugin-directory>
  */
-const JCB_REVISION = 'aea703fc11d551d6847f3142ca74357cb73c23fe';
-const PLUGINS_REVISION = '33df9f3afd1f87b94151b8c824654e00557c3258';
-const SOURCE_DIGEST = '55182f3283e55ff14a966aae391e9d3866d3365ea7ec1d2db5004f55b1020d7b';
+const JCB_REVISION = 'beb33d8c7d5749ebb9e6b912aaeb9460caf9e4fd';
+const PACKAGE_REVISION = '1aa00148cf4726a6eb0754d56250ea2411bc9951';
+const SOURCE_DIGEST = 'a09a41398b42430a8ca6d5ceec95c7fec6589601ff82d18ba17dd058e950078d';
 const ROUTER = 'plg_webservices_componentbuilderapiroutes/src/Extension/ComponentbuilderApiRoutes.php';
 
 function readSource(string $path): string
@@ -196,7 +196,7 @@ function resource(string $root, string $list, ?string $item): array
 }
 
 if ($argc !== 3) {
-    fwrite(STDERR, "Pass local checkouts of extension-builder/joomla and extension-builder/plugins.\n");
+    fwrite(STDERR, "Pass the official JCB component checkout and a directory containing the extracted webservices plugin.\n");
     exit(2);
 }
 $sourceHashes = [];
@@ -245,7 +245,7 @@ $actualDigest = hash_final($digest);
 if ($actualDigest !== SOURCE_DIGEST) {
     throw new RuntimeException("JCB source changed ($actualDigest). Review the upstream changes and update both revisions and digest.");
 }
-$catalog = ['componentRevision' => JCB_REVISION, 'pluginsRevision' => PLUGINS_REVISION,
+$catalog = ['componentRevision' => JCB_REVISION, 'packageRevision' => PACKAGE_REVISION,
     'sourceDigest' => $actualDigest, 'router' => ROUTER, 'routes' => $routes, 'resources' => $resources];
 $output = __DIR__ . '/../../src/jcb/api-catalog.json';
 file_put_contents($output, renderJson($catalog) . "\n");

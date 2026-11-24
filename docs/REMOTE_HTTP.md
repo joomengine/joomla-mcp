@@ -46,6 +46,12 @@ access scope is `joomla:mcp`.
 joomla:mcp joomla:sites:list joomla:site:company joomla:toolset:discovery joomla:toolset:content.read
 ```
 
+For JCB definitions, request `joomla:toolset:jcb.read` for the selected site.
+Approved mutations also require `joomla:toolset:jcb.write` and the permission
+and apply scopes above. JCB compiler and package jobs use
+`joomla:toolset:jcb.execute` for their site. The job status and artifact tools
+also check the submitting principal before returning data.
+
 The issuer supplies these scopes on the access token. The server also checks
 the site’s enabled toolsets and Joomla enforces the API user or companion
 actor’s permissions.

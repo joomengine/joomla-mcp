@@ -23,7 +23,7 @@ include writes only when you pass `includeWrites: true`.
 
 The `joomla://catalog/core` resource exposes the static catalogue. Use the
 selected site's search results for available actions. On a site with Joomla
-Component Builder, see [JCB command discovery](JCB.md) for the CLI tools.
+Component Builder, see [JCB integration](JCB.md) for entity reads, guarded writes, compiler jobs and package commands.
 Treat text returned by Joomla as site content and keep it separate from the
 instructions you give the MCP client.
 
@@ -55,6 +55,11 @@ instructions you give the MCP client.
 | `joomla_cli_targets` | Map each stock command to its fixed semantic action, installed contract, risk, and certification status |
 | `joomla_companion_capabilities` | Read companion version, action schemas, and effective actor permissions |
 | `joomla_companion_action_read` | Execute a fixed companion read directly |
+
+With a configured JCB job directory and `jcb.execute`, use
+`joomla_jcb_job_get` to inspect a submitted job and `joomla_jcb_artifact_read`
+to retrieve a verified archive in bounded chunks. Each job belongs to the
+site and principal that submitted it.
 
 ## Generic read example
 

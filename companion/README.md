@@ -54,12 +54,17 @@ The dispatch contract is deliberately smaller than a general Joomla CLI. Only
 actions registered in `JoomlaActionRegistryFactory` can execute. There is no
 shell, SQL, PHP, filesystem, URL, or Joomla-command passthrough.
 
-The current allowlist contains 231 actions: fixed CRUD operations for all 36
+The Joomla core allowlist contains 231 actions: fixed CRUD operations for all 36
 core entity bases, bounded state operations for supported models, and selected
 native operational actions. Writes preview by default and require confirmation
 from the TypeScript edge before execution. High-risk actions return pre/post
 state, verification, and recovery metadata wherever Joomla exposes a reliable
 read-back.
+
+For JCB compiler and package jobs, build the companion from the same revision
+as the Node server and configure the site's job directory and `jcb.execute`
+toolset. The actor needs JCB administration permission. The server resolves
+eligible commands from the installed JCB plugin. [JCB jobs](../docs/JCB.md)
 
 Companion 0.8.0 includes the following native operations.
 

@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SiteConfig } from '../src/config/schema.js';
-import type { JoomlaCliTransport } from '../src/infrastructure/cli/joomla-cli-client.js';
+import { JoomlaCliClient, type JoomlaCliTransport } from '../src/infrastructure/cli/joomla-cli-client.js';
 import { applyJcbCommand, listJcbCommands, prepareJcbCommand } from '../src/jcb/commands.js';
-import { getJcbJob, readJcbArtifact } from '../src/jcb/jobs.js';
+import { getJcbJob, readJcbArtifact, withJcbSiteWriteLease } from '../src/jcb/jobs.js';
 
 const action = 'jcb.compile.component';
 const principal = 'operator-a';
@@ -49,7 +49,7 @@ describe('installed local JCB command jobs', () => {
         expect(command).toBe(action);
         if (args.dryRun) {
           expect(args._edgeConfirmed).toBeUndefined();
-          return { data: { result: { applied: false, dryRun: true, preState: { contractFingerprint: fingerprint } } } };
+          return { data: { result: { applied: false, dryRun: true, preState: { contractFingerprint: fingerprint }, requestedState: { command: 'componentbuilder:compile:component', options: args.options } } } };
         }
         expect(args._edgeConfirmed).toBe(true);
         expect(args._expectedContractFingerprint).toBe(fingerprint);
@@ -67,6 +67,25 @@ describe('installed local JCB command jobs', () => {
     }
     throw new Error('Timed out waiting for JCB job');
   }
+
+  it('passes only the job-owned workspace to the native child process', async () => {
+    const config = site.cli!;
+    await mkdir(join(config.root, 'cli'));
+    await writeFile(join(config.root, 'cli', 'joomla.php'), `
+      process.stdin.resume();
+      process.stdin.on('end', () => console.log(JSON.stringify({
+        protocol: 'joomla-mcp/1', ok: true, result: { workspace: process.env.JOOMLA_MCP_JCB_ARTIFACT_DIR ?? null }
+      })));
+    `);
+    const client = new JoomlaCliClient();
+    vi.stubEnv('JOOMLA_MCP_JCB_ARTIFACT_DIR', '/untrusted/inherited');
+    try {
+      expect((await client.dispatch(config, action, { dryRun: true })).data).toMatchObject({ result: { workspace: null } });
+      const result = await client.dispatch(config, action, {}, { jcbArtifactDirectory: jobs });
+      expect(result.data).toMatchObject({ result: { workspace: jobs } });
+      expect(result.command).not.toContain(jobs);
+    } finally { vi.unstubAllEnvs(); }
+  });
 
   it('only exposes reviewed, executable identities and excludes internal controls', async () => {
     const entry = description.actions[0]!;
@@ -96,6 +115,11 @@ describe('installed local JCB command jobs', () => {
     expect(await readJcbArtifact(site, principal, one.jobId, archive.name, 1, 4)).toMatchObject({
       data: bytes.subarray(1, 5).toString('base64'), bytes: 4, offset: 1, eof: false, sha256: archive.sha256,
     });
+    const stored = join(jobs, one.jobId, 'artifacts', archive.name);
+    await chmod(stored, 0o600);
+    await writeFile(stored, Buffer.alloc(bytes.length));
+    await chmod(stored, 0o400);
+    await expect(readJcbArtifact(site, principal, one.jobId, archive.name)).rejects.toThrow(/digest mismatch/);
     expect((await submit()).status).toBe('succeeded');
     await expect(applyJcbCommand(cli, site, action, { options: { component: randomUUID() } }, preflight, principal, key)).rejects.toThrow(/already claimed/);
   });
@@ -115,6 +139,32 @@ describe('installed local JCB command jobs', () => {
     expect(replay.status).toBe('uncertain');
     expect(native).toHaveBeenCalledTimes(1);
     expect((await readdir(jobs)).some(name => name.startsWith('active-'))).toBe(true);
+  });
+
+  it('reports an interrupted worker even when the restarted process reuses its PID', async () => {
+    const { preflight } = await prepareJcbCommand(cli, site, action, input);
+    const key = randomUUID();
+    const job = await applyJcbCommand(cli, site, action, input, preflight, principal, key);
+    await wait(job.jobId);
+    const filename = join(jobs, job.jobId, 'job.json');
+    const stored = JSON.parse(await readFile(filename, 'utf8'));
+    await writeFile(filename, JSON.stringify({ ...stored, status: 'running', workerPid: process.pid, workerInstance: randomUUID() }));
+    expect((await getJcbJob(site, principal, job.jobId)).status).toBe('uncertain');
+    expect((await applyJcbCommand(cli, site, action, input, preflight, principal, key)).status).toBe('uncertain');
+    expect(native).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds the same site claim as normal Joomla writes for the duration of a job', async () => {
+    let complete!: () => void;
+    const pending = new Promise<void>((resolve) => { complete = resolve; });
+    const original = native.getMockImplementation()!;
+    native.mockImplementation(async (...args) => { await pending; return original(...args); });
+    const { preflight } = await prepareJcbCommand(cli, site, action, input);
+    const job = await applyJcbCommand(cli, site, action, input, preflight, principal, randomUUID());
+    try {
+      await expect(withJcbSiteWriteLease(site, async () => 'write')).rejects.toThrow(/execution claim/);
+    } finally { complete(); }
+    expect((await wait(job.jobId)).status).toBe('succeeded');
   });
 
   it('rejects an archive symlink and requires the private state directory', async () => {

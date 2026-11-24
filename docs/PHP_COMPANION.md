@@ -110,7 +110,7 @@ risk, supported Joomla range, declared ACL, and effective permission for the
 configured actor. Refresh it after package installation/upgrade, Joomla upgrade,
 actor ACL changes, or plugin configuration changes.
 
-The companion 0.8.0 allowlist contains 231 actions:
+The companion 0.8.0 Joomla core allowlist contains 231 actions:
 
 - 180 list/get/create/update/delete actions for the 36 fixed core entity bases;
 - 28 model-state actions where the fixed Joomla model supports state changes;
@@ -120,6 +120,10 @@ The companion 0.8.0 allowlist contains 231 actions:
 Every entity definition fixes its component, model, context, fields, ACL, and
 supported operations. There is no caller-selected command, component, model,
 method, path, URL, shell, PHP, SQL, or filesystem primitive.
+
+With JCB installed, the companion also describes eligible compiler and package
+commands from the installed JCB console registry. The Node server submits these
+as operator-approved jobs under `jcb.execute`. [JCB configuration](JCB.md)
 
 ## Native operational actions
 

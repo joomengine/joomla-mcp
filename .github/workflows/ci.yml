@@ -89,6 +89,34 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  jcb-installed-fixture:
+    name: Joomla 6.1 / JCB 6.2.1 integration
+    needs: php-companion
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: pkg_joomlamcp
+          path: companion/dist
+      - name: Exercise installed JCB APIs, package jobs and compilation
+        env:
+          JOOMLA_FIXTURE_ARTIFACT_DIR: ${{ runner.temp }}/jcb-fixture
+        run: ./scripts/fixtures/run-joomengine.sh --jcb-only
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: jcb-integration-evidence
+          path: ${{ runner.temp }}/jcb-fixture
+          if-no-files-found: warn
+          retention-days: 14
+
   api-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -23,6 +23,14 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "required command is unavailable: $1"
 }
 
+jcb_only=0
+case "${1:-}" in
+  '') ;;
+  --jcb-only) jcb_only=1 ;;
+  *) fail 'usage: run-joomengine.sh [--jcb-only]' ;;
+esac
+[[ "$#" -le 1 ]] || fail 'usage: run-joomengine.sh [--jcb-only]'
+
 require_command docker
 require_command node
 require_command openssl
@@ -59,7 +67,11 @@ export JOOMLA_FIXTURE_DATABASE_NAME JOOMLA_FIXTURE_DATABASE_PASSWORD
 export JOOMLA_FIXTURE_DATABASE_ROOT_PASSWORD JOOMLA_FIXTURE_DATABASE_USER
 export JOOMLA_FIXTURE_IMAGE JOOMLA_FIXTURE_MAIL_IMAGE
 
-artifact_directory="${JOOMLA_FIXTURE_ARTIFACT_DIR:-${TMPDIR:-/tmp}/joomla-mcp-joomengine-evidence}"
+evidence_name=joomla-mcp-joomengine-evidence
+if [[ "$jcb_only" -eq 1 ]]; then
+  evidence_name=joomla-mcp-jcb-evidence
+fi
+artifact_directory="${JOOMLA_FIXTURE_ARTIFACT_DIR:-${TMPDIR:-/tmp}/${evidence_name}}"
 mkdir -p -- "$artifact_directory"
 chmod 0700 -- "$artifact_directory"
 artifact_directory="$(realpath -- "$artifact_directory")"
@@ -69,6 +81,37 @@ raw_project_name="joomla-mcp-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-$$
 project_name="$(printf '%s' "$raw_project_name" | tr -cs '[:alnum:]_-' '-' | cut -c1-58)"
 readonly project_name
 compose=(docker compose --project-name "$project_name" --file "$COMPOSE_FILE")
+
+bootstrap_api_secrets() {
+  local api_token_file="${artifact_directory}/.api-token"
+  "${compose[@]}" exec --no-TTY --user www-data joomla \
+    php /fixtures/bootstrap-api-token.php >"$api_token_file"
+  chmod 0600 -- "$api_token_file"
+  JOOMLA_MCP_LIVE_API_TOKEN="$(
+    node --input-type=module - "$api_token_file" <<'NODE'
+import { readFileSync } from 'node:fs';
+
+const secrets = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(String(secrets.apiToken ?? ''));
+NODE
+  )"
+  [[ "$JOOMLA_MCP_LIVE_API_TOKEN" =~ ^[A-Za-z0-9+/=]+$ ]] \
+    || fail 'fixture API-token bootstrap returned an invalid token'
+  JOOMLA_MCP_LIVE_UPDATE_TOKEN="$(
+    node --input-type=module - "$api_token_file" <<'NODE'
+import { readFileSync } from 'node:fs';
+
+const secrets = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(String(secrets.updateToken ?? ''));
+NODE
+  )"
+  [[ "$JOOMLA_MCP_LIVE_UPDATE_TOKEN" =~ ^[A-Fa-f0-9]{64}$ ]] \
+    || fail 'fixture Joomla Update bootstrap returned an invalid token'
+  JOOMLA_MCP_LIVE_APPROVAL_SECRET="$(openssl rand -hex 32)"
+  export JOOMLA_MCP_LIVE_API_TOKEN JOOMLA_MCP_LIVE_UPDATE_TOKEN JOOMLA_MCP_LIVE_APPROVAL_SECRET
+
+  rm -f -- "$api_token_file"
+}
 
 collect_diagnostics() {
   "${compose[@]}" ps --all >"${artifact_directory}/compose-ps.txt" 2>&1 || true
@@ -114,6 +157,15 @@ joomla_container_id="$("${compose[@]}" ps --quiet joomla)"
 [[ -n "$joomla_container_id" ]] || fail 'the Joomla container was not created'
 [[ "$(docker inspect --format '{{.State.Status}}' "$joomla_container_id")" == 'running' ]] \
   || fail 'the Joomla container is not running after bootstrap'
+
+if [[ "$jcb_only" -eq 1 ]]; then
+  bootstrap_api_secrets
+  npm run build --silent
+  printf 'JMCP-FIXTURE state=START phase=jcb\n'
+  bash "${SCRIPT_DIRECTORY}/run-jcb.sh" "$joomla_container_id" "$artifact_directory"
+  printf 'JMCP-FIXTURE state=PASS phase=jcb\n'
+  exit 0
+fi
 
 fixture_origin='http://127.0.0.1'
 readonly fixture_origin
@@ -311,32 +363,7 @@ fixture_port="$("${compose[@]}" port joomla 80 | sed -n 's/.*:\([0-9][0-9]*\)$/\
 live_fixture_origin="http://127.0.0.1:${fixture_port}"
 readonly live_fixture_origin
 
-api_token_file="${artifact_directory}/.api-token"
-"${compose[@]}" exec --no-TTY --user www-data joomla \
-  php /fixtures/bootstrap-api-token.php >"$api_token_file"
-chmod 0600 -- "$api_token_file"
-JOOMLA_MCP_LIVE_API_TOKEN="$(
-  node --input-type=module - "$api_token_file" <<'NODE'
-import { readFileSync } from 'node:fs';
-
-const secrets = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-process.stdout.write(String(secrets.apiToken ?? ''));
-NODE
-)"
-[[ "$JOOMLA_MCP_LIVE_API_TOKEN" =~ ^[A-Za-z0-9+/=]+$ ]] \
-  || fail 'fixture API-token bootstrap returned an invalid token'
-JOOMLA_MCP_LIVE_UPDATE_TOKEN="$(
-  node --input-type=module - "$api_token_file" <<'NODE'
-import { readFileSync } from 'node:fs';
-
-const secrets = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-process.stdout.write(String(secrets.updateToken ?? ''));
-NODE
-)"
-[[ "$JOOMLA_MCP_LIVE_UPDATE_TOKEN" =~ ^[A-Fa-f0-9]{64}$ ]] \
-  || fail 'fixture Joomla Update bootstrap returned an invalid token'
-JOOMLA_MCP_LIVE_APPROVAL_SECRET="$(openssl rand -hex 32)"
-export JOOMLA_MCP_LIVE_API_TOKEN JOOMLA_MCP_LIVE_UPDATE_TOKEN JOOMLA_MCP_LIVE_APPROVAL_SECRET
+bootstrap_api_secrets
 
 cli_root="${artifact_directory}/cli-root"
 mkdir -p -- "${cli_root}/cli"
@@ -408,8 +435,6 @@ const configuration = {
 writeFileSync(file, `${JSON.stringify(configuration, null, 2)}\n`, { mode: 0o600 });
 NODE
 
-rm -f -- "$api_token_file"
-
 npm run build --silent
 printf 'JMCP-FIXTURE state=START phase=article-bodies message=%q\n' \
   'verifying article body persistence through generic and typed MCP API writes'
@@ -442,10 +467,6 @@ node "${REPOSITORY_ROOT}/dist/bin/joomla-mcp-live-test.js" \
   | tee "${live_test_directory}/console.log"
 printf 'JMCP-FIXTURE state=PASS phase=live-test message=%q\n' \
   'declarative MCP live validation completed'
-
-printf 'JMCP-FIXTURE state=START phase=jcb\n'
-bash "${SCRIPT_DIRECTORY}/run-jcb.sh" "$joomla_container_id" "$artifact_directory"
-printf 'JMCP-FIXTURE state=PASS phase=jcb\n'
 
 collect_diagnostics
 for command in \

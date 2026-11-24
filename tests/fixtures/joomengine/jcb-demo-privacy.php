@@ -39,11 +39,23 @@ foreach ($links as $value) {
         }
         // The JCB group name is the machine Joomla plugin folder appearing in
         // the compiled manifest. Only a definition selected by Demo qualifies.
-        $row = $db->setQuery('SELECT p.id,p.guid,p.published,g.guid AS groupGuid FROM #__componentbuilder_joomla_plugin AS p'
-            . ' JOIN #__componentbuilder_joomla_plugin_group AS g ON (g.guid=p.joomla_plugin_group'
-            . ' OR CAST(g.id AS CHAR)=p.joomla_plugin_group) WHERE ' . $predicate
-            . ' AND g.name=' . $db->quote('privacy'))->loadObject();
-        if ($row && (int) $row->id > 0) {
+        $row = $db->setQuery('SELECT p.id,p.guid,p.published,p.joomla_plugin_group FROM #__componentbuilder_joomla_plugin AS p'
+            . ' WHERE ' . $predicate)->loadObject();
+        if (!$row || (int) $row->id < 1) {
+            continue;
+        }
+        // Upgraded JCB tables may have different collations. Resolve each
+        // native identifier against its own table, as the component does.
+        $groupKey = (string) $row->joomla_plugin_group;
+        if (ctype_digit($groupKey) && (int) $groupKey > 0) {
+            $groupPredicate = 'id=' . (int) $groupKey;
+        } else {
+            $groupPredicate = 'guid=' . $db->quote($groupKey);
+        }
+        $group = $db->setQuery('SELECT guid,name FROM #__componentbuilder_joomla_plugin_group WHERE '
+            . $groupPredicate)->loadObject();
+        if ($group && strtolower((string) $group->name) === 'privacy') {
+            $row->groupGuid = $group->guid;
             $selected[(int) $row->id] = $row;
         }
     }

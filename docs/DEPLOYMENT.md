@@ -11,6 +11,8 @@ connects to Joomla over Web Services, through the local companion, or both.
 | Remote API-only edge | Pinned OCI image with Compose or an orchestrator |
 | Remote edge as a host service | Source/release build with systemd |
 | Joomla-native companion actions | Host deployment with PHP and direct access to the fixed Joomla root |
+| JCB definitions, views and fields | Stdio or HTTP with the JCB Web Services plugin and the site’s API credentials |
+| JCB compilation and package operations | Host deployment with local PHP, the JCB console plugin, this project’s companion and persistent job storage. [JCB setup](JCB.md) |
 
 The shipped OCI image runs the Node.js HTTP server and connects to Joomla
 over the Web Services API. For companion actions, run Node.js on a host with
@@ -227,7 +229,7 @@ not ready; `/healthz` remains the separate shallow liveness endpoint. If
 
 The systemd unit uses `StateDirectory=joomla-mcp` with mode `0700`, making
 `/var/lib/joomla-mcp` the supported persistent grant-store directory even
-under `ProtectSystem=strict`.
+under `ProtectSystem=strict`. For JCB jobs, create a service-owned mode `0700` subdirectory such as `/var/lib/joomla-mcp/jcb-jobs` and set `cli.jcbJobDirectory` to that absolute path. Keep job receipts and verified archives across rollouts. Before restarting an active writer, let running jobs finish and inspect any uncertain receipts. [JCB job operations](JCB_JOB_OPERATIONS.md)
 
 For companion access, the service account also needs execute/read access to the
 fixed PHP binary and Joomla CLI bootstrap plus Unix filesystem ACLs for the

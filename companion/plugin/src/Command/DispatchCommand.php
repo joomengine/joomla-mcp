@@ -39,6 +39,10 @@ final class DispatchCommand extends AbstractCommand
 
     protected function doExecute(InputInterface $input, OutputInterface $output): int
     {
+        // ConsoleApplication renders Joomla's queued messages after this command returns.
+        // The protocol writer uses STDOUT directly; suppress the surrounding human-readable console.
+        $output->setVerbosity(OutputInterface::VERBOSITY_QUIET);
+
         if ($input->getOption('input') !== '-') {
             $this->write($this->commandError('INVALID_INPUT_SOURCE', 'Input source must be stdin (-).'));
 

@@ -267,6 +267,34 @@ export async function runJcbWriteFixture(session, site) {
   assert.equal(process.cwd(), '/tmp/joomla-mcp-jcb-fixture');
   assert.equal(site, 'jcbApi');
   const catalogue = JSON.parse(await readFile('dist/jcb/api-catalog.json', 'utf8'));
+  const guidFamilies = new Set(Object.keys(catalogue.routes)
+    .filter(route => route.startsWith('DELETE ') && route.endsWith('/guid/:guid'))
+    .map(route => route.split('/')[2]));
+  assert.equal(guidFamilies.size, 21);
+  let grantAt = 0;
+  const renewIfNeeded = async () => {
+    if (Date.now() - grantAt < 20 * 60 * 1000) return;
+    await recreateGrant(session, site);
+    grantAt = Date.now();
+  };
+  const primary = await runDefinitionPass(session, site, catalogue, renewIfNeeded);
+  // A second, separately marked record is necessary to prove both permanent
+  // deletion routes. The second pass also removes children JCB creates itself.
+  const alternate = await runDefinitionPass(session, site, catalogue, renewIfNeeded, guidFamilies);
+  const guidDeleteVariants = Object.fromEntries([...guidFamilies].map(resource => [resource, alternate.families[resource]]));
+  const verifiedActions = [...new Set([...Object.values(primary.families), ...Object.values(alternate.families)]
+    .flatMap(detail => detail.verifiedActions ?? []))].sort();
+  for (const resource of guidFamilies) {
+    for (const operation of ['get', 'get.guid', 'update', 'update.guid', 'delete', 'delete.guid']) {
+      const action = `jcb.api.${resource}.${operation}`;
+      if (!verifiedActions.includes(action)) alternate.failures.push('Missing verified action: ' + action);
+    }
+  }
+  return {...primary, guidDeleteVariants, verifiedActions,
+    failures: [...primary.failures, ...alternate.failures.map(reason => 'GUID deletion pass: ' + reason)]};
+}
+
+async function runDefinitionPass(session, site, catalogue, renewIfNeeded, guidFamilies) {
   const writable = Object.keys(catalogue.routes)
     .filter(route => route.startsWith('POST '))
     .map(route => route.split('/').at(-1));
@@ -308,16 +336,12 @@ export async function runJcbWriteFixture(session, site) {
   );
   for (const spec of scenarios)
     assert.ok(writable.includes(spec.resource), 'Unregistered JCB fixture family: ' + spec.resource);
-  let grantAt = 0;
-  const renewIfNeeded = async () => {
-    if (Date.now() - grantAt < 20 * 60 * 1000) return;
-    await recreateGrant(session, site);
-    grantAt = Date.now();
-  };
   await renewIfNeeded();
 
   for (const spec of scenarios) {
     const { resource } = spec;
+    const secondaryChild = guidFamilies && !guidFamilies.has(resource) && spec.ownerValue && spec.dependencies?.length;
+    if (guidFamilies && !guidFamilies.has(resource) && !secondaryChild) continue;
     const problem = (spec.dependencies ?? []).find(parent => !owned.has(parent));
     if (problem) {
       families[resource] = { status: 'blocked-by-fixture-dependency', parent: problem };
@@ -325,10 +349,14 @@ export async function runJcbWriteFixture(session, site) {
       continue;
     }
     let phase = 'initial ownership check';
-    const detail = (families[resource] = { status: 'running', steps: [] });
+    const detail = (families[resource] = { status: 'running', steps: [], verifiedActions: [] });
     try {
       await renewIfNeeded();
       const existing = await ownedIds(spec, marker, owned);
+      if (secondaryChild && existing.size === 0) {
+        detail.status = 'no-native-child';
+        continue;
+      }
       const nativeChild = (
         spec.ownerValue &&
         existing.size &&
@@ -363,6 +391,7 @@ export async function runJcbWriteFixture(session, site) {
         assert.equal(created.verification.status, 'verified', 'JCB create was not independently verified.');
         id = Number(created.verification.id);
         detail.creation = 'verified-mcp-create';
+        detail.verifiedActions.push(`jcb.api.${resource}.create`);
       }
       assert.ok(Number.isSafeInteger(id) && id > 0);
       owned.set(resource, { id });
@@ -375,6 +404,7 @@ export async function runJcbWriteFixture(session, site) {
       assert.equal(control.data.type, resource);
       const byId = await read(session, site, resource, 'get', { id });
       assert.equal(String(byId.data.data.id), String(control.data.id));
+      detail.verifiedActions.push(`jcb.api.${resource}.get`);
       for (const name of spec.relationships ?? []) {
         assert.equal(String(field(control.data, name)), String(data[name]));
         assert.equal(String(field(byId.data.data, name)), String(data[name]));
@@ -386,6 +416,7 @@ export async function runJcbWriteFixture(session, site) {
         const byGuid = await read(session, site, resource, 'get.guid', { guid });
         assert.equal(String(byGuid.data.data.id), String(id));
         owned.set(resource, { id, guid });
+        detail.verifiedActions.push(`jcb.api.${resource}.get.guid`);
       }
       detail.steps.push(supportsGuid ? 'verified numeric and GUID reads' : 'verified numeric read');
       if (spec.relationships) detail.steps.push('independent native relationship identity');
@@ -399,8 +430,9 @@ export async function runJcbWriteFixture(session, site) {
         detail.steps.push('confirmed source is immutable');
       }
 
-      const route = supportsGuid ? 'update.guid' : 'update';
-      const identifier = supportsGuid ? { guid } : { id };
+      const updateByGuid = supportsGuid && !guidFamilies;
+      const route = updateByGuid ? 'update.guid' : 'update';
+      const identifier = updateByGuid ? { guid } : { id };
       let linkedRows;
       if (spec.link) {
         phase = 'append owned target to existing association rows';
@@ -442,6 +474,7 @@ export async function runJcbWriteFixture(session, site) {
         detail.steps.push('native read independently verified original source and new translation');
       }
       detail.steps.push('verified ' + route + ' and independent numeric read');
+      detail.verifiedActions.push(`jcb.api.${resource}.${route}`);
       detail.status = 'awaiting-cleanup';
     } catch (error) {
       detail.status = 'failed';
@@ -469,13 +502,39 @@ export async function runJcbWriteFixture(session, site) {
           'Refusing to clean a row without the independently verified fixture ownership field.',
         );
         const state = field(before.data, 'published');
-        if (String(state) !== '-2') {
-          const trash = await write(session, site, spec.resource, 'update', { id, data: { published: -2 } });
-          assert.equal(trash.verification.status, 'verified', 'Native trash transition did not verify.');
+        const deleteByGuid = guidFamilies?.has(spec.resource);
+        const guid = field(before.data, 'guid');
+        if (deleteByGuid) {
+          assert.match(guid, guidPattern);
+          assert.equal(String((await native(spec.resource, '/guid/' + guid)).data.id), String(id));
         }
-        const removed = await write(session, site, spec.resource, 'delete', { id });
-        assert.equal(removed.verification.status, 'verified', 'Native removal did not verify.');
+        const identifier = deleteByGuid ? {guid} : {id};
+        if (String(state) !== '-2') {
+          const patch = deleteByGuid ? 'update.guid' : 'update';
+          const trash = await write(session, site, spec.resource, patch, { ...identifier, data: { published: -2 } });
+          assert.equal(trash.verification.status, 'verified', 'Native trash transition did not verify.');
+          const action = `jcb.api.${spec.resource}.${patch}`;
+          if (!detail.verifiedActions.includes(action)) detail.verifiedActions.push(action);
+        }
+        const removal = deleteByGuid ? 'delete.guid' : 'delete';
+        try {
+          const removed = await write(session, site, spec.resource, removal, identifier);
+          assert.equal(removed.verification.status, 'verified', 'Native removal did not verify.');
+        } catch (error) {
+          if (!deleteByGuid) throw error;
+          // The variant still fails. Use the standard route to remove the row
+          // only after independently rechecking its ID, GUID and run ownership.
+          const remaining = await native(spec.resource, '/' + id);
+          if (remaining.status === 200) {
+            assert.equal(field(remaining.data, 'guid'), guid);
+            assert.ok(ownerValues(spec, marker, owned).has(field(remaining.data, spec.owner)));
+            await write(session, site, spec.resource, 'delete', {id});
+          }
+          throw error;
+        }
         assert.equal((await native(spec.resource, '/' + id)).status, 404, 'Deleted JCB row remains readable.');
+        if (deleteByGuid) assert.equal((await native(spec.resource, '/guid/' + guid)).status, 404);
+        detail.verifiedActions.push(`jcb.api.${spec.resource}.${removal}`);
       }
       assert.equal((await ownedIds(spec, marker, owned)).size, 0);
       detail.steps.push('verified owned-record cleanup');

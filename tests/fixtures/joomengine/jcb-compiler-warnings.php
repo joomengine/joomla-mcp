@@ -13,7 +13,12 @@ register_shutdown_function(static function (): void {
             || !class_exists(\Joomla\CMS\Factory::class, false)) {
             return;
         }
-        $warnings = \Joomla\CMS\Factory::$application?->getMessageQueue()['warning'] ?? [];
+        $warnings = [];
+        foreach (\Joomla\CMS\Factory::$application?->getMessageQueue() ?? [] as $type => $messages) {
+            if (strtolower((string) $type) === 'warning') {
+                array_push($warnings, ...(array) $messages);
+            }
+        }
         if (!$warnings) {
             return;
         }

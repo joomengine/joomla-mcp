@@ -2,6 +2,7 @@ import { realpath, readFile, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
+import { validateJcbJobDirectory } from './jcb-job-directory.js';
 
 import { RawConfigurationSchema, type Configuration, type SiteConfig } from './schema.js';
 
@@ -111,6 +112,9 @@ export async function resolveConfiguration(
 
     if (cli !== undefined) {
       await validateReadableFile(resolve(cli.root, 'cli/joomla.php'), `Joomla CLI launcher for site ${id}`);
+      if (cli.jcbJobDirectory !== undefined) {
+        cli.jcbJobDirectory = await validateJcbJobDirectory(cli.jcbJobDirectory, cli.root);
+      }
     }
 
     const site: SiteConfig = {

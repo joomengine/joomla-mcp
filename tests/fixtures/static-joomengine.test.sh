@@ -34,6 +34,8 @@ for file in "$COMPOSE_FILE" "$RUNNER" "$CORE_CLI_COMMANDS_FILE" "$API_BOOTSTRAP"
 done
 
 bash -n "$RUNNER"
+bash -n scripts/fixtures/run-jcb.sh
+node --check scripts/fixtures/verify-jcb.mjs
 bash -n tests/fixtures/static-joomengine.test.sh
 
 assert_contains "$COMPOSE_FILE" 'JOOMLA_FIXTURE_IMAGE:-octoleo/joomengine:6@sha256:5fbcccb6275cc8336d22cad563082e09824bd04e0035bc1837787be8f16b2372}'
@@ -101,6 +103,7 @@ assert_not_contains "$API_BOOTSTRAP" 'json_encode(true'
 
 if command -v php >/dev/null 2>&1; then
   php -l "$API_BOOTSTRAP"
+  php -l tests/fixtures/joomengine/jcb-denied-token.php
 fi
 
 [[ "$(sed '/^$/d' "$CORE_CLI_COMMANDS_FILE" | wc -l | tr -d '[:space:]')" == '38' ]] \

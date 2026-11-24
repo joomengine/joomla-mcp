@@ -66,7 +66,7 @@ final class JoomlaMcpPlugin extends CMSPlugin implements SubscriberInterface
             }
         }
 
-        $registry = (new JoomlaActionRegistryFactory($application))->create();
+        $registry = (new JoomlaActionRegistryFactory($application, $actorUserId))->create();
 
         $this->registerVerified(
             $application,

@@ -18,6 +18,9 @@ export const ToolsetSchema = z.enum([
   'maintenance.admin',
   'core-update',
   'cli.discovery',
+  'jcb.read',
+  'jcb.write',
+  'jcb.execute',
 ]);
 
 export type Toolset = z.infer<typeof ToolsetSchema>;
@@ -62,6 +65,7 @@ const CliConfigSchema = z
   .object({
     root: z.string().min(1),
     phpBinary: z.string().min(1),
+    jcbJobDirectory: z.string().min(1).optional(),
     timeoutMs: z.int().min(1_000).max(3_600_000).default(120_000),
     maxOutputBytes: z.int().min(1_024).max(52_428_800).default(2_097_152),
   })

@@ -1,3 +1,6 @@
+import { JcbDiscovery, jcbToolset } from '../jcb/discovery.js';
+import { getJcbApiAction } from '../jcb/catalog.js';
+import { readJcbApiAction } from '../jcb/api.js';
 import type { CliEnvelope, CompanionEnvelope } from '../infrastructure/cli/joomla-cli-client.js';
 import type { AuditSink } from '../audit/audit-sink.js';
 import { publicCatalog } from '../catalog/core.js';
@@ -55,12 +58,16 @@ const crudReadActionIds = new Set(joomlaCrudReadActions.map((action) => action.i
 const crudWriteActionIds = new Set(joomlaCrudWriteActions.map((action) => action.id));
 
 export class JoomlaService {
+  private readonly jcb: JcbDiscovery;
+
   public constructor(
     private readonly sites: SiteRegistry,
     private readonly api: JoomlaApiTransport = new JoomlaApiClient(),
     private readonly cli: JoomlaCliTransport = new JoomlaCliClient(),
     private readonly audit?: AuditSink,
-  ) {}
+  ) {
+    this.jcb = new JcbDiscovery(api);
+  }
 
   public siteSummary(): Record<string, unknown> {
     return this.sites.summary();
@@ -247,7 +254,7 @@ export class JoomlaService {
     readonly domain?: string | undefined;
     readonly includeSensitive?: boolean | undefined;
     readonly includeWrites?: boolean | undefined;
-  }): Promise<Record<string, unknown>> {
+  }, permitted: (toolset: Toolset) => boolean = () => true): Promise<Record<string, unknown>> {
     const site = this.site(input.site, 'discovery');
     const companionCapability = await this.effectiveCompanionActions(site);
     const apiActions = input.includeWrites === true ? findJoomlaActions({
@@ -287,10 +294,8 @@ export class JoomlaService {
       }
     }
 
-    return {
-      site: site.id,
-      count: actions.length,
-      actions: actions.map((action) => ({
+    const jcb = await this.jcb.search(site, input, companionCapability.description, permitted);
+    const core = actions.map((action) => ({
         id: action.id,
         title: action.title,
         description: action.description,
@@ -306,7 +311,11 @@ export class JoomlaService {
           companionCapability.allowed,
         ),
         ...('versions' in action ? { versions: action.versions } : { native: action.native }),
-      })),
+      }));
+    return {
+      site: site.id,
+      count: core.length + jcb.length,
+      actions: [...core, ...jcb],
       companionCapability: companionCapability.status,
     };
   }
@@ -316,6 +325,13 @@ export class JoomlaService {
     siteId?: string,
     authorizeRead?: (site: string, toolset: string) => void,
   ): Promise<Record<string, unknown>> {
+    const scope = jcbToolset(actionId);
+    if (scope) {
+      const site = this.site(siteId, scope);
+      if (scope === 'jcb.write') authorizeRead?.(site.id, 'jcb.read');
+      const companion = scope === 'jcb.execute' ? await this.effectiveCompanionActions(site) : undefined;
+      return this.jcb.describe(site, actionId, companion?.description);
+    }
     const apiAction = getJoomlaAction(actionId);
     const companionAction = getCompanionReadAction(actionId) ?? getCompanionWriteAction(actionId);
 
@@ -405,6 +421,23 @@ export class JoomlaService {
     readonly input?: Readonly<Record<string, unknown>> | undefined;
     readonly transport?: 'auto' | 'api' | 'cli' | undefined;
   }): Promise<JoomlaApiResponse | CompanionEnvelope | Record<string, unknown>> {
+    const jcb = getJcbApiAction(input.action);
+    if (jcb) {
+      if (jcb.toolset !== 'jcb.read' || input.transport === 'cli') {
+        throw new Error('JCB resource reads require a registered API read action.');
+      }
+      const site = this.site(input.site, 'jcb.read');
+      try {
+        const response = await readJcbApiAction(this.api, this.requireApi(site.id), jcb, input.input ?? {});
+        await this.audit?.write({ timestamp: new Date().toISOString(), event: 'action.read',
+          site: site.id, action: jcb.id, transport: 'api', outcome: 'success' });
+        return response;
+      } catch (error) {
+        await this.audit?.write({ timestamp: new Date().toISOString(), event: 'action.read_failed',
+          site: site.id, action: jcb.id, transport: 'api', outcome: 'failure' });
+        throw error;
+      }
+    }
     const action = getJoomlaReadAction(input.action);
     const companionAction = getCompanionReadAction(input.action);
 
@@ -538,7 +571,7 @@ export class JoomlaService {
 
   private async effectiveCompanionActions(
     site: ReturnType<SiteRegistry['get']>,
-  ): Promise<{ readonly allowed: ReadonlySet<string>; readonly status: 'not-configured' | 'available' | 'unavailable' }> {
+  ): Promise<{ readonly allowed: ReadonlySet<string>; readonly description?: unknown; readonly status: 'not-configured' | 'available' | 'unavailable' }> {
     if (site.cli === undefined) {
       return { allowed: new Set(), status: 'not-configured' };
     }
@@ -552,7 +585,7 @@ export class JoomlaService {
           .filter((action) => typeof action['name'] === 'string' && asRecord(action['effective'])['allowed'] === true)
           .map((action) => action['name'] as string),
       );
-      return { allowed, status: 'available' };
+      return { allowed, status: 'available', description: data };
     } catch {
       return { allowed: new Set(), status: 'unavailable' };
     }

@@ -19,10 +19,11 @@ use VDM\Plugin\Console\JoomlaMcp\Action\SessionGarbageCollectionAction;
 use VDM\Plugin\Console\JoomlaMcp\Action\SiteStateAction;
 use VDM\Plugin\Console\JoomlaMcp\Action\SystemInfoAction;
 use VDM\Plugin\Console\JoomlaMcp\Domain\ActionRegistry;
+use VDM\Plugin\Console\JoomlaMcp\Jcb\InstalledCommands;
 
 final readonly class JoomlaActionRegistryFactory
 {
-    public function __construct(private object $application)
+    public function __construct(private object $application, private int $actorId = 0)
     {
     }
 
@@ -129,6 +130,6 @@ final readonly class JoomlaActionRegistryFactory
             }
         }
 
-        return new ActionRegistry($actions);
+        return new ActionRegistry($actions, fn (): iterable => InstalledCommands::actions($this->application, $this->actorId));
     }
 }
